@@ -173,7 +173,7 @@ export async function processMessage({
 
   // Configura o modelo
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3.5-flash',
     systemInstruction: fullSystemPrompt,
     tools: [{
       functionDeclarations: toolDeclarations,
