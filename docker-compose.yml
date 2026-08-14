@@ -1,0 +1,87 @@
+version: "3.8"
+
+services:
+  # ─────────────────────────────────────
+  # Evolution API (WhatsApp)
+  # ─────────────────────────────────────
+  evolution:
+    image: atendai/evolution-api:v2.2.3
+    container_name: evolution-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://postgres:postgres@postgres:5432/evolution
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379
+      - CACHE_LOCAL_ENABLED=false
+      - LOG_LEVEL=WARN
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - apac-network
+
+  # ─────────────────────────────────────
+  # PostgreSQL (para Evolution API)
+  # ─────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: evolution-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - apac-network
+
+  # ─────────────────────────────────────
+  # Redis (cache de sessões)
+  # ─────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: evolution-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - apac-network
+
+  # ─────────────────────────────────────
+  # APAC-IA SALES (Backend Node.js)
+  # ─────────────────────────────────────
+  backend:
+    build: .
+    container_name: apac-ia-sales
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3100}:3100"
+    env_file:
+      - .env
+    environment:
+      - EVOLUTION_API_URL=http://evolution:8080
+      - NODE_ENV=production
+    depends_on:
+      - evolution
+    networks:
+      - apac-network
+
+volumes:
+  evolution_instances:
+  postgres_data:
+  redis_data:
+
+networks:
+  apac-network:
+    driver: bridge

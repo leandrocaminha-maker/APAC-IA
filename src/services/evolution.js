@@ -1,0 +1,164 @@
+/**
+ * src/services/evolution.js
+ * Client para a Evolution API v2 (WhatsApp).
+ *
+ * Docs: https://doc.evolution-api.com/v2/
+ */
+import { config } from '../config.js';
+import { logger } from '../lib/logger.js';
+
+const { url, apiKey, instance } = config.evolution;
+
+/** Helper para chamadas à Evolution API. */
+async function evoFetch(path, options = {}) {
+  const fullUrl = `${url}${path}`;
+  const headers = {
+    'Content-Type': 'application/json',
+    apikey: apiKey,
+    ...options.headers,
+  };
+
+  logger.debug(`[evolution] ${options.method || 'GET'} ${fullUrl}`);
+
+  const res = await fetch(fullUrl, { ...options, headers });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    logger.error(`[evolution] ${res.status} ${fullUrl}`, body);
+    throw new Error(`Evolution API ${res.status}: ${body}`);
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return res.json();
+  }
+  return res.text();
+}
+
+// ──────────────────────────────────────────────
+// Conexão / Instância
+// ──────────────────────────────────────────────
+
+/** Obtém o status da conexão da instância. */
+export async function getConnectionStatus() {
+  return evoFetch(`/instance/connectionState/${instance}`);
+}
+
+/** Obtém o QR code para conectar a instância. */
+export async function getQrCode() {
+  return evoFetch(`/instance/connect/${instance}`);
+}
+
+/** Reinicia a instância. */
+export async function restartInstance() {
+  return evoFetch(`/instance/restart/${instance}`, { method: 'PUT' });
+}
+
+// ──────────────────────────────────────────────
+// Envio de Mensagens
+// ──────────────────────────────────────────────
+
+/**
+ * Normaliza o número para o formato JID do WhatsApp.
+ * Ex.: "11999999999" → "5511999999999"
+ *      "5511999999999" → "5511999999999"
+ */
+export function normalizePhone(phone) {
+  let digits = String(phone).replace(/\D/g, '');
+  // Se já tem DDI (55) + DDD + número → 13 dígitos
+  if (digits.length === 13 && digits.startsWith('55')) return digits;
+  // Se tem DDD + número → 10-11 dígitos, adiciona DDI
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  // Retorna como está (pode ser número estrangeiro)
+  return digits;
+}
+
+/**
+ * Envia uma mensagem de texto.
+ * @param {string} phone - Número do destinatário
+ * @param {string} text - Texto da mensagem
+ * @returns {Promise<object>} Resposta da Evolution API
+ */
+export async function sendText(phone, text) {
+  const number = normalizePhone(phone);
+  logger.info(`[evolution] sendText → ${number} (${text.length} chars)`);
+
+  return evoFetch(`/message/sendText/${instance}`, {
+    method: 'POST',
+    body: JSON.stringify({ number, text }),
+  });
+}
+
+/**
+ * Envia mídia (imagem, documento, áudio, vídeo).
+ * @param {string} phone - Número do destinatário
+ * @param {string} mediaUrl - URL pública do arquivo
+ * @param {string} [caption] - Legenda (apenas para imagem/vídeo)
+ * @param {string} [mediatype] - Tipo: 'image', 'document', 'audio', 'video'
+ */
+export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'image') {
+  const number = normalizePhone(phone);
+  logger.info(`[evolution] sendMedia → ${number} (${mediatype})`);
+
+  return evoFetch(`/message/sendMedia/${instance}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      number,
+      mediatype,
+      media: mediaUrl,
+      caption,
+    }),
+  });
+}
+
+/**
+ * Envia mensagem com botões de resposta rápida.
+ * @param {string} phone - Número do destinatário
+ * @param {string} title - Título da mensagem
+ * @param {string} description - Corpo da mensagem
+ * @param {Array<{buttonText: string, buttonId: string}>} buttons - Botões (máx 3)
+ */
+export async function sendButtons(phone, title, description, buttons) {
+  const number = normalizePhone(phone);
+  logger.info(`[evolution] sendButtons → ${number} (${buttons.length} buttons)`);
+
+  return evoFetch(`/message/sendButtons/${instance}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      number,
+      title,
+      description,
+      buttons: buttons.slice(0, 3), // WhatsApp limita a 3
+    }),
+  });
+}
+
+/**
+ * Envia mensagem com lista de opções.
+ */
+export async function sendList(phone, title, description, buttonText, sections) {
+  const number = normalizePhone(phone);
+  logger.info(`[evolution] sendList → ${number}`);
+
+  return evoFetch(`/message/sendList/${instance}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      number,
+      title,
+      description,
+      buttonText,
+      sections,
+    }),
+  });
+}
+
+export const evolution = {
+  getConnectionStatus,
+  getQrCode,
+  restartInstance,
+  sendText,
+  sendMedia,
+  sendButtons,
+  sendList,
+  normalizePhone,
+};
