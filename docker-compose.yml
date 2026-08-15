@@ -1,11 +1,9 @@
-version: "3.8"
-
 services:
   # ─────────────────────────────────────
   # Evolution API (WhatsApp)
   # ─────────────────────────────────────
   evolution:
-    image: atendai/evolution-api:v2.2.3
+    image: evolutionapi/evolution-api:v2.2.3
     container_name: evolution-api
     restart: unless-stopped
     ports:
