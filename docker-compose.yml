@@ -3,7 +3,7 @@ services:
   # Evolution API (WhatsApp)
   # ─────────────────────────────────────
   evolution:
-    image: evolutionapi/evolution-api:v2.2.3
+    image: evoapicloud/evolution-api:latest
     container_name: evolution-api
     restart: unless-stopped
     ports:
