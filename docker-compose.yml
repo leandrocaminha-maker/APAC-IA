@@ -68,7 +68,7 @@ services:
     env_file:
       - .env
     environment:
-      - EVOLUTION_API_URL=http://evolution:8080
+      - EVOLUTION_API_URL=http://evolution-api:8080
       - NODE_ENV=production
     depends_on:
       - evolution
