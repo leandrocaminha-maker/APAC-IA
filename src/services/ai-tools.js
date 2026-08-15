@@ -122,16 +122,20 @@ const allToolDeclarations = [
   },
   {
     name: 'transferir_para_humano',
-    description: 'Transfere a conversa para um consultor humano. Use quando: reclamação, negociação especial, assunto financeiro complexo, ou quando o cliente pedir expressamente.',
+    description: 'Transfere a conversa para um consultor humano e pausa o bot. Use quando: assunto financeiro, problema no app FITI, afastamento/cancelamento, reclamação, pedido explícito de falar com uma pessoa, ou dado que não está na base de conhecimento.',
     input_schema: {
       type: 'object',
       properties: {
         motivo: {
           type: 'string',
-          description: 'Motivo da transferência',
+          description: 'Por que está transferindo. Vai para o consultor no painel — o cliente não lê isto.',
+        },
+        mensagem: {
+          type: 'string',
+          description: 'A última mensagem que o cliente lê antes de o bot pausar. Escreva no tom da conversa e adequada ao motivo: quem relata um pagamento não debitado não pode ler "vou confirmar essa informação". Curta, formatada para WhatsApp.',
         },
       },
-      required: ['motivo'],
+      required: ['motivo', 'mensagem'],
     },
   },
 ];
@@ -226,14 +230,17 @@ const handlers = {
 
   async transferir_para_humano(args) {
     // Retorna sinal para o agente pausar o bot.
-    // Enquanto a base de conhecimento não tiver preços e grade reais, este é o
-    // caminho de toda pergunta sobre valor/horário — a mensagem precisa soar
-    // natural e deixar claro que a pessoa não ficou sem resposta.
+    //
+    // A despedida é escrita pelo modelo, não fixa aqui: o handoff atende
+    // situações muito diferentes (preço ausente, pagamento, erro no app,
+    // reclamação) e uma frase única soa errada em quase todas elas.
+    // O texto abaixo é só rede de segurança se o modelo omitir a mensagem.
     return {
       success: true,
       action: 'handoff',
       motivo: args.motivo,
-      mensagem: 'Vou confirmar essa informação com um consultor para te passar o dado certinho 😊 Já te retorno por aqui!',
+      mensagem: args.mensagem
+        || 'Vou chamar um consultor para te ajudar com isso 😊 Já te retorno por aqui!',
     };
   },
 };
