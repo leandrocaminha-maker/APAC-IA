@@ -1,68 +1,70 @@
 /**
  * src/services/ai-tools.js
- * Definição das ferramentas (function calling) disponíveis para o agente Gemini.
+ * Definição das ferramentas (tool use) disponíveis para o agente Claude.
  *
  * Cada ferramenta tem:
- * - declaration: schema para o Gemini (nome, descrição, parâmetros)
+ * - declaration: schema JSON (nome, descrição, input_schema)
  * - handler: função que executa a ação real
+ *
+ * NOTA — consultas de informação ao EVO desativadas:
+ * As tools `buscar_planos`, `buscar_horarios` e `buscar_modalidades` foram
+ * removidas. Planos, valores, modalidades e grade horária agora vêm dos
+ * arquivos em src/prompts/knowledge/, que são carregados no contexto do
+ * prompt a cada resposta — mais preciso e com texto sob nosso controle.
+ *
+ * NOTA — tools de ação pausadas (ver PAUSED_TOOLS abaixo):
+ * As ações que escrevem no EVO e a emissão de voucher estão pausadas até
+ * serem estudadas com calma. O código foi mantido; só não é oferecido ao
+ * modelo. Neste momento o agente é conversacional + handoff.
  */
 import { evoClient } from './evo-client.js';
 import { logger } from '../lib/logger.js';
 
 // ──────────────────────────────────────────────
-// Declarações de tools para o Gemini
+// Tools pausadas
+//
+// Não são declaradas ao Claude nem executáveis. Para reativar uma delas,
+// basta remover o nome desta lista — declaração e handler continuam prontos.
+//
+// - emitir_voucher ......... gera código que não é persistido em lugar nenhum;
+//                            o cliente receberia um voucher irresgatável.
+// - cadastrar_prospect ..... usa POST /api/v1/members, que cria MEMBRO em vez
+//                            de prospect; o correto é POST /api/v1/prospects.
+// - agendar_aula_experimental  depende do endpoint acima e nunca foi validado
+//                            contra o EVO (é escrita em produção).
 // ──────────────────────────────────────────────
 
-export const toolDeclarations = [
-  {
-    name: 'buscar_planos',
-    description: 'Busca os planos e serviços disponíveis na academia com preços atualizados. Use sempre que o cliente perguntar sobre valores, planos ou mensalidades.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {},
-    },
-  },
-  {
-    name: 'buscar_horarios',
-    description: 'Busca a grade horária de aulas da academia. Use quando o cliente perguntar sobre horários disponíveis.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        modalidade: {
-          type: 'STRING',
-          description: 'Nome da modalidade para filtrar (ex: "natação infantil", "hidroginástica"). Opcional.',
-        },
-      },
-    },
-  },
-  {
-    name: 'buscar_modalidades',
-    description: 'Lista as modalidades/atividades oferecidas pela academia.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {},
-    },
-  },
+const PAUSED_TOOLS = new Set([
+  'emitir_voucher',
+  'cadastrar_prospect',
+  'agendar_aula_experimental',
+]);
+
+// ──────────────────────────────────────────────
+// Declarações de tools
+// ──────────────────────────────────────────────
+
+const allToolDeclarations = [
   {
     name: 'cadastrar_prospect',
     description: 'Cadastra um potencial cliente (prospect) no sistema da academia. Use quando o cliente demonstrar interesse e fornecer dados básicos.',
-    parameters: {
-      type: 'OBJECT',
+    input_schema: {
+      type: 'object',
       properties: {
         nome: {
-          type: 'STRING',
+          type: 'string',
           description: 'Nome completo do prospect',
         },
         telefone: {
-          type: 'STRING',
+          type: 'string',
           description: 'Telefone do prospect (já temos do WhatsApp)',
         },
         email: {
-          type: 'STRING',
+          type: 'string',
           description: 'E-mail do prospect (se fornecido)',
         },
         interesse: {
-          type: 'STRING',
+          type: 'string',
           description: 'Modalidade de interesse principal',
         },
       },
@@ -72,23 +74,23 @@ export const toolDeclarations = [
   {
     name: 'agendar_aula_experimental',
     description: 'Agenda uma aula experimental gratuita para o prospect. Use quando o cliente aceitar fazer uma aula experimental.',
-    parameters: {
-      type: 'OBJECT',
+    input_schema: {
+      type: 'object',
       properties: {
         nome: {
-          type: 'STRING',
+          type: 'string',
           description: 'Nome do prospect',
         },
         telefone: {
-          type: 'STRING',
+          type: 'string',
           description: 'Telefone do prospect',
         },
         modalidade: {
-          type: 'STRING',
+          type: 'string',
           description: 'Modalidade desejada',
         },
         data_preferencia: {
-          type: 'STRING',
+          type: 'string',
           description: 'Data de preferência no formato YYYY-MM-DD',
         },
       },
@@ -98,20 +100,20 @@ export const toolDeclarations = [
   {
     name: 'emitir_voucher',
     description: 'Gera um voucher de desconto ou cortesia para o prospect. Use com moderação e apenas quando for estrategicamente relevante para fechar uma venda.',
-    parameters: {
-      type: 'OBJECT',
+    input_schema: {
+      type: 'object',
       properties: {
         tipo: {
-          type: 'STRING',
+          type: 'string',
           description: 'Tipo do voucher: "desconto_percentual", "desconto_fixo", "aula_gratis"',
           enum: ['desconto_percentual', 'desconto_fixo', 'aula_gratis'],
         },
         valor: {
-          type: 'NUMBER',
+          type: 'number',
           description: 'Valor do desconto (percentual ou fixo em reais)',
         },
         validade_dias: {
-          type: 'NUMBER',
+          type: 'number',
           description: 'Dias de validade do voucher',
         },
       },
@@ -121,11 +123,11 @@ export const toolDeclarations = [
   {
     name: 'transferir_para_humano',
     description: 'Transfere a conversa para um consultor humano. Use quando: reclamação, negociação especial, assunto financeiro complexo, ou quando o cliente pedir expressamente.',
-    parameters: {
-      type: 'OBJECT',
+    input_schema: {
+      type: 'object',
       properties: {
         motivo: {
-          type: 'STRING',
+          type: 'string',
           description: 'Motivo da transferência',
         },
       },
@@ -134,87 +136,14 @@ export const toolDeclarations = [
   },
 ];
 
+/** Tools efetivamente oferecidas ao Claude (as pausadas ficam de fora). */
+export const toolDeclarations = allToolDeclarations.filter(t => !PAUSED_TOOLS.has(t.name));
+
 // ──────────────────────────────────────────────
 // Handlers das tools
 // ──────────────────────────────────────────────
 
 const handlers = {
-  async buscar_planos() {
-    try {
-      const services = await evoClient.getServices({ take: 100 });
-      // Filtra apenas serviços ativos e formata
-      const planos = (Array.isArray(services) ? services : [])
-        .filter(s => s.isActive !== false)
-        .map(s => ({
-          nome: s.name || s.description,
-          valor: s.price || s.value,
-          descricao: s.description,
-          periodicidade: s.periodicity,
-        }));
-
-      return {
-        success: true,
-        planos,
-        mensagem: planos.length > 0
-          ? `Encontrei ${planos.length} plano(s) disponível(is).`
-          : 'Nenhum plano encontrado no momento.',
-      };
-    } catch (err) {
-      logger.error('[ai-tools] buscar_planos:', err.message);
-      return { success: false, mensagem: 'Não consegui consultar os planos no momento. Sugira que o cliente entre em contato diretamente.' };
-    }
-  },
-
-  async buscar_horarios(args) {
-    try {
-      const params = {};
-      // Se especificou modalidade, tenta filtrar
-      const schedule = await evoClient.getSchedule(params);
-      const items = Array.isArray(schedule) ? schedule : [];
-
-      // Filtra por modalidade se fornecida
-      let filtered = items;
-      if (args?.modalidade) {
-        const term = args.modalidade.toLowerCase();
-        filtered = items.filter(s =>
-          (s.activityName || s.name || '').toLowerCase().includes(term)
-        );
-      }
-
-      return {
-        success: true,
-        horarios: filtered.slice(0, 20).map(s => ({
-          atividade: s.activityName || s.name,
-          dia: s.dayOfWeek || s.weekDay,
-          inicio: s.startTime || s.start,
-          fim: s.endTime || s.end,
-          professor: s.employeeName || s.teacher,
-        })),
-        total: filtered.length,
-      };
-    } catch (err) {
-      logger.error('[ai-tools] buscar_horarios:', err.message);
-      return { success: false, mensagem: 'Não consegui consultar os horários no momento.' };
-    }
-  },
-
-  async buscar_modalidades() {
-    try {
-      const activities = await evoClient.getActivities({ take: 100 });
-      const items = (Array.isArray(activities) ? activities : [])
-        .filter(a => a.isActive !== false)
-        .map(a => ({
-          nome: a.name || a.description,
-          descricao: a.description,
-        }));
-
-      return { success: true, modalidades: items };
-    } catch (err) {
-      logger.error('[ai-tools] buscar_modalidades:', err.message);
-      return { success: false, mensagem: 'Não consegui consultar as modalidades no momento.' };
-    }
-  },
-
   async cadastrar_prospect(args) {
     try {
       const nameParts = (args.nome || '').trim().split(/\s+/);
@@ -296,12 +225,15 @@ const handlers = {
   },
 
   async transferir_para_humano(args) {
-    // Retorna sinal para o agente pausar o bot
+    // Retorna sinal para o agente pausar o bot.
+    // Enquanto a base de conhecimento não tiver preços e grade reais, este é o
+    // caminho de toda pergunta sobre valor/horário — a mensagem precisa soar
+    // natural e deixar claro que a pessoa não ficou sem resposta.
     return {
       success: true,
       action: 'handoff',
       motivo: args.motivo,
-      mensagem: 'Transferindo para um consultor humano. Aguarde um momento.',
+      mensagem: 'Vou confirmar essa informação com um consultor para te passar o dado certinho 😊 Já te retorno por aqui!',
     };
   },
 };
@@ -309,10 +241,20 @@ const handlers = {
 /**
  * Executa uma tool pelo nome.
  * @param {string} name - Nome da ferramenta
- * @param {object} args - Argumentos passados pelo Gemini
+ * @param {object} args - Argumentos passados pelo modelo
  * @returns {Promise<object>} Resultado da execução
  */
 export async function executeTool(name, args) {
+  // Barreira extra: mesmo não sendo declarada, o modelo pode alucinar a
+  // chamada de uma tool pausada. Nunca executar nesse caso.
+  if (PAUSED_TOOLS.has(name)) {
+    logger.warn(`[ai-tools] Tool pausada foi chamada e bloqueada: ${name}`);
+    return {
+      success: false,
+      mensagem: 'Essa ação não está disponível. Ofereça encaminhar a pessoa a um consultor.',
+    };
+  }
+
   const handler = handlers[name];
   if (!handler) {
     logger.warn(`[ai-tools] Tool desconhecida: ${name}`);

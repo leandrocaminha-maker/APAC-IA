@@ -1,16 +1,16 @@
 /**
  * src/services/ai-agent.js
- * Agente de IA usando Google Gemini com function calling.
+ * Agente de IA usando Claude (Anthropic) com tool use.
  *
  * Fluxo:
  * 1. Carrega prompt do banco (wa_ai_prompts)
  * 2. Carrega knowledge files da pasta prompts/knowledge/
  * 3. Monta histórico da conversa
- * 4. Envia ao Gemini com tools
+ * 4. Envia ao Claude com as tools
  * 5. Processa tool calls em loop
  * 6. Retorna resposta final
  */
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import Anthropic from '@anthropic-ai/sdk';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +19,38 @@ import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { toolDeclarations, executeTool } from './ai-tools.js';
 
-const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
+const MODEL = 'claude-opus-5';
+
+// Curto de propósito: mensagem de WhatsApp é curta, e no Opus 5 o
+// max_tokens limita thinking + resposta somados.
+const MAX_TOKENS = 2048;
+
+// Teto de idas e voltas de tool num mesmo turno.
+const MAX_TOOL_ITERATIONS = 5;
+
+const FALLBACK_TEXT = 'Desculpe, não consegui processar sua solicitação no momento.';
+
+// O SDK já reenvia sozinho em 429 e 5xx — era exatamente o que faltava
+// quando um 503 transitório do provedor derrubava o atendimento.
+const client = new Anthropic({
+  apiKey: config.anthropic.apiKey,
+  maxRetries: 3,
+});
+
+/**
+ * Registra o aproveitamento do cache de prompt.
+ * Se cache_read ficar sempre em zero, algo está invalidando o prefixo
+ * (o mais provável: conteúdo variável entrando antes do breakpoint).
+ */
+function logCacheUsage(usage) {
+  if (!usage) return;
+  logger.debug(
+    `[ai-agent] tokens: entrada=${usage.input_tokens} ` +
+    `cache_escrita=${usage.cache_creation_input_tokens ?? 0} ` +
+    `cache_leitura=${usage.cache_read_input_tokens ?? 0} ` +
+    `saida=${usage.output_tokens}`
+  );
+}
 
 // Caminho para os knowledge files
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -63,6 +94,16 @@ async function loadPrompt(slug = 'vendas') {
 }
 
 /**
+ * Bloco usado quando a base de conhecimento não pôde ser carregada.
+ * Sem ele o modelo ficaria sem nenhuma instrução sobre preços/horários e
+ * tenderia a inventar valores.
+ */
+const NO_KNOWLEDGE_GUARD = '\n\n## BASE DE CONHECIMENTO\n' +
+  'A base de conhecimento não pôde ser carregada nesta conversa. Você NÃO tem ' +
+  'nenhum dado de planos, valores ou grade horária. É proibido inventar ou ' +
+  'estimar qualquer informação desse tipo — use transferir_para_humano.';
+
+/**
  * Carrega todos os knowledge files (.md) da pasta prompts/knowledge/.
  * Estes arquivos contêm informações estáticas editáveis sem deploy:
  * planos, valores, grade horária, FAQ, regras de negócio.
@@ -83,9 +124,9 @@ async function loadKnowledgeFiles() {
 
     if (mdFiles.length === 0) {
       logger.warn('[ai-agent] Nenhum knowledge file encontrado');
-      cachedKnowledge = '';
+      cachedKnowledge = NO_KNOWLEDGE_GUARD;
       knowledgeLoadedAt = now;
-      return '';
+      return cachedKnowledge;
     }
 
     const sections = [];
@@ -95,10 +136,14 @@ async function loadKnowledgeFiles() {
     }
 
     cachedKnowledge = '\n\n## BASE DE CONHECIMENTO (arquivos locais)\n' +
-      'Use as informações abaixo como referência principal para responder sobre ' +
-      'planos, valores, horários e informações da academia. ' +
-      'Se os dados abaixo estiverem marcados como "Exemplo" ou "XXX", ' +
-      'use as ferramentas (buscar_planos, buscar_horarios) para consultar dados em tempo real.\n' +
+      'As informações abaixo são a ÚNICA fonte de verdade sobre planos, valores, ' +
+      'modalidades, grade horária e regras da academia. Não existe consulta a ' +
+      'sistema externo para esses dados.\n' +
+      'REGRA CRÍTICA: se a informação que o cliente pediu não estiver abaixo, ou ' +
+      'estiver marcada como "Exemplo", "XXX" ou "descreva aqui", esse dado AINDA ' +
+      'NÃO ESTÁ DISPONÍVEL. Nesse caso é proibido inventar, estimar ou aproximar: ' +
+      'diga que vai confirmar a informação exata com um consultor e use a ' +
+      'ferramenta transferir_para_humano.\n' +
       sections.join('\n');
 
     knowledgeLoadedAt = now;
@@ -106,31 +151,53 @@ async function loadKnowledgeFiles() {
     return cachedKnowledge;
   } catch (err) {
     logger.error('[ai-agent] Erro ao carregar knowledge files:', err.message);
-    cachedKnowledge = '';
+    cachedKnowledge = NO_KNOWLEDGE_GUARD;
     knowledgeLoadedAt = now;
-    return '';
+    return cachedKnowledge;
   }
 }
 
 /**
  * Busca as últimas N mensagens de uma conversa para contexto.
+ *
+ * @param {number} conversationId
+ * @param {object} [opts]
+ * @param {number} [opts.limit] - Quantas mensagens trazer
+ * @param {number} [opts.excludeMessageId] - Mensagem a ignorar. A mensagem que
+ *   está sendo respondida agora já foi gravada pelo webhook antes de chegar
+ *   aqui; sem excluí-la ela entraria no histórico E seria enviada de novo
+ *   como mensagem atual, chegando duplicada ao modelo.
  */
-async function loadConversationHistory(conversationId, limit = 20) {
+async function loadConversationHistory(conversationId, { limit = 20, excludeMessageId = null } = {}) {
   if (!conversationId) return [];
 
-  const { data, error } = await supabase
+  // Ordena DESC para pegar as mensagens mais RECENTES (com ASC pegaríamos as
+  // primeiras da conversa, e a memória do bot congelaria no início dela).
+  let query = supabase
     .from('wa_messages')
-    .select('direction, content, content_type, created_at')
+    .select('id, direction, content, created_at')
     .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(limit);
 
+  if (excludeMessageId) query = query.neq('id', excludeMessageId);
+
+  const { data, error } = await query;
   if (error || !data) return [];
 
-  return data.map(msg => ({
-    role: msg.direction === 'inbound' ? 'user' : 'model',
-    parts: [{ text: msg.content }],
-  }));
+  const history = data
+    .reverse() // volta à ordem cronológica
+    .filter(msg => msg.content)
+    .map(msg => ({
+      role: msg.direction === 'inbound' ? 'user' : 'assistant',
+      content: msg.content,
+    }));
+
+  // A janela das últimas N pode começar no meio da conversa, numa fala do bot.
+  // A API exige que a conversa comece com role 'user'.
+  while (history.length > 0 && history[0].role !== 'user') history.shift();
+
+  return history;
 }
 
 /**
@@ -144,6 +211,8 @@ async function loadConversationHistory(conversationId, limit = 20) {
  * @param {object} params
  * @param {string} params.message - Texto da mensagem recebida
  * @param {number} [params.conversationId] - ID da conversa (para contexto)
+ * @param {number} [params.excludeMessageId] - ID da mensagem atual já gravada,
+ *   para não duplicá-la no histórico
  * @param {object} [params.contactInfo] - Dados do contato (nome, tags, etc.)
  * @param {string} [params.promptSlug] - Slug do prompt a usar
  *
@@ -152,6 +221,7 @@ async function loadConversationHistory(conversationId, limit = 20) {
 export async function processMessage({
   message,
   conversationId,
+  excludeMessageId = null,
   contactInfo = {},
   promptSlug = 'vendas',
 }) {
@@ -166,75 +236,104 @@ export async function processMessage({
     ? `\n\n## CONTATO ATUAL\n- Nome: ${contactInfo.name}\n- Telefone: ${contactInfo.phone || 'N/A'}\n- É prospect: ${contactInfo.is_prospect ? 'Sim' : 'Não (já é aluno)'}\n- Tags: ${(contactInfo.tags || []).join(', ') || 'nenhuma'}`
     : '';
 
-  const fullSystemPrompt = systemPrompt + knowledge + contactContext;
+  // O system vai em DOIS blocos por causa do prompt caching.
+  //
+  // As camadas 1 e 2 são byte-a-byte idênticas em toda mensagem de todo
+  // cliente — elas levam o breakpoint de cache e passam a custar ~10% na
+  // leitura. O contexto do contato muda a cada conversa, então fica DEPOIS
+  // do breakpoint: se viesse antes, invalidaria o cache a cada contato
+  // diferente e nunca haveria acerto.
+  const system = [
+    {
+      type: 'text',
+      text: systemPrompt + knowledge,
+      cache_control: { type: 'ephemeral' },
+    },
+  ];
+  if (contactContext) {
+    system.push({ type: 'text', text: contactContext });
+  }
 
-  // Carrega histórico
-  const history = await loadConversationHistory(conversationId);
-
-  // Configura o modelo
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-3.5-flash',
-    systemInstruction: fullSystemPrompt,
-    tools: [{
-      functionDeclarations: toolDeclarations,
-    }],
-  });
-
-  // Cria chat com histórico
-  const chat = model.startChat({ history });
-
-  // Envia a mensagem do usuário
-  let response = await chat.sendMessage(message);
-  let result = response.response;
+  // Carrega histórico e acrescenta a mensagem atual
+  const history = await loadConversationHistory(conversationId, { excludeMessageId });
+  const messages = [...history, { role: 'user', content: message }];
   const toolResults = [];
 
-  // Loop de function calling (máx 5 iterações para segurança)
-  let iterations = 0;
-  while (iterations < 5) {
-    const candidate = result.candidates?.[0];
-    const parts = candidate?.content?.parts || [];
+  for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+    const response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      // Thinking fica LIGADO (padrão do Opus 5). Desligar reduziria latência,
+      // mas nesse modo o modelo ocasionalmente escreve a chamada de tool como
+      // texto comum: o turno termina sem erro e a tool nunca executa — aqui
+      // isso seria um handoff pedido pelo cliente que ninguém recebe.
+      // Latência e custo são controlados pelo effort, não desligando thinking.
+      output_config: { effort: 'low' },
+      // Se os classificadores recusarem, a API repete o pedido em outro
+      // modelo em vez de devolver a recusa.
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      system,
+      tools: toolDeclarations,
+      messages,
+    });
 
-    // Verifica se há function calls
-    const functionCalls = parts.filter(p => p.functionCall);
-    if (functionCalls.length === 0) break;
+    // Precisa vir antes de ler content: numa recusa o array vem vazio.
+    if (response.stop_reason === 'refusal') {
+      logger.warn(`[ai-agent] Recusa (${response.stop_details?.category || 'sem categoria'})`);
+      return {
+        text: 'Essa eu prefiro que um consultor te responda 😊 Já estou chamando alguém.',
+        action: 'handoff',
+        handoffReason: 'Recusa do modelo',
+        toolResults,
+      };
+    }
 
-    // Executa cada function call
-    const functionResponses = [];
-    for (const part of functionCalls) {
-      const { name, args } = part.functionCall;
-      logger.info(`[ai-agent] Function call: ${name}`);
+    const toolUses = response.content.filter(block => block.type === 'tool_use');
 
-      const toolResult = await executeTool(name, args || {});
-      toolResults.push({ tool: name, args, result: toolResult });
+    // Sem tool call = resposta final
+    if (toolUses.length === 0) {
+      const text = response.content
+        .filter(block => block.type === 'text')
+        .map(block => block.text)
+        .join('\n')
+        .trim();
 
-      functionResponses.push({
-        functionResponse: {
-          name,
-          response: toolResult,
-        },
-      });
+      logCacheUsage(response.usage);
+      return { text: text || FALLBACK_TEXT, toolResults };
+    }
 
-      // Se a tool sinalizou handoff, interrompe
-      if (toolResult.action === 'handoff') {
+    messages.push({ role: 'assistant', content: response.content });
+
+    const results = [];
+    for (const toolUse of toolUses) {
+      logger.info(`[ai-agent] Tool call: ${toolUse.name}`);
+
+      const result = await executeTool(toolUse.name, toolUse.input || {});
+      toolResults.push({ tool: toolUse.name, args: toolUse.input, result });
+
+      // Handoff encerra o turno: o bot para e um humano assume.
+      if (result.action === 'handoff') {
         return {
-          text: toolResult.mensagem,
+          text: result.mensagem,
           action: 'handoff',
-          handoffReason: toolResult.motivo,
+          handoffReason: result.motivo,
           toolResults,
         };
       }
+
+      results.push({
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: JSON.stringify(result),
+      });
     }
 
-    // Envia resultados das tools de volta ao Gemini
-    response = await chat.sendMessage(functionResponses);
-    result = response.response;
-    iterations++;
+    messages.push({ role: 'user', content: results });
   }
 
-  // Extrai o texto final da resposta
-  const text = result.text() || 'Desculpe, não consegui processar sua solicitação no momento.';
-
-  return { text, toolResults };
+  logger.warn(`[ai-agent] Limite de ${MAX_TOOL_ITERATIONS} iterações atingido`);
+  return { text: FALLBACK_TEXT, toolResults };
 }
 
 /**

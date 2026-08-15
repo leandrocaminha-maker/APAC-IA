@@ -10,12 +10,28 @@ services:
       - "8080:8080"
     environment:
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      # URL pública da própria Evolution — ela usa isto para montar os links
+      # de QR code e de mídia. Sem isso, esses links saem quebrados.
+      - SERVER_URL=${EVOLUTION_SERVER_URL:-http://localhost:8080}
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://postgres:postgres@postgres:5432/evolution
       - CACHE_REDIS_ENABLED=true
       - CACHE_REDIS_URI=redis://redis:6379
       - CACHE_LOCAL_ENABLED=false
       - LOG_LEVEL=WARN
+      # ── Webhook: é isto que faz a mensagem recebida chegar no backend ──
+      # Global = vale para qualquer instância, inclusive as recriadas depois.
+      # O host é o container_name do backend, resolvido dentro de apac-network.
+      # O secret vai na query string porque o webhook global não suporta
+      # headers customizados (o backend aceita ?secret= além do header).
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_URL=http://apac-ia-sales:3100/webhook/evolution?secret=${WEBHOOK_SECRET}
+      # PRECISA ser false: com true a Evolution acrescenta o nome do evento ao
+      # final da URL (/webhook/evolution/messages-upsert) e cairia em 404.
+      - WEBHOOK_GLOBAL_BY_EVENTS=false
+      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+      - WEBHOOK_EVENTS_MESSAGES_UPDATE=true
+      - WEBHOOK_EVENTS_CONNECTION_UPDATE=true
     volumes:
       - evolution_instances:/evolution/instances
     depends_on:
@@ -37,8 +53,10 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
+    # Sem `ports:` de propósito — este banco só é consumido pela Evolution
+    # dentro de apac-network. Publicá-lo no host expõe credenciais
+    # postgres/postgres na internet. Para depurar pontualmente:
+    #   docker compose exec postgres psql -U postgres -d evolution
     networks:
       - apac-network
 
@@ -49,8 +67,9 @@ services:
     image: redis:7-alpine
     container_name: evolution-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # Sem `ports:` de propósito — Redis sem senha publicado no host é
+    # acesso irrestrito ao cache de sessões. Uso interno via apac-network.
+    #   docker compose exec redis redis-cli
     volumes:
       - redis_data:/data
     networks:

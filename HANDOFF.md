@@ -1,0 +1,196 @@
+# Estado do projeto — handoff
+
+> Snapshot de 15/08/2026. Documento de continuidade: descreve onde o projeto
+> parou e o que a próxima sessão deve fazer.
+> Para o plano original, ver [implementation_plan.md](implementation_plan.md).
+
+## Onde estamos
+
+Fases 1 e 2 do plano estão implementadas, revisadas e **validadas ponta a ponta
+contra o banco real**: contato → conversa → mensagem → histórico → resposta da
+IA → handoff → fila, tudo passando.
+
+O agente é hoje **conversacional + handoff**: não escreve em sistema nenhum, não
+consulta o EVO e não promete voucher. É a superfície certa para escrever e testar
+o prompt sem risco de efeito colateral em produção.
+
+**O que falta para o uso real é conteúdo, não código**: os knowledge files ainda
+estão em placeholder, e enquanto estiverem toda pergunta sobre valor ou horário
+vira handoff.
+
+## Configuração
+
+| Item | Valor |
+|---|---|
+| Projeto Supabase | ref `aheoopiymromrnanhvoe` — Data API **ligada**, auto-expose de tabelas **desligada**, auto-RLS **ligada** |
+| Projeto do AQUAP | `jlgailnbzybbhotmcuwc` — **não usado aqui**; a migration nunca rodou lá |
+| Modelo | `claude-opus-5` via `@anthropic-ai/sdk` |
+
+Banco separado do AQUAP por decisão desta sessão. Não há acoplamento: nenhuma
+tabela `wa_*` referencia tabela do AQUAP — o vínculo com aluno é
+`wa_contacts.evo_member_id`, que aponta para a API do EVO. Efeito colateral bom:
+o anon key público do AQUAP não alcança os dados de WhatsApp.
+
+⚠️ Com o *auto-expose de tabelas desligado*, **toda tabela nova precisa de GRANT
+explícito** para aparecer na API — sem ele o sintoma é `PGRST205` ("not found in
+schema cache"), que parece migration não aplicada. O padrão a copiar está no
+bloco 8b da migration.
+
+### Pendências de ambiente
+
+No `.env` da VPS (`/var/www/apac-ia-sales/.env`), criado pelo `setup-vps.sh` a
+partir do `.env.example`:
+
+- `ANTHROPIC_API_KEY` — configurada só localmente até agora
+- `ADMIN_API_KEY` — gerada só localmente até agora
+- `EVOLUTION_SERVER_URL` — ainda em `localhost:8080`; precisa do domínio/IP público
+- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` — do projeto `aheoopiymromrnanhvoe`
+
+## O que foi feito nesta sessão
+
+### Segurança
+
+| Correção | Verificação |
+|---|---|
+| `/admin/*` estava **totalmente aberto** (QR code do WhatsApp e histórico de clientes). Agora exige `ADMIN_API_KEY`, com fail-closed (503 se a variável não existir) | `401` sem chave, `403` com chave errada, `200` com a correta |
+| Webhook secret era contornável **omitindo o header** (`if (headerSecret && ...)`) | `401` sem secret, `200` com o correto |
+| Sem RLS nas tabelas | RLS nas 6, sem policies; GRANT só para `service_role` |
+| Postgres e Redis publicados no host com senha `postgres/postgres` | `ports:` removidos; acesso via `docker compose exec` |
+
+### Correção
+
+- **`supabase is not defined`** em `webhook.js` — import faltante derrubava toda
+  atualização de status de mensagem com `ReferenceError`.
+- **Histórico da conversa vinha invertido** — `ascending: true` + `limit(20)`
+  trazia as *primeiras* 20 mensagens, congelando a memória do bot no início da
+  conversa. Validado: o bot agora entende "e para crianças?" logo após uma
+  resposta sobre adultos.
+- **Mensagem atual chegava duplicada** — gravada pelo webhook e depois reenviada.
+  Corrigido com `excludeMessageId`.
+- **Migration não era idempotente** — `CREATE TYPE` e `CREATE TRIGGER` sem
+  proteção abortavam a re-execução.
+- **Guard de boot** conferindo se a chave e a URL do Supabase são do mesmo
+  projeto, e se a chave é `service_role`. Nasceu de um diagnóstico caro: chave
+  válida de outro projeto produz `PGRST205`, que parece migration não aplicada.
+- **Sem default de `SUPABASE_URL`** — um default já apontou para um projeto
+  depois deletado. Agora a falta da variável é reportada no boot.
+
+### Troca de provedor de IA: Gemini → Claude
+
+O SDK `@google/generative-ai` estava fora de suporte desde 31/08/2025. Migrado
+para `@anthropic-ai/sdk` com `claude-opus-5`.
+
+O que mudou: SDK, model ID, formato do schema das tools (`parameters` →
+`input_schema`, tipos minúsculos), papéis do histórico (`model` → `assistant`) e
+a variável de ambiente. Handlers, guard contra inventar preço e lógica de handoff
+ficaram intactos.
+
+Três decisões que valem conhecer antes de mexer:
+
+- **Prompt caching** — o system vai em dois blocos: prompt + knowledge (idênticos
+  em toda mensagem) levam o breakpoint de cache; o contexto do contato fica
+  **depois** dele. Se o contexto viesse antes, cada contato diferente
+  invalidaria o cache. Medido: segunda chamada lê 100% do prefixo do cache.
+  Há um log de `cache_leitura` — se ficar sempre em zero, algo variável entrou
+  no prefixo.
+- **Thinking fica ligado**, com `effort: 'low'`. Desligar reduziria latência,
+  mas nesse modo o Opus 5 ocasionalmente escreve a chamada de tool como texto
+  comum: o turno termina sem erro e a tool nunca executa — aqui seria um handoff
+  pedido pelo cliente que ninguém recebe.
+- **Loop manual** em vez do tool runner do SDK, porque o handoff precisa
+  interromper o turno e retornar na hora para o webhook pausar o bot.
+
+De brinde: `maxRetries: 3`. O SDK reenvia sozinho em 429 e 5xx — antes não havia
+retry nenhum, e um 503 transitório derrubava o atendimento.
+
+### Escopo do agente
+
+Consultas de informação ao EVO **desativadas** por decisão sua — planos, valores,
+modalidades e grade saem dos arquivos em `src/prompts/knowledge/`. As tools
+`buscar_planos`, `buscar_horarios` e `buscar_modalidades` foram removidas.
+
+Isso exigiu alinhar o que apontava para elas: o prompt semeado (regras 4 a 7), o
+preâmbulo dos knowledge files em `ai-agent.js` (que agora declara os arquivos
+como fonte única de verdade e proíbe inventar valor) e um `NO_KNOWLEDGE_GUARD`
+para quando os arquivos não carregarem.
+
+Verificado com os arquivos ainda em placeholder: perguntado o preço da natação
+adulto, o bot **não inventou** — transferiu para humano.
+
+## Tools pausadas
+
+Em `src/services/ai-tools.js`. Declaração e handler continuam no arquivo; para
+reativar, remova o nome de `PAUSED_TOOLS`.
+
+| Tool | Por que está pausada |
+|---|---|
+| `emitir_voucher` | gera código que **não é persistido** — o cliente receberia voucher irresgatável. Precisa de tabela de vouchers antes. |
+| `cadastrar_prospect` | usa `POST /api/v1/members`, que cria **membro**, não prospect. O correto é `POST /api/v1/prospects` (confirmado existente). |
+| `agendar_aula_experimental` | depende do endpoint acima e nunca foi validado contra o EVO — é escrita em produção. |
+
+Bloqueio duplo: além de não serem declaradas, `executeTool` recusa executá-las
+caso o modelo alucine a chamada. **Tool ativa: apenas `transferir_para_humano`.**
+
+## Próxima sessão
+
+### Tarefa combinada
+
+Fazer o agente ler o prompt de **arquivo local** quando o banco estiver
+indisponível, para escrever e testar o prompt offline e subir para
+`wa_ai_prompts` depois. Os knowledge files já funcionam assim.
+
+Hoje `loadPrompt()` em `ai-agent.js` cai num fallback genérico de uma linha
+quando a leitura falha — é esse caminho que vira leitura de arquivo.
+
+### O que destrava o uso real
+
+`src/prompts/knowledge/` está **100% placeholder** (`R$ XXX,XX`, `_Exemplo_`,
+`descreva aqui`). Enquanto estiver assim, toda pergunta sobre valor ou horário
+vira handoff — o bot não vende sozinho.
+
+### Ainda não exercitado
+
+O webhook da Evolution está configurado no `docker-compose.yml` (global, com
+`BY_EVENTS=false` e o secret na query string), mas **nunca foi testado com uma
+instância real** — não houve Evolution rodando nesta sessão. O fluxo inbound
+WhatsApp → Evolution → backend continua não verificado ponta a ponta.
+
+## Backlog conhecido (não tratado)
+
+- **Handoff não notifica ninguém** — só grava linha em `wa_human_handoffs` e para
+  de responder. Se ninguém abrir `/admin/handoffs`, o cliente fica no vácuo.
+  É a lacuna mais relevante para uso real.
+- **Fila pode travar em `processing`** — se o processo cair após marcar o status,
+  a linha nunca volta para `pending` e a query só busca `pending`.
+- **Zero testes commitados** — `npm test` aponta para `src/**/*.test.js`, que não
+  existe. As validações desta sessão foram scripts descartáveis.
+- **Evolution na 8080 poderia ser fechada** — o backend fala com ela por dentro
+  da `apac-network` e o QR sai por `/admin/whatsapp/qrcode`.
+- **`ai_enabled` é gravado mas nunca lido** — só `status === 'human'` é checado.
+- **Telefone não é normalizado** antes das buscas no EVO.
+- **CORS só lista `localhost`** em `server.js`; faltam os domínios de produção.
+
+### Fora deste repositório
+
+O arquivo `test-evo-experimental.js` do **AQUAP** tem o token do EVO em texto
+puro e commitado. Vale rotacionar.
+
+## Referência: endpoints do EVO
+
+Levantado por teste direto (`GET` apenas — nada foi escrito em produção). Útil se
+as tools de ação forem retomadas.
+
+| Endpoint | Status | Observação |
+|---|---|---|
+| `/api/v1/services` | **404** | é o que o código usava — não existe |
+| `/api/v1/service` | `200` | serviços avulsos (ex. MATRÍCULA) — `nameService`, `value` |
+| `/api/v1/membership` | `200` | **planos/mensalidades** — `nameMembership`, `value`, `duration` |
+| `/api/v1/activities` | `200` | modalidades — `name`, `description` |
+| `/api/v1/activities/schedule` | `200` | grade — `name`, `activityDate`, `startTime`, `instructor` |
+| `/api/v1/prospects` | `200` | `idProspect`, `cellphone` |
+| `/api/v1/members` | `200` | filtro `?phone=` funciona |
+
+⚠️ O campo de ativido é **`inactive`**, não `isActive`. O código antigo filtrava
+por `s.isActive !== false`, que com o campo ausente resultava em `true` — ou
+seja, **planos inativos seriam oferecidos ao cliente**. Tratar isso se retomar
+as consultas.

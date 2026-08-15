@@ -2,10 +2,11 @@
  * src/routes/admin.js
  * Rotas administrativas para gerenciar prompts, conversas e métricas.
  *
- * Protegido pelo mesmo mecanismo de API key.
- * Em produção, adicionar autenticação mais robusta (JWT/Supabase Auth).
+ * Protegido por ADMIN_API_KEY (header X-Api-Key).
+ * Em produção, considerar autenticação mais robusta (JWT/Supabase Auth).
  */
 import { Router } from 'express';
+import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { supabase } from '../lib/supabase.js';
 import { aiAgent } from '../services/ai-agent.js';
@@ -13,6 +14,36 @@ import { getConnectionStatus, getQrCode } from '../services/evolution.js';
 import { reactivateBot } from '../services/contacts.js';
 
 const router = Router();
+
+// ──────────────────────────────────────────────
+// Middleware: autenticação de admin
+//
+// Estas rotas expõem histórico de conversas, telefones de clientes
+// e o QR code de pareamento do WhatsApp — quem obtém o QR consegue
+// parear o número da academia. Por isso o comportamento é
+// "fail-closed": sem ADMIN_API_KEY configurada, tudo é bloqueado.
+// ──────────────────────────────────────────────
+
+function authenticateAdmin(req, res, next) {
+  if (!config.adminApiKey) {
+    logger.error('[admin] ADMIN_API_KEY não configurada — rotas /admin bloqueadas');
+    return res.status(503).json({ error: 'Admin não configurado (defina ADMIN_API_KEY)' });
+  }
+
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) {
+    return res.status(401).json({ error: 'Header X-Api-Key obrigatório' });
+  }
+
+  if (apiKey !== config.adminApiKey) {
+    logger.warn(`[admin] Tentativa de acesso com chave inválida (${req.method} ${req.path})`);
+    return res.status(403).json({ error: 'API key inválida' });
+  }
+
+  next();
+}
+
+router.use(authenticateAdmin);
 
 // ──────────────────────────────────────────────
 // Prompts

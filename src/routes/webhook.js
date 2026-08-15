@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
+import { supabase } from '../lib/supabase.js';
 import { getOrCreateContact, getOrCreateConversation, saveMessage, handoffToHuman } from '../services/contacts.js';
 import { aiAgent } from '../services/ai-agent.js';
 import { sendText } from '../services/evolution.js';
@@ -19,10 +20,13 @@ router.post('/evolution', async (req, res) => {
   try {
     const event = req.body;
 
-    // Verifica webhook secret (opcional)
+    // Verifica webhook secret.
+    // Se WEBHOOK_SECRET está configurado, a requisição é obrigada a
+    // apresentá-lo — omitir o header não pode passar direto.
     if (config.webhookSecret) {
       const headerSecret = req.headers['x-webhook-secret'] || req.query.secret;
-      if (headerSecret && headerSecret !== config.webhookSecret) {
+      if (headerSecret !== config.webhookSecret) {
+        logger.warn('[webhook] Requisição rejeitada: secret ausente ou inválido');
         return res.status(401).json({ error: 'Webhook secret inválido' });
       }
     }
@@ -138,7 +142,7 @@ async function handleIncomingMessage(event) {
   const conversation = await getOrCreateConversation(contact.id);
 
   // Salva mensagem recebida
-  await saveMessage({
+  const savedMessage = await saveMessage({
     conversationId: conversation.id,
     contactId: contact.id,
     direction: 'inbound',
@@ -176,6 +180,7 @@ async function handleIncomingMessage(event) {
     const aiResponse = await aiAgent.processMessage({
       message: content,
       conversationId: conversation.id,
+      excludeMessageId: savedMessage?.id,
       contactInfo: {
         name: contact.name,
         phone: contact.phone,
