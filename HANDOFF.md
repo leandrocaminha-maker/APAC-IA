@@ -1,6 +1,6 @@
 # Estado do projeto — handoff
 
-> Snapshot de 15/08/2026. Documento de continuidade: descreve onde o projeto
+> Snapshot de 19/08/2026. Documento de continuidade: descreve onde o projeto
 > parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 
@@ -14,9 +14,19 @@ O agente é hoje **conversacional + handoff**: não escreve em sistema nenhum, n
 consulta o EVO e não promete voucher. É a superfície certa para escrever e testar
 o prompt sem risco de efeito colateral em produção.
 
-**O que falta para o uso real é conteúdo, não código**: os knowledge files ainda
-estão em placeholder, e enquanto estiverem toda pergunta sobre valor ou horário
-vira handoff.
+**Fase atual (19/08/2026): rodada de testes.** A base de conhecimento está
+preenchida, o prompt publicado e a página `/teste` no ar na VPS. O foco agora é
+o time testar situações variadas pela página; com dados suficientes vem a
+revisão das conversas e o ajuste fino antes de colocar em operação.
+
+Para puxar o material da revisão (na máquina com o `.env`, não na VPS):
+
+```bash
+node scripts/exportar-conversas.js --canal=web-test
+```
+
+O `npm run` está barrado no Windows do Leandro pela política de execução do
+PowerShell (`npm` é um `.ps1`) — por isso a chamada direta ao `node`.
 
 ## Configuração
 
@@ -277,10 +287,28 @@ O webhook da Evolution está configurado no `docker-compose.yml` (global, com
 instância real**. O fluxo inbound WhatsApp → Evolution → backend continua não
 verificado ponta a ponta.
 
-⚠️ Em 19/08/2026 o container `evolution-api` estava em **loop de restart**
-(`Restarting (1)`) na VPS. Não afeta a página de teste, que não passa pelo
-WhatsApp, mas é o primeiro obstáculo de quem for atacar o canal real:
-`docker compose logs --tail 50 evolution` mostra o motivo.
+**Loop de restart da Evolution — resolvido em 19/08/2026.** O container ficou
+12h reiniciando, e a causa não era a falta de número pareado (a Evolution sobe
+com zero instâncias): o Prisma falhava na migração com `P1000`, e por trás dele
+o Postgres respondia `role "postgres" is not permitted to log in`. O papel
+estava com `NOLOGIN` — não era senha errada. Como o superusuário é o próprio
+`postgres`, não havia caminho normal de volta.
+
+Resolvido recriando o volume `apac-ia-sales_postgres_data`, sem perda: eram
+65 MB de cluster vazio e o volume `evolution_instances` estava sem nenhuma
+instância. A Evolution subiu, roda as migrações e responde 200 em `:8080`.
+
+**Onde parou:** `GET /admin/whatsapp/status` devolve
+`The "apacademia" instance does not exist` — que é o erro certo para este ponto,
+e prova que backend → Evolution conversa. Falta parear, e aí valem dois
+detalhes:
+
+- `EVOLUTION_SERVER_URL` **não está definida** no `.env` da VPS, então vale o
+  `localhost:8080` do compose. A Evolution usa essa variável para montar os
+  links de QR code e mídia — com `localhost`, o QR não abre de fora. Precisa
+  virar `http://108.174.151.51:8080`, e a porta 8080 precisa estar liberada.
+- A instância criada tem que se chamar **`apacademia`**, que é o valor de
+  `EVOLUTION_INSTANCE` procurado pelo backend.
 
 ## Backlog conhecido (não tratado)
 
