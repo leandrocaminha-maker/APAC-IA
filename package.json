@@ -9,6 +9,7 @@
     "start": "node src/server.js",
     "grade": "node scripts/gerar-grade-horaria.js",
     "conversas": "node scripts/exportar-conversas.js",
+    "prompt": "node scripts/publicar-prompt.js",
     "test": "node --test src/**/*.test.js"
   },
   "dependencies": {

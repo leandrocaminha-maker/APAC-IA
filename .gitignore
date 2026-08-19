@@ -6,5 +6,7 @@ dist/
 desktop.ini
 # Transcrições exportadas: conversa de cliente não entra no repositório
 data/conversas/
+# Backups do prompt gerados por npm run prompt
+data/backups/
 # Config local do Claude Code (caminhos da máquina, não do projeto)
 .claude/

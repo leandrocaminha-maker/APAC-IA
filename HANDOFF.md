@@ -46,6 +46,27 @@ partir do `.env.example`:
 - `EVOLUTION_SERVER_URL` — ainda em `localhost:8080`; precisa do domínio/IP público
 - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` — do projeto `aheoopiymromrnanhvoe`
 
+## Prompt: arquivo × banco
+
+`src/prompts/vendas.md` é a fonte de verdade **para humanos**, mas o agente lê
+o prompt de `wa_ai_prompts` — só os knowledge files vêm do disco. Editar o
+arquivo não muda nada no atendimento até rodar:
+
+```bash
+npm run prompt            # publica vendas.md no banco (com backup do anterior)
+npm run prompt -- --dry   # só compara os dois, sem gravar
+```
+
+Isso já mordeu uma vez: entre 15/08 e 19/08/2026 o arquivo dobrou de tamanho
+(matriz de objeções, garantia de 21 dias, formas de pagamento, ponteiros para
+`operacional-adulto.md` e `contrato-resumo.md`) enquanto o banco seguia na
+versão de 15/08 — o agente atendia com um prompt que ninguém estava mais
+editando. Sincronizado em 19/08/2026; a versão anterior ficou em
+`data/backups/`.
+
+O agente recarrega o prompt em até 5 minutos, ou na hora com
+`POST /admin/reload-cache`.
+
 ## Página de teste — `/teste`
 
 Sandbox web para o time conversar com a Leia sem WhatsApp. Serve para colocar
