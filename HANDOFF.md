@@ -41,10 +41,20 @@ bloco 8b da migration.
 No `.env` da VPS (`/var/www/apac-ia-sales/.env`), criado pelo `setup-vps.sh` a
 partir do `.env.example`:
 
-- `ANTHROPIC_API_KEY` — configurada só localmente até agora
-- `ADMIN_API_KEY` — gerada só localmente até agora
-- `EVOLUTION_SERVER_URL` — ainda em `localhost:8080`; precisa do domínio/IP público
-- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` — do projeto `aheoopiymromrnanhvoe`
+- ✅ `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — configuradas
+  e verificadas em 19/08/2026: o agente respondeu pela VPS na página de teste
+- ⚠️ `EVOLUTION_SERVER_URL` — ainda em `localhost:8080`; precisa do IP público
+- ⚠️ `ADMIN_API_KEY` — confira se está preenchida; sem ela `/admin` responde 503
+
+**Armadilha do `env_file`:** uma linha que não seja comentário, vazia ou
+`VAR=valor` invalida o arquivo inteiro, e o `docker compose up` aborta **sem
+recriar o container** — o sintoma é o serviço antigo continuar no ar como se o
+deploy não tivesse acontecido. Aconteceu em 19/08/2026 com uma linha de
+separação sem `#`. Para conferir antes de subir (silêncio = válido):
+
+```bash
+grep -vnE '^\s*(#|$)|^[A-Za-z_][A-Za-z0-9_]*=' .env
+```
 
 ## Prompt: arquivo × banco
 
@@ -233,16 +243,26 @@ quando a leitura falha — é esse caminho que vira leitura de arquivo.
 
 ### O que destrava o uso real
 
-`src/prompts/knowledge/` está **100% placeholder** (`R$ XXX,XX`, `_Exemplo_`,
-`descreva aqui`). Enquanto estiver assim, toda pergunta sobre valor ou horário
-vira handoff — o bot não vende sozinho.
+~~`src/prompts/knowledge/` está 100% placeholder~~ — **resolvido**. A base tem
+planos, valores, grade real, metodologia infantil, anamnese e o resumo do
+contrato. O que sobrou de `PENDENTE` está listado em `INFORMACOES-PENDENTES.md`.
+
+O que trava agora é outra coisa: **handoff não notifica ninguém**. Os testes de
+19/08/2026 terminaram 3 em 3 conversas em handoff (agendamento pelo FITI,
+negociação de taxa de adesão e marcação de aula experimental) — todos
+comportamentos corretos do bot, e todos parando numa fila que ninguém olha.
 
 ### Ainda não exercitado
 
 O webhook da Evolution está configurado no `docker-compose.yml` (global, com
 `BY_EVENTS=false` e o secret na query string), mas **nunca foi testado com uma
-instância real** — não houve Evolution rodando nesta sessão. O fluxo inbound
-WhatsApp → Evolution → backend continua não verificado ponta a ponta.
+instância real**. O fluxo inbound WhatsApp → Evolution → backend continua não
+verificado ponta a ponta.
+
+⚠️ Em 19/08/2026 o container `evolution-api` estava em **loop de restart**
+(`Restarting (1)`) na VPS. Não afeta a página de teste, que não passa pelo
+WhatsApp, mas é o primeiro obstáculo de quem for atacar o canal real:
+`docker compose logs --tail 50 evolution` mostra o motivo.
 
 ## Backlog conhecido (não tratado)
 

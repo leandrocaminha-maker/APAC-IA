@@ -24,7 +24,15 @@ dos dois vira mentira — por isso o prompt referencia a base em vez de repeti-l
 ## Como editar
 
 1. Abra o arquivo da tabela acima e substitua o dado.
-2. Salve — o agente recarrega em até 5 minutos.
+2. Salve. **Localmente** o agente recarrega em até 5 minutos.
+3. **Para valer na VPS, precisa de deploy**: estes arquivos são copiados para
+   dentro da imagem Docker, então `git push` na sua máquina e, na VPS,
+   `git pull && docker compose up -d --build backend`. O recarregamento de 5
+   minutos relê o disco do container — que continua com a versão do último
+   build até você reconstruir.
+
+> Isto vale para os knowledge files. O **prompt** (`src/prompts/vendas.md`) vive
+> no banco e segue outro caminho: `npm run prompt`, sem deploy. Ver `HANDOFF.md`.
 
 **Exceção: `grade-horaria.md` não se edita à mão.** Ele é gerado de
 `data/grade-aulas.csv`. Para atualizar a grade, substitua o CSV pela nova

@@ -71,23 +71,21 @@ atualizado.
 
 ---
 
-## 🔴 Preencher em `informacoes-gerais.md` e `operacional-adulto.md`
+## O que ainda falta na base
 
-O arquivo existe e está estruturado; o que falta está marcado `PENDENTE` e o
-agente já sabe transferir em vez de inventar. Por ordem de quanto custa por dia:
+Conferido arquivo por arquivo em 19/08/2026: **não existe mais nenhum `PENDENTE`
+de dado na base** — as únicas ocorrências da palavra são as notas que explicam a
+marcação. Endereço e contatos, aula experimental, matrícula, estrutura,
+diferencial de cada atividade, Hidro Zen, feriados e vigência de preços foram
+todos preenchidos.
+
+Sobrou pouco, e nada que trave uma venda:
 
 | Prioridade | Dado | Onde |
 |---|---|---|
-| 🔴 | Endereço, telefone, Instagram, site | `informacoes-gerais.md` |
-| 🔴 | **Aula experimental** — existe? é gratuita? como agenda? o que levar? | `informacoes-gerais.md` — o roteiro de vendas já a oferece no fechamento |
-| 🟡 | Como funciona a matrícula, documentos, prazo | `informacoes-gerais.md` |
-| ⚪ | Estrutura: piscinas, aquecimento e temperatura, estacionamento, acessibilidade | `informacoes-gerais.md` |
-| ⚪ | Diferencial de cada atividade (as linhas "Diferencial na AP") | `atividades.md` |
-| ⚪ | O que é a aula Hidro Zen & Meditação | `atividades.md` — hoje ninguém sabe, e o nome não basta |
-| ⚪ | Horário de feriados | `informacoes-gerais.md` |
-| ⚪ | Vigência dos preços (tabela infantil é de Janeiro/2026) | `planos-e-valores.md` |
-| ⚪ | Descontos: família, matrícula antecipada, convênio empresa | `planos-e-valores.md` |
-| ⚪ | Quais sessões de musculação são as de 11–12 anos (a grade não marca) | `grade-horaria.md` |
+| ⚪ | Descontos: família, matrícula antecipada, convênio empresa | `planos-e-valores.md` — só entra se existirem mesmo |
+| ⚪ | Quais sessões de musculação são as de 11–12 anos (a grade não marca) | `grade-horaria.md` — hoje o agente cita a faixa sem apontar o horário |
+| ⚪ | Diferencial das aulas coletivas terrestres (Hatha Ioga, GAP, Power Local, Cycling, Ritmos, Boxe) | `atividades.md` — as aquáticas e a musculação já têm; nessas o agente só descreve a aula |
 
 > Duas afirmações antigas seguem **não confirmadas** e foram retiradas da base:
 > "piscina aquecida e coberta" e "turmas reduzidas" como slogan. Sobre tamanho
@@ -102,9 +100,9 @@ ponto mais forte do roteiro.
 
 | Conteúdo | Situação |
 |---|---|
-| ~~Metodologia da natação infantil, por nível~~ | ✅ Resolvido — `base-conhecimento-natacao-infantil (2).md` cobre as duas trilhas, nível a nível, com respostas prontas para objeções. |
+| ~~Metodologia da natação infantil, por nível~~ | ✅ Resolvido — `base-conhecimento-natacao-infantil.md` cobre as duas trilhas, nível a nível, com respostas prontas para objeções. |
 | ~~Anamnese em versão enxuta~~ | ✅ Resolvido — `anamnese-perfil-cliente.md`. |
-| **Diferenciais de cada aula aquática** | ❌ Continua faltando. O prompt manda "mostre como são as aulas e seus diferenciais" para natação adulto, bebê e hidroginástica — só a infantil tem esse conteúdo hoje. Para as outras três o bot cita o nome da modalidade e vai direto ao preço. |
+| ~~Diferenciais de cada aula aquática~~ | ✅ Resolvido — natação adulto, bebê, hidroginástica e Hidro Zen têm a linha "Diferencial na AP" preenchida em `atividades.md`. Falta só nas coletivas terrestres. |
 
 ---
 
@@ -149,15 +147,40 @@ ver a nota sobre carregamento condicional em [HANDOFF.md](HANDOFF.md).
 
 ---
 
+## Primeira rodada de testes — 19/08/2026
+
+A página `/teste` entrou no ar na VPS e as primeiras conversas foram gravadas.
+Números da rodada (`npm run conversas -- --canal=web-test`): **3 conversas, 34
+mensagens, 3 em 3 terminando em handoff**.
+
+Os motivos, todos comportamento correto do bot:
+
+| Motivo do handoff | Por quê |
+|---|---|
+| Dificuldade de agendamento no app FITI (2x) | O bot não enxerga agenda nem cadastro — o prompt manda transferir |
+| Negociação da taxa de adesão de R$ 184 (2x) | Financeiro é transferência imediata por regra |
+| Marcar aula experimental de natação infantil | Quem agenda é o consultor (`informacoes-gerais.md`) |
+
+**A leitura que interessa:** o bot não está errando, está esbarrando no limite do
+que lhe foi permitido fazer. Como aula experimental é o fechamento padrão do
+roteiro e só o humano agenda, **todo lead bem conduzido termina em handoff** — e
+handoff hoje não avisa ninguém. É por isso que a notificação subiu de "backlog"
+para o primeiro item da lista abaixo.
+
+As transcrições ficam em `data/conversas/` (fora do git). Regenere quando
+precisar; o histórico vive no Supabase.
+
 ## Pendências que não são conteúdo
 
 Para não perder de vista — detalhamento em [HANDOFF.md](HANDOFF.md).
 
-- `.env` da VPS: `ANTHROPIC_API_KEY`, `ADMIN_API_KEY`, `EVOLUTION_SERVER_URL`,
-  `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-- Webhook da Evolution configurado no compose, mas **nunca testado** com uma
-  instância real — o fluxo inbound do WhatsApp segue não verificado
-- Handoff grava no banco mas **não notifica ninguém**: sem alguém olhando
-  `/admin/handoffs`, o cliente transferido fica sem resposta. É a lacuna mais
-  relevante para uso real, e cresce em importância a cada item desta lista que
-  continuar pendente.
+- 🔴 **Handoff grava no banco mas não notifica ninguém.** Sem alguém olhando
+  `/admin/handoffs`, o cliente transferido fica sem resposta. Com 100% das
+  conversas de teste terminando em handoff, é hoje a maior lacuna para uso real.
+- ⚠️ `EVOLUTION_SERVER_URL` ainda em `localhost:8080` no `.env` da VPS, e o
+  container `evolution-api` está em loop de restart — o canal WhatsApp está fora
+  do ar. As chaves de Anthropic e Supabase da VPS foram resolvidas em 19/08.
+- ⚠️ Webhook da Evolution configurado no compose, mas **nunca testado** com uma
+  instância real — o fluxo inbound do WhatsApp segue não verificado.
+- ⚪ Página `/teste` no ar com a senha padrão `Leia`, em HTTP puro. Desligue com
+  `TESTE_HABILITADO=false` quando a rodada de testes terminar.
