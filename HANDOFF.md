@@ -36,6 +36,24 @@ explícito** para aparecer na API — sem ele o sintoma é `PGRST205` ("not foun
 schema cache"), que parece migration não aplicada. O padrão a copiar está no
 bloco 8b da migration.
 
+### Acesso à VPS
+
+| Item | Valor |
+|---|---|
+| Host | `root@108.174.151.51`, porta **22022** |
+| Chave | `~/.ssh/aquap_vps` — **é esta**; as `id_ed25519_vps` e `id_rsa_vps` não estão autorizadas neste servidor |
+| Projeto | `/var/www/apac-ia-sales` |
+
+```bash
+ssh -p 22022 -i ~/.ssh/aquap_vps root@108.174.151.51
+```
+
+Deploy completo (código e knowledge files; o prompt não passa por aqui):
+
+```bash
+cd /var/www/apac-ia-sales && git pull && docker compose up -d --build backend
+```
+
 ### Pendências de ambiente
 
 No `.env` da VPS (`/var/www/apac-ia-sales/.env`), criado pelo `setup-vps.sh` a
