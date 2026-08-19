@@ -15,6 +15,10 @@ import { reactivateBot } from '../services/contacts.js';
 
 const router = Router();
 
+// Canal das conversas da página /teste. Elas ficam nas mesmas tabelas do
+// WhatsApp para a análise ser uma só, mas fora das métricas de atendimento.
+const CANAL_TESTE = 'web-test';
+
 // ──────────────────────────────────────────────
 // Middleware: autenticação de admin
 //
@@ -190,17 +194,26 @@ router.get('/metrics', async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
 
-    // Total de conversas ativas
+    // Total de conversas ativas — sem o canal da página de teste, senão a
+    // rodada de testes internos aparece como demanda de cliente.
     const { count: activeConvs } = await supabase
       .from('wa_conversations')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .neq('channel', CANAL_TESTE);
 
     // Conversas em modo humano
     const { count: humanConvs } = await supabase
       .from('wa_conversations')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'human');
+      .eq('status', 'human')
+      .neq('channel', CANAL_TESTE);
+
+    // Conversas da página de teste, contadas à parte
+    const { count: testConvs } = await supabase
+      .from('wa_conversations')
+      .select('*', { count: 'exact', head: true })
+      .eq('channel', CANAL_TESTE);
 
     // Mensagens hoje
     const { count: msgsToday } = await supabase
@@ -242,6 +255,9 @@ router.get('/metrics', async (req, res) => {
       },
       queue: {
         pending: queuePending || 0,
+      },
+      testes: {
+        conversations: testConvs || 0,
       },
     });
   } catch (err) {
@@ -305,6 +321,48 @@ router.get('/knowledge', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ──────────────────────────────────────────────
+// Conversas da página de teste
+// ──────────────────────────────────────────────
+
+/**
+ * GET /admin/conversas-teste — Transcrições da página /teste.
+ *
+ * Atalho para ler o que os testadores conversaram sem abrir o Supabase.
+ * Para análise em arquivo (transcrições + números), use `npm run conversas`.
+ */
+router.get('/conversas-teste', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
+
+  const { data: conversas, error } = await supabase
+    .from('wa_conversations')
+    .select('id, status, started_at, last_message, wa_contacts ( name, phone )')
+    .eq('channel', CANAL_TESTE)
+    .order('started_at', { ascending: false })
+    .limit(limit);
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!conversas.length) return res.json([]);
+
+  const { data: mensagens } = await supabase
+    .from('wa_messages')
+    .select('conversation_id, direction, content, metadata, created_at')
+    .in('conversation_id', conversas.map(c => c.id))
+    .order('created_at', { ascending: true });
+
+  res.json(conversas.map(c => ({
+    ...c,
+    mensagens: (mensagens || [])
+      .filter(m => m.conversation_id === c.id)
+      .map(m => ({
+        de: m.direction === 'inbound' ? 'testador' : 'leia',
+        texto: m.content,
+        handoff: m.metadata?.handoff || false,
+        em: m.created_at,
+      })),
+  })));
 });
 
 /** POST /admin/reload-cache — Força recarga de prompt + knowledge files */

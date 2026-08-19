@@ -49,6 +49,22 @@ export const config = {
   // Sem fallback de propósito: se não estiver definida, /admin é bloqueado.
   adminApiKey: env('ADMIN_API_KEY', ''),
 
+  // Página de teste (/teste) — sandbox web para o time conversar com a Leia
+  // sem WhatsApp. Senha única, sem usuário: é sala de teste, não painel.
+  //
+  // Os tetos existem porque a página fica exposta por IP e cada resposta gasta
+  // crédito de API. Ajuste-os no .env se o teste for grande; desligue a página
+  // com TESTE_HABILITADO=false quando a rodada de testes terminar.
+  teste: {
+    habilitada: env('TESTE_HABILITADO', 'true') !== 'false',
+    senha: env('TESTE_SENHA', 'Leia'),
+    // Sem valor definido, o segredo é sorteado no boot e as sessões caem a
+    // cada restart do container.
+    sessionSecret: env('TESTE_SESSION_SECRET', ''),
+    maxMensagensPorSessao: parseInt(env('TESTE_MAX_MSGS_SESSAO', '80'), 10),
+    maxMensagensPorDia: parseInt(env('TESTE_MAX_MSGS_DIA', '800'), 10),
+  },
+
   // API keys dos apps irmãos
   appKeys: {
     aquap: process.env.APP_API_KEY_AQUAP || '',

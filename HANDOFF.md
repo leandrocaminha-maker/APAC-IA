@@ -46,6 +46,74 @@ partir do `.env.example`:
 - `EVOLUTION_SERVER_URL` — ainda em `localhost:8080`; precisa do domínio/IP público
 - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` — do projeto `aheoopiymromrnanhvoe`
 
+## Página de teste — `/teste`
+
+Sandbox web para o time conversar com a Leia sem WhatsApp. Serve para colocar
+outras pessoas testando o roteiro e **juntar histórico real de conversa** para
+ajustar prompt e base.
+
+| Item | Valor |
+|---|---|
+| URL | `http://<IP_DA_VPS>:3100/teste` — sem domínio, IP direto |
+| Senha | `Leia` (única, sem usuário) — troque em `TESTE_SENHA` |
+| Canal no banco | `wa_conversations.channel = 'web-test'` |
+| Desligar | `TESTE_HABILITADO=false` + restart |
+
+### Subir na VPS
+
+```bash
+cd /var/www/apac-ia-sales
+git pull
+docker compose up -d --build backend
+sudo ufw allow 3100/tcp        # se o firewall estiver ativo
+```
+
+Confira em `http://<IP>:3100/health` antes de mandar o link para o time.
+
+### Como os testes ficam gravados
+
+Cada aba de navegador vira um contato próprio, com telefone sintético
+(`teste-<uuid>`), tag `teste-web` e conversa no canal `web-test`. Isso mantém a
+análise num lugar só sem misturar com atendimento real: `/admin/metrics` conta
+as conversas de teste num bloco `testes` à parte, fora de `conversations`.
+
+O testador pode se identificar no campo de nome (é rótulo, não login) e usar
+**Nova conversa** para zerar o contexto e repetir um roteiro do começo.
+
+**Handoff se comporta diferente aqui de propósito:** ele é gravado em
+`wa_human_handoffs` (com `[teste-web]` no motivo) e aparece na tela, mas **não
+desliga a IA** — no WhatsApp o bot pararia, e o teste morreria justamente no
+ponto que mais interessa avaliar.
+
+### Coletar o histórico para análise
+
+```bash
+npm run conversas                      # últimos 30 dias, todos os canais
+npm run conversas -- --canal=web-test  # só a página de teste
+npm run conversas -- --dias=7
+```
+
+Gera `data/conversas/transcricoes.md` (para ler) e `conversas.json` (para
+cruzar números), e imprime total de conversas, mensagens, taxa de handoff e os
+motivos mais frequentes. Telefone de cliente sai mascarado; a pasta está no
+`.gitignore`. O script lê o Supabase direto — precisa de `SUPABASE_URL` e
+`SUPABASE_SERVICE_ROLE_KEY` no `.env` da máquina onde rodar.
+
+Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
+`X-Api-Key`).
+
+### Limites e riscos aceitos
+
+- **É HTTP puro, sem TLS.** Senha e conversas trafegam em claro. Aceitável para
+  uma sala de teste com senha compartilhada e dados fictícios — não use a página
+  com dado real de cliente.
+- **Cada resposta gasta crédito de API.** Por isso os tetos: 8 tentativas de
+  senha por IP a cada 15 min, 1,2s entre mensagens, 80 mensagens por sessão e
+  800 por dia (`TESTE_MAX_MSGS_*`).
+- Os contadores vivem em memória: reiniciar o container zera todos.
+- **Desligue a página quando a rodada de testes acabar** — senha curta em IP
+  público não é para ficar no ar indefinidamente.
+
 ## O que foi feito nesta sessão
 
 ### Segurança

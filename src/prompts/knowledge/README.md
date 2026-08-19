@@ -1,30 +1,48 @@
 # Pasta de Conhecimento do Agente IA
 
-Todos os arquivos `.md` nesta pasta são carregados automaticamente pelo agente de IA
-e incluídos no contexto do prompt quando ele atende um cliente no WhatsApp.
+Todos os arquivos `.md` desta pasta (menos este README) são concatenados e
+enviados no contexto do agente **a cada resposta**. O cache recarrega sozinho a
+cada 5 minutos, ou na hora com `POST /admin/reload-cache`.
+
+## Divisão de responsabilidade
+
+**O prompt (`src/prompts/vendas.md`) diz como conduzir. A base diz o que é
+verdade.** Quando um dado aparece nos dois lugares, o dia em que ele mudar um
+dos dois vira mentira — por isso o prompt referencia a base em vez de repeti-la.
+
+| Arquivo | O que vive nele |
+|---|---|
+| `informacoes-gerais.md` | Nome, endereço, contatos, horário de funcionamento, estrutura, matrícula, políticas do dia a dia, FAQ |
+| `planos-e-valores.md` | Planos, preços, o que cada um inclui, taxa de adesão, Clube Sábado |
+| `operacional-adulto.md` | Regras de uso do plano adulto: agendamento FITI, PAR-Q, suspensão, devolução em 21 dias, cancelamento |
+| `contrato-resumo.md` | Síntese do contrato: cancelamento, rescisão, transferência, férias, atestado, vestuário, uso de imagem, convivência |
+| `atividades.md` | O que é cada aula e qual o diferencial dela |
+| `grade-horaria.md` | Dias e horários das turmas — **gerado automaticamente** |
+| `base-conhecimento-natacao-infantil.md` | Metodologia, níveis e objeções da Escola de Natação Infantil e Bebês |
+| `anamnese-perfil-cliente.md` | Qualificação: as perguntas que mudam a recomendação e a leitura de cada resposta |
 
 ## Como editar
 
-1. **Abra o arquivo** que deseja editar (planos, horários, informações gerais)
-2. **Substitua os exemplos** pelos dados reais da academia
-3. **Salve o arquivo** — o agente recarrega automaticamente a cada 5 minutos
+1. Abra o arquivo da tabela acima e substitua o dado.
+2. Salve — o agente recarrega em até 5 minutos.
 
-## Quando usar arquivos vs. API do EVO
+**Exceção: `grade-horaria.md` não se edita à mão.** Ele é gerado de
+`data/grade-aulas.csv`. Para atualizar a grade, substitua o CSV pela nova
+exportação do sistema e rode `npm run grade`; qualquer edição manual no `.md` é
+desfeita na próxima geração.
 
-| Dado | Arquivo (estático) | API do EVO (dinâmico) |
-|------|-------------------|----------------------|
-| Planos e valores | ✅ Mais preciso, você controla o texto | ✅ Dados em tempo real |
-| Grade horária | ✅ Formatação personalizada | ✅ Sempre atualizado |
-| FAQ / Regras | ✅ Único lugar | ❌ Não existe no EVO |
-| Vagas disponíveis | ❌ Pode ficar desatualizado | ✅ Sempre atual |
-| Dados do aluno | ❌ Não aplicável | ✅ Consulta individual |
+## A marcação `PENDENTE`
 
-O agente usa **ambas as fontes**: primeiro consulta os arquivos de conhecimento
-(resposta rápida), e pode complementar com a API do EVO quando necessário
-(dados dinâmicos como vagas, dados de aluno, etc.).
+Dado que ainda não existe se escreve **`PENDENTE`**, nunca com um valor
+plausível no lugar. O agente é instruído a tratar `PENDENTE` como informação
+indisponível e transferir para um consultor humano em vez de responder.
 
-## Arquivos disponíveis
+Um placeholder que parece um dado real (um endereço de exemplo, uma temperatura
+"aproximada") é pior que a lacuna: o guard não pega, e o bot afirma ao cliente.
 
-- `planos-e-valores.md` — Modalidades, tabela de preços, descontos
-- `grade-horaria.md` — Horários de funcionamento e grade de aulas
-- `informacoes-gerais.md` — Sobre, diferenciais, FAQ, regras do bot
+## O que não vai nesta pasta
+
+- **Regras de conduta do bot** (tom, formatação de WhatsApp, quando transferir):
+  ficam no prompt, não aqui.
+- **Dados individuais de aluno** (cadastro, pagamento, agenda): o agente não
+  enxerga nada disso — o caminho é `transferir_para_humano`.

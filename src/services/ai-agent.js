@@ -140,8 +140,9 @@ async function loadKnowledgeFiles() {
       'modalidades, grade horária e regras da academia. Não existe consulta a ' +
       'sistema externo para esses dados.\n' +
       'REGRA CRÍTICA: se a informação que o cliente pediu não estiver abaixo, ou ' +
-      'estiver marcada como "Exemplo", "XXX" ou "descreva aqui", esse dado AINDA ' +
-      'NÃO ESTÁ DISPONÍVEL. Nesse caso é proibido inventar, estimar ou aproximar: ' +
+      'estiver marcada como "PENDENTE", "_preencha_", "Exemplo", "XXX" ou ' +
+      '"descreva aqui", esse dado AINDA NÃO ESTÁ DISPONÍVEL. Nesse caso é ' +
+      'proibido inventar, estimar ou aproximar: ' +
       'diga que vai confirmar a informação exata com um consultor e use a ' +
       'ferramenta transferir_para_humano.\n' +
       sections.join('\n');

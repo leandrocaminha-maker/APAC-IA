@@ -15,6 +15,7 @@ import { logger } from './lib/logger.js';
 import webhookRouter from './routes/webhook.js';
 import apiRouter from './routes/api.js';
 import adminRouter from './routes/admin.js';
+import testeRouter from './routes/teste.js';
 import { startQueueProcessor } from './workers/queue-processor.js';
 
 const app = express();
@@ -70,6 +71,9 @@ app.use('/api', apiRouter);
 // Rotas admin (auth via X-Api-Key por enquanto)
 app.use('/admin', adminRouter);
 
+// Página de teste do agente (auth por senha única, sem usuário)
+app.use('/teste', testeRouter);
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
@@ -93,7 +97,13 @@ app.listen(config.port, () => {
   logger.info(`   Webhook: http://localhost:${config.port}/webhook/evolution`);
   logger.info(`   API:     http://localhost:${config.port}/api/`);
   logger.info(`   Admin:   http://localhost:${config.port}/admin/`);
+  logger.info(`   Teste:   http://localhost:${config.port}/teste`);
   logger.info(`   Health:  http://localhost:${config.port}/health`);
+
+  if (config.teste.habilitada && config.teste.senha === 'Leia') {
+    logger.warn('[teste] Página de teste no ar com a senha padrão "Leia" — ' +
+      'defina TESTE_SENHA no .env, ou TESTE_HABILITADO=false ao terminar os testes');
+  }
 
   // Inicia worker de fila
   startQueueProcessor();
