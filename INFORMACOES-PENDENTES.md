@@ -87,9 +87,42 @@ Sobrou pouco, e nada que trave uma venda:
 | ⚪ | Quais sessões de musculação são as de 11–12 anos (a grade não marca) | `grade-horaria.md` — hoje o agente cita a faixa sem apontar o horário |
 | ⚪ | Diferencial das aulas coletivas terrestres (Hatha Ioga, GAP, Power Local, Cycling, Ritmos, Boxe) | `atividades.md` — as aquáticas e a musculação já têm; nessas o agente só descreve a aula |
 
-> Duas afirmações antigas seguem **não confirmadas** e foram retiradas da base:
-> "piscina aquecida e coberta" e "turmas reduzidas" como slogan. Sobre tamanho
-> de turma, o número real está na base da natação infantil (até 5 / 6 / 10).
+> ⚠️ **Este parágrafo ficou desatualizado.** Ele dizia que "piscina aquecida e
+> coberta" e "turmas reduzidas" tinham sido *retiradas* da base por não estarem
+> confirmadas. A piscina voltou depois, com dado firme: `informacoes-gerais.md`
+> descreve 15 m, coberta e aquecida entre 30 e 30,5 °C, e a FAQ do mesmo arquivo
+> confirma. **Vale o dado.** O aviso de "não confirmado" que sobrou na seção
+> Estrutura é que precisa sair — hoje ele só faz o agente hesitar num diferencial
+> forte. Sobre tamanho de turma segue valendo o número real da base da natação
+> infantil (até 5 / 6 / 10), nunca a lotação do horário na grade.
+
+---
+
+## 🟡 Contradições dentro da base — 19/08/2026
+
+Diferente das lacunas acima: aqui o dado **existe em dois arquivos com valores
+diferentes**, e o agente escolhe um por sorteio sem avisar. Detalhe e correção
+em [REVISAO-PROMPT.md](REVISAO-PROMPT.md), bloco 3.
+
+| Contradição | Onde | O que vale |
+|---|---|---|
+| Agendamentos simultâneos: **2 vs 3** | `operacional-adulto.md` e `contrato-resumo.md` dizem 3; `grade-horaria.md` (Musculação) diz 2 | 3 — decidido em 18/08 |
+| Duração da aula adulta: **45 min vs "não consta"** | `atividades.md` diz 45 min; `grade-horaria.md` lista como pendência, sob "não invente estes dados" | 45 min. Como está, o agente transfere numa pergunta já respondida |
+| Idade da natação bebê | "até entre 3,5 e 4 anos" em três arquivos; "a 3 anos e 6 meses" na grade | "entre 3,5 e 4 anos" — item 6 do pente fino |
+| Piscina aquecida | dado + FAQ afirmam; a nota da seção Estrutura desmente | o dado (ver acima) |
+
+⚠️ **As duas primeiras vivem em `scripts/gerar-grade-horaria.js`**, não no `.md`.
+Corrigir só o markdown seria desfeito no próximo `npm run grade`.
+
+**Falta um mapeamento:** `planos-e-valores.md` define frequência por Iniciante /
+Intermediário / Aperfeiçoamento (2 / 3 / 5 sessões), a base infantil fala em
+Golfinho I / N3 Amarela / N5 Laranja, e nenhum arquivo liga os dois vocabulários.
+"Meu filho está no N3, quantas vezes por semana ele nada?" hoje exige três saltos
+de inferência.
+
+**Vigência a confirmar:** `planos-e-valores.md` diz que a tabela adulto foi
+"reformulada em Setembro/2026" — data futura. Se ainda não entrou em vigor, o
+agente está cotando preço que não vale.
 
 ---
 
@@ -153,19 +186,24 @@ A página `/teste` entrou no ar na VPS e as primeiras conversas foram gravadas.
 Números da rodada (`npm run conversas -- --canal=web-test`): **3 conversas, 34
 mensagens, 3 em 3 terminando em handoff**.
 
-Os motivos, todos comportamento correto do bot:
+Os motivos — e a releitura depois da auditoria de
+[REVISAO-PROMPT.md](REVISAO-PROMPT.md):
 
-| Motivo do handoff | Por quê |
-|---|---|
-| Dificuldade de agendamento no app FITI (2x) | O bot não enxerga agenda nem cadastro — o prompt manda transferir |
-| Negociação da taxa de adesão de R$ 184 (2x) | Financeiro é transferência imediata por regra |
-| Marcar aula experimental de natação infantil | Quem agenda é o consultor (`informacoes-gerais.md`) |
+| Motivo do handoff | Registrado como | Releitura |
+|---|---|---|
+| Dificuldade de agendamento no app FITI (2x) | O bot não enxerga agenda nem cadastro — o prompt manda transferir | **Correto** para "não consigo entrar no app". Mas a regra não distingue isso de "como funciona o agendamento?", que é pergunta de venda |
+| Negociação da taxa de adesão de R$ 184 (2x) | Financeiro é transferência imediata por regra | **Regra disparando cedo demais.** "Negociação" no item Financeiro captura objeção de preço de lead novo — e o próprio prompt tem a resposta: o Anual é isento da adesão |
+| Marcar aula experimental de natação infantil | Quem agenda é o consultor (`informacoes-gerais.md`) | **Instrução desatualizada.** O `vendas.md` ainda diz que as condições da aula experimental são `PENDENTE`; a base já responde que existe e é gratuita. O agente transfere com "não sei" onde deveria escolher o horário e transferir com o lead pronto |
 
-**A leitura que interessa:** o bot não está errando, está esbarrando no limite do
-que lhe foi permitido fazer. Como aula experimental é o fechamento padrão do
-roteiro e só o humano agenda, **todo lead bem conduzido termina em handoff** — e
-handoff hoje não avisa ninguém. É por isso que a notificação subiu de "backlog"
-para o primeiro item da lista abaixo.
+**A leitura original** era que o bot não estava errando, só esbarrando no limite
+do que lhe foi permitido fazer. Vale em parte: como só o humano agenda, **todo
+lead bem conduzido termina em handoff**, e handoff não avisa ninguém — por isso a
+notificação segue como primeiro item da lista abaixo.
+
+**O que a leitura original não viu:** dois dos três motivos são texto corrigível,
+não limite de escopo. Antes de investir em notificação, vale aplicar o bloco 1 de
+`REVISAO-PROMPT.md` e rodar os testes de novo — a taxa de handoff da próxima
+rodada é a medida de se o ajuste funcionou.
 
 As transcrições ficam em `data/conversas/` (fora do git). Regenere quando
 precisar; o histórico vive no Supabase.

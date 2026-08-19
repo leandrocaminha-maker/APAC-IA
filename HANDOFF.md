@@ -3,6 +3,8 @@
 > Snapshot de 19/08/2026. Documento de continuidade: descreve onde o projeto
 > parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
+> Para as correções de prompt e base já levantadas e ainda não aplicadas, ver
+> [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
 ## Onde estamos
 
@@ -18,6 +20,12 @@ o prompt sem risco de efeito colateral em produção.
 preenchida, o prompt publicado e a página `/teste` no ar na VPS. O foco agora é
 o time testar situações variadas pela página; com dados suficientes vem a
 revisão das conversas e o ajuste fino antes de colocar em operação.
+
+A **auditoria estática** do prompt, dos knowledge files e do caminho de código
+que monta o system já foi feita e está em
+[REVISAO-PROMPT.md](REVISAO-PROMPT.md), com a ordem de aplicação. O que falta é
+ler as transcrições — a auditoria rodou numa máquina sem `.env`, sem
+`node_modules` e sem a chave da VPS, então nenhuma conversa foi lida.
 
 Para puxar o material da revisão (na máquina com o `.env`, não na VPS):
 
@@ -260,6 +268,22 @@ caso o modelo alucine a chamada. **Tool ativa: apenas `transferir_para_humano`.*
 
 ## Próxima sessão
 
+### Aplicar a revisão do prompt
+
+[REVISAO-PROMPT.md](REVISAO-PROMPT.md) tem os achados da auditoria de
+19/08/2026 com a ordem de aplicação. Os dois primeiros blocos são os que mexem
+no resultado:
+
+1. **Regras de handoff no `vendas.md`** — quatro regras disparando cedo demais,
+   incluindo a da aula experimental, que ainda diz `PENDENTE` para um dado que a
+   base já responde. Precisa de `npm run prompt` depois.
+2. **O agente não sabe que dia é hoje** — nenhuma data entra no system, com a
+   grade horária inteira carregada no contexto. Corrige em `ai-agent.js`, no
+   bloco depois do `cache_control`.
+
+Comece exportando as transcrições: a auditoria é estática e não viu nenhuma
+conversa.
+
 ### Tarefa combinada
 
 Fazer o agente ler o prompt de **arquivo local** quando o banco estiver
@@ -277,8 +301,17 @@ contrato. O que sobrou de `PENDENTE` está listado em `INFORMACOES-PENDENTES.md`
 
 O que trava agora é outra coisa: **handoff não notifica ninguém**. Os testes de
 19/08/2026 terminaram 3 em 3 conversas em handoff (agendamento pelo FITI,
-negociação de taxa de adesão e marcação de aula experimental) — todos
-comportamentos corretos do bot, e todos parando numa fila que ninguém olha.
+negociação de taxa de adesão e marcação de aula experimental), todas parando numa
+fila que ninguém olha.
+
+⚠️ **Correção da leitura original:** esses handoffs foram registrados aqui como
+"comportamento correto do bot". A auditoria de [REVISAO-PROMPT.md](REVISAO-PROMPT.md)
+mostrou que só um deles era — os outros dois são regra do prompt disparando cedo
+demais. A negociação da adesão caiu na regra "Financeiro … negociação", que manda
+transferir sem tentar resolver, quando o próprio prompt tem a resposta (o Anual é
+isento da adesão); e a aula experimental caiu numa instrução que ainda diz
+`PENDENTE` para um dado que a base já responde. Ou seja: parte do 3 em 3 é
+corrigível no texto, antes de mexer em notificação.
 
 ### Ainda não exercitado
 
@@ -322,6 +355,12 @@ detalhes:
 - **Evolution na 8080 poderia ser fechada** — o backend fala com ela por dentro
   da `apac-network` e o QR sai por `/admin/whatsapp/qrcode`.
 - **`ai_enabled` é gravado mas nunca lido** — só `status === 'human'` é checado.
+- **Nenhuma data ou hora entra no system prompt** — com a grade horária inteira
+  no contexto, o agente não responde "tem aula hoje?" e não sabe se está fora do
+  horário de atendimento ([REVISAO-PROMPT.md](REVISAO-PROMPT.md), bloco 2).
+- **O bloco de contato desaparece sem nome** — `contactInfo.name ? ... : ''` em
+  `ai-agent.js` derruba também o `is_prospect` e as tags. Na página `/teste` o
+  contato nasce sem nome, então boa parte dos testes rodou sem esse contexto.
 - **Telefone não é normalizado** antes das buscas no EVO.
 - **CORS só lista `localhost`** em `server.js`; faltam os domínios de produção.
 

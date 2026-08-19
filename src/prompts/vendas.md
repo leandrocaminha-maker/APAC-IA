@@ -12,6 +12,14 @@
 > vivem em `src/prompts/knowledge/` e são anexados automaticamente abaixo deste
 > texto a cada resposta. Repetir aqui faz o prompt mentir quando o dado mudar.
 > O prompt diz *como conduzir*; a base diz *o que é verdade*.
+>
+> 📋 **Correções pendentes neste arquivo** (auditoria de 19/08/2026, detalhe em
+> [REVISAO-PROMPT.md](../../REVISAO-PROMPT.md)): as quatro regras de handoff que
+> disparam cedo demais e a nota de aula experimental que ainda diz `PENDENTE`;
+> a espera de "10 segundos" na seção 6, que o modelo não consegue cumprir; o
+> Clube Sábado ausente da ordem de oferta; Wellhub/Gympass citados como se
+> fossem aceitos; "duas frentes" com três itens; e o "menos que um cafezinho"
+> num exemplo que sai com R$ 9,90/dia.
 
 ---
 
