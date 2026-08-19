@@ -89,6 +89,17 @@ _estúdio de Pilates
 Para as regras de plano adulto — adesão, agendamento, suspensão, devolução —
 veja `operacional-adulto.md`.
 
+## Convênios e agregadores
+
+| Assunto | Regra |
+| --- | --- |
+| Quem é aceito | **Somente Totalpass, a partir do plano TP4.** Wellhub (Gympass) e demais agregadores não são aceitos hoje. |
+| Como agenda | Pelo app do próprio agregador. |
+| Primeira visita | Chegar à academia **30 minutos antes** da atividade para completar cadastro, assinar o termo e configurar a biometria. |
+
+Quem chega por agregador é atendido normalmente — é lead como qualquer outro, e
+vale apresentar os planos quando fizer sentido.
+
 ## Políticas do dia a dia
 
 | Assunto | Política |
