@@ -64,6 +64,8 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Roteiro da frente 2: objeto esquecido e app FITI | `vendas.md` + novo `knowledge/suporte-fiti.md` | `npm run prompt` + deploy |
 | Limite de agendamento completado: 3 no total, 1 por modalidade | `knowledge/operacional-adulto.md` | deploy |
 | Achados e perdidos, e a linha "Feriados" da tabela de horário, que tinha uma célula faltando | `knowledge/informacoes-gerais.md` | deploy |
+| Afastamento médico: regra, foto do atestado na conversa e handoff no mesmo turno | `vendas.md` + `contrato-resumo.md` + `operacional-adulto.md` | `npm run prompt` + deploy |
+| Contradição do contrato resolvida: afastamento médico vale para **todos** os planos; férias/trancamento só o Anual | `knowledge/contrato-resumo.md` | deploy |
 
 ### A ancoragem nova, em uma linha
 

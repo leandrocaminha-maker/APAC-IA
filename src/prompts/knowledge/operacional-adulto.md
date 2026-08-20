@@ -66,9 +66,13 @@ Anual é isento dela). Texto integral em `contrato-resumo.md`.
 - **Suspensão de até 30 dias:** benefício exclusivo do **Plano Anual**. É pausa
   do plano — não confundir com a devolução acima. Divisível em até **3 pedidos**,
   cada um com **7 dias de antecedência** (`contrato-resumo.md`).
-- **Afastamento** com congelamento do plano, ou lançamento de dias além dessa
-  suspensão: somente mediante **atestado médico**. Casos fora disso são tratados
-  com os gestores — transferir para humano.
+- **Afastamento médico:** vale para **qualquer plano**, inclusive Assinatura,
+  mediante **atestado**. Não é pausa: o pagamento continua e os dias parados são
+  **acrescentados ao fim do plano** (`contrato-resumo.md`). O atestado pode ser
+  enviado por **foto na própria conversa do WhatsApp** — quem lança é o
+  consultor, e o **original é entregue no retorno**.
+- **Congelamento do plano, ou lançamento de dias além do previsto acima:** casos
+  fora dessas regras são tratados com os gestores — transferir para humano.
 
 ## Contrato e pagamento
 

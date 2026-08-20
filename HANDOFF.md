@@ -303,11 +303,17 @@ O que ainda mexe no resultado e continua pendente:
 3. **Contradições da base**, que vivem no `gerar-grade-horaria.js` e não só no
    markdown.
 4. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
-   está no começo: cobre objeto esquecido e dificuldade com o app FITI
-   (`suporte-fiti.md`). Falta o resto do que chega de aluno — troca de horário,
-   atestado, reposição, cancelamento. Continua sendo a maior lacuna de escopo
-   para quando o WhatsApp principal entrar no ar, porque ali a maioria do volume
-   será aluno, não lead.
+   está no começo: cobre objeto esquecido, dificuldade com o app FITI
+   (`suporte-fiti.md`) e afastamento médico. Falta o resto do que chega de aluno
+   — troca de horário de turma, reposição, cancelamento de contrato. Continua
+   sendo a maior lacuna de escopo para quando o WhatsApp principal entrar no ar,
+   porque ali a maioria do volume será aluno, não lead.
+5. **Imagem chega e o bot fica mudo.** `webhook.js` registra foto, documento e
+   vídeo sem responder nada — áudio ao menos ganha um "não consigo ouvir". Isso
+   passou a importar quando o roteiro de afastamento passou a pedir foto de
+   atestado: o roteiro contorna transferindo antes da foto chegar, mas uma
+   resposta curta de confirmação para imagem seria mais barata e evitaria o
+   silêncio em qualquer outro caso.
 
 Comece exportando as transcrições: a auditoria é estática e não viu nenhuma
 conversa.
