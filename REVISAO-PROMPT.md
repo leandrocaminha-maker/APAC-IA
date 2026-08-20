@@ -34,11 +34,10 @@ node scripts/exportar-conversas.js --canal=web-test
 
 | # | Bloco | Onde | Vale no atendimento depois de |
 |---|---|---|---|
-| 1 | Data/hora e bloco de contato | `src/services/ai-agent.js` | deploy na VPS |
-| 2 | Contradições da base e do gerador da grade | `knowledge/*.md`, `scripts/gerar-grade-horaria.js` | deploy na VPS |
-| 3 | Follow-up agendado por `scheduled_for` (bloco 7) | `src/services/ai-agent.js` + fila | deploy na VPS |
-| 4 | Campo `dados_coletados` no handoff | `src/services/ai-tools.js` | deploy na VPS |
-| 5 | Resto do roteiro da frente 2 (aluno matriculado) e o fechamento 12:30–15:00 | `src/prompts/vendas.md` | `npm run prompt` |
+| 1 | Data/hora no system e bloco de contato que some sem nome (bloco 2) | `src/services/ai-agent.js` | deploy na VPS |
+| 2 | Follow-up agendado por `scheduled_for` (bloco 7) | `src/services/ai-agent.js` + fila | deploy na VPS |
+| 3 | Campo `dados_coletados` no handoff (bloco 6) | `src/services/ai-tools.js` | deploy na VPS |
+| 4 | Resto do roteiro da frente 2 e o fechamento 12:30–15:00 (bloco 4) | `src/prompts/vendas.md` | `npm run prompt` |
 
 Lembrete das duas armadilhas já conhecidas: **prompt só entra no banco pelo
 `npm run prompt`**, e **knowledge file só chega na VPS por deploy** — editar o
@@ -74,6 +73,8 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Nota obsoleta da piscina removida (bloco 3) | `knowledge/informacoes-gerais.md` | deploy |
 | Mapeamento nível ↔ frequência (Iniciante/Intermediário/Aperfeiçoamento × Adaptação…Atleta) | `knowledge/planos-e-valores.md` + ponteiro na base infantil | deploy |
 | Horário infantil sem níveis listados = todos os níveis do grupo | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
+| Duração das aulas: seção própria na grade, 45 min adultas e coletivas | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
+| Idade da natação bebê: de 12 meses até entre 3,5 e 4 anos | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
 | Retenção no cancelamento: motivo trabalhado por professor e consultor, mais o argumento de reduzir em vez de parar | `vendas.md` | `npm run prompt` |
 
 ### A ancoragem nova, em uma linha
@@ -197,21 +198,22 @@ inclusive sem o `is_prospect`, que distingue lead de aluno.
 
 ---
 
-## 3. 🟡 Contradições dentro da própria base
+## 3. 🟡 Contradições dentro da própria base — ✅ fechado em 20/08/2026
 
 Onde a base se contradiz, o agente escolhe uma versão por sorteio — e não avisa.
 
 | Contradição | Onde | O que vale |
 |---|---|---|
 | ✅ **2 vs 3 agendamentos simultâneos** — resolvido em 20/08/2026 | `grade-horaria.md` dizia 2; o gerador e o `.md` agora dizem o mesmo que a base | **3 no total, no máximo 1 por modalidade.** A regra completa veio das mensagens de erro do FITI; o "2" era simplesmente errado |
-| **Duração da aula adulta** | `atividades.md` diz 45 min; `grade-horaria.md` diz que "não consta", sob o título "não invente estes dados" | 45 min. Como está, o agente transfere numa pergunta já respondida |
+| ✅ **Duração da aula adulta** — resolvido em 20/08/2026 | a grade ganhou seção "Duração das aulas" própria, fora das pendências | **45 min** para adultas e coletivas; bebê 30 min; 3–5 e 6–12 anos 45 min |
 | ✅ **Piscina aquecida** — resolvido em 20/08/2026 | a nota obsoleta da seção Estrutura foi removida do `informacoes-gerais.md` | Vale o dado: 15 m, coberta, 30–30,5 °C. A nota só fazia o agente hesitar num diferencial forte |
-| **Idade da natação bebê** | "até entre 3,5 e 4 anos" em três arquivos; "a 3 anos e 6 meses" no cabeçalho da seção Natação Bebê da grade | "entre 3,5 e 4 anos" — decisão do item 6 do pente fino |
+| ✅ **Idade da natação bebê** — resolvido em 20/08/2026 | corrigido no gerador da grade | **de 12 meses até entre 3 anos e meio e 4 anos** |
 
-⚠️ **As duas primeiras vivem no gerador, não no `.md`:**
-`scripts/gerar-grade-horaria.js` (as linhas que escrevem "até 2 sessões" e o
-bloco "Pendências desta grade"). Corrigir só o markdown seria desfeito no
-próximo `npm run grade`.
+✅ **As quatro foram corrigidas em 20/08/2026, e o bloco 3 está fechado** — o
+"Um mapeamento que falta", logo abaixo, também. As que viviam em
+`scripts/gerar-grade-horaria.js` foram corrigidas **no gerador e no `.md`
+juntos**, com `npm run grade` rodado para confirmar que batem: corrigir só o
+markdown seria desfeito na próxima geração.
 
 ### Um mapeamento que falta — ✅ aplicado em 20/08/2026
 

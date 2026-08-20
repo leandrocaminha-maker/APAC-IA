@@ -300,8 +300,8 @@ O que ainda mexe no resultado e continua pendente:
 2. **Follow-up agendado** (bloco 7 da revisão) — `wa_message_queue.scheduled_for`,
    o worker e a rota já existem e ninguém enfileira mensagem futura. Enquanto
    isso, quem some depois de ver preço some em silêncio.
-3. **Contradições da base**, que vivem no `gerar-grade-horaria.js` e não só no
-   markdown.
+3. **Contradições da base — fechadas em 20/08/2026.** As quatro do bloco 3 e o
+   mapeamento nível ↔ frequência foram corrigidos no gerador e no `.md` juntos.
 4. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
    está no começo: cobre objeto esquecido, dificuldade com o app FITI
    (`suporte-fiti.md`), afastamento médico, troca de horário e cancelamento de

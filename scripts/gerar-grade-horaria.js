@@ -66,9 +66,9 @@ const SECOES = [
   {
     titulo: 'Natação Bebê',
     nota:
-      'De 1 ano a 3 anos e 6 meses, **1x na semana** — cada horário abaixo é uma ' +
-      'turma independente. A regra de matrícula em par de dias da natação infantil ' +
-      '**não vale aqui**.',
+      'De **12 meses até entre 3 anos e meio e 4 anos**, **1x na semana** — cada ' +
+      'horário abaixo é uma turma independente. A regra de matrícula em par de dias ' +
+      'da natação infantil **não vale aqui**.',
     atividades: [['Natação Bebê 1 e 2', null]],
   },
   {
@@ -397,10 +397,18 @@ function gerar() {
 
   out.push('---');
   out.push('');
+  out.push('## Duração das aulas');
+  out.push('');
+  out.push('- **Adultas e coletivas:** 45 minutos (`atividades.md`).');
+  out.push('- **Infantis:** bebê 30 minutos; 3–5 e 6–12 anos 45 minutos');
+  out.push('  (`base-conhecimento-natacao-infantil.md`).');
+  out.push('');
+  out.push('Isto é dado confirmado — responda direto, não transfira.');
+  out.push('');
+  out.push('---');
+  out.push('');
   out.push('## Pendências desta grade (não invente estes dados)');
   out.push('');
-  out.push('- **Duração das aulas adultas e coletivas** não consta. As infantis estão');
-  out.push('  na base de natação infantil (bebê 30 min, 3–5 e 6–12 anos 45 min).');
   out.push('- **Horário de feriados:** ver `informacoes-gerais.md`.');
   out.push('- **Vagas livres por turma** não existem nesta base — só a lotação máxima.');
   out.push('- **Musculação a partir de 11 anos** existe em horários específicos');
