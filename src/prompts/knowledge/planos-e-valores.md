@@ -173,9 +173,8 @@ alçada do consultor nem de ninguém. Podem existir **campanhas promocionais
 eventuais** e, quando existirem, estarão descritas **aqui neste arquivo**. Se não
 houver campanha escrita aqui, não há campanha em vigor.
 
-⚠️ **O acúmulo dos dois descontos não está definido.** Se a pessoa se enquadrar
-nos dois (65+ e família), não some os percentuais nem escolha por conta própria —
-quem confirma é o consultor.
+**Os descontos não acumulam.** Quem se enquadra nos dois — 65 anos ou mais e
+núcleo familiar de 3 ou mais — tem **10%, não 20%**. É um desconto só.
 
 Lembrete de `contrato-resumo.md`: **atraso no pagamento cancela os descontos
 concedidos.**

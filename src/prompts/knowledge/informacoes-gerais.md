@@ -64,10 +64,6 @@ _estúdio de Pilates
 - Estacionamento
 - Acessibilidade: a maioria dos espaçõs são no térreo, incluindo piscina e musculação.
 
-> Cuidado com "piscina aquecida" e "turmas reduzidas": as duas afirmações
-> estavam na base antiga sem nunca terem sido confirmadas. Sobre tamanho de
-> turma, quem tem número real é a base da natação infantil.
-
 ## Aula experimental
 
 - Existe? Sim e é desejavel que o cliente agende para firmar compromisso de ir até a academia e experimente a aula antes de fechar plano.

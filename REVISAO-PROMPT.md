@@ -70,6 +70,9 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Objeção 4 reescrita: desconto deixou de ser motivo de transferência | `vendas.md`, matriz de objeções | `npm run prompt` |
 | Roteiro da frente 2: troca de horário de turma e cancelamento de contrato | `vendas.md` + `knowledge/informacoes-gerais.md` | `npm run prompt` + deploy |
 | Prazo do atestado: também aceito após o retorno, se não frequentou | `contrato-resumo.md`, `operacional-adulto.md`, `vendas.md` | ambos |
+| Descontos não acumulam: quem se enquadra nos dois tem 10%, não 20% | `knowledge/planos-e-valores.md` | deploy |
+| Nota obsoleta da piscina removida (bloco 3) | `knowledge/informacoes-gerais.md` | deploy |
+| Retenção no cancelamento: motivo trabalhado por professor e consultor, mais o argumento de reduzir em vez de parar | `vendas.md` | `npm run prompt` |
 
 ### A ancoragem nova, em uma linha
 
@@ -200,7 +203,7 @@ Onde a base se contradiz, o agente escolhe uma versão por sorteio — e não av
 |---|---|---|
 | ✅ **2 vs 3 agendamentos simultâneos** — resolvido em 20/08/2026 | `grade-horaria.md` dizia 2; o gerador e o `.md` agora dizem o mesmo que a base | **3 no total, no máximo 1 por modalidade.** A regra completa veio das mensagens de erro do FITI; o "2" era simplesmente errado |
 | **Duração da aula adulta** | `atividades.md` diz 45 min; `grade-horaria.md` diz que "não consta", sob o título "não invente estes dados" | 45 min. Como está, o agente transfere numa pergunta já respondida |
-| **Piscina aquecida** | `informacoes-gerais.md` dá a temperatura (30–30,5 °C) e a FAQ confirma, mas a nota da seção Estrutura avisa que a afirmação "nunca foi confirmada" | O dado. A nota ficou obsoleta quando o campo foi preenchido, e hoje só serve para o agente hesitar num diferencial forte |
+| ✅ **Piscina aquecida** — resolvido em 20/08/2026 | a nota obsoleta da seção Estrutura foi removida do `informacoes-gerais.md` | Vale o dado: 15 m, coberta, 30–30,5 °C. A nota só fazia o agente hesitar num diferencial forte |
 | **Idade da natação bebê** | "até entre 3,5 e 4 anos" em três arquivos; "a 3 anos e 6 meses" no cabeçalho da seção Natação Bebê da grade | "entre 3,5 e 4 anos" — decisão do item 6 do pente fino |
 
 ⚠️ **As duas primeiras vivem no gerador, não no `.md`:**
