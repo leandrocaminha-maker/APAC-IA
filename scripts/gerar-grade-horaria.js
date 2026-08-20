@@ -366,8 +366,9 @@ function gerar() {
   out.push(`e um limite de alunos (de ${musc.min} a ${musc.max}, conforme o horário), então o aluno`);
   out.push('sempre treina com relação aluno/professor confortável — que é o que permite o');
   out.push('acompanhamento técnico incluso no plano (ver `planos-e-valores.md`).');
-  out.push('O agendamento é feito no app FITI, e o aluno pode manter até 2 sessões');
-  out.push('agendadas ao mesmo tempo, sem limite de sessões por dia.');
+  out.push('O agendamento é feito no app FITI, sem limite de sessões por dia. O aluno');
+  out.push('mantém até 3 agendamentos pendentes ao mesmo tempo, no máximo 1 por');
+  out.push('modalidade — ver `operacional-adulto.md` e `suporte-fiti.md`.');
   out.push('');
   out.push('Sessões (início de cada uma):');
   out.push('');

@@ -39,7 +39,7 @@
 | Segunda a sexta (tarde/noite) | 15:00 | 22:00 |
 | Sábado | 08:30 | 13:00 |
 | Domingo | Não abre | — |
-| Feriados | não abre |
+| Feriados | Não abre | — |
 
 **A academia fecha das 12:30 às 15:00**, de segunda a sexta. Isso é informação
 de venda, não detalhe: quem só pode treinar no horário de almoço não é atendido,
@@ -109,6 +109,7 @@ vale apresentar os planos quando fizer sentido.
 | Cancelamento de contrato | `contrato-resumo.md` — muda conforme o plano (Assinatura, Anual, Mensal) |
 | Atraso na chegada à aula | como regra geral 10 minutos, porém fica a critério do professor. |
 | Acompanhante na aula infantil | na natação bebê o responsável entra na água, nas primeiras aulas de crianças inseguras o responsável pode acompanhar do deck. |
+| Objeto esquecido | há uma **caixa de achados e perdidos** para itens comuns; **objetos de valor ficam guardados na recepção**. |
 
 ## Perguntas frequentes
 

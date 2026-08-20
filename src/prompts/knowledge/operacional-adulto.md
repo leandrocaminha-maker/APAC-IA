@@ -15,7 +15,10 @@
   fica confortável. É isso que viabiliza o acompanhamento técnico incluso.
 - A agenda **abre 48h antes** do início da sessão.
 - **Sem limite de sessões por dia.** O aluno mantém até **3 agendamentos
-  simultâneos**; ao realizar as sessões do dia, pode agendar outras.
+  simultâneos**, e **no máximo 1 por modalidade** — não dá para deixar duas
+  sessões de musculação, ou duas de natação, pendentes ao mesmo tempo. Realizada
+  a sessão, a vaga libera e ele agenda outra. É esta segunda regra que produz a
+  mensagem "no máximo 1 atividade" no FITI (`suporte-fiti.md`).
 - **Cancelamento sem consequência até 1h antes** da sessão.
 - **Falta não justificada** (não compareceu e não cancelou): o aluno fica
   **2 dias sem poder agendar** pelo app.

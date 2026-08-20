@@ -106,7 +106,7 @@ em [REVISAO-PROMPT.md](REVISAO-PROMPT.md), bloco 3.
 
 | Contradição | Onde | O que vale |
 |---|---|---|
-| Agendamentos simultâneos: **2 vs 3** | `operacional-adulto.md` e `contrato-resumo.md` dizem 3; `grade-horaria.md` (Musculação) diz 2 | 3 — decidido em 18/08 |
+| ✅ Agendamentos simultâneos — resolvido em 20/08/2026 | corrigido no `gerar-grade-horaria.js` e no `.md` | **3 no total, no máximo 1 por modalidade** (`operacional-adulto.md`, `suporte-fiti.md`) |
 | Duração da aula adulta: **45 min vs "não consta"** | `atividades.md` diz 45 min; `grade-horaria.md` lista como pendência, sob "não invente estes dados" | 45 min. Como está, o agente transfere numa pergunta já respondida |
 | Idade da natação bebê | "até entre 3,5 e 4 anos" em três arquivos; "a 3 anos e 6 meses" na grade | "entre 3,5 e 4 anos" — item 6 do pente fino |
 | Piscina aquecida | dado + FAQ afirmam; a nota da seção Estrutura desmente | o dado (ver acima) |

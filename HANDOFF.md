@@ -302,8 +302,12 @@ O que ainda mexe no resultado e continua pendente:
    isso, quem some depois de ver preço some em silêncio.
 3. **Contradições da base**, que vivem no `gerar-grade-horaria.js` e não só no
    markdown.
-4. **A frente 2 (aluno já matriculado) continua sem roteiro** — a maior lacuna
-   de escopo para quando o WhatsApp principal entrar no ar.
+4. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
+   está no começo: cobre objeto esquecido e dificuldade com o app FITI
+   (`suporte-fiti.md`). Falta o resto do que chega de aluno — troca de horário,
+   atestado, reposição, cancelamento. Continua sendo a maior lacuna de escopo
+   para quando o WhatsApp principal entrar no ar, porque ali a maioria do volume
+   será aluno, não lead.
 
 Comece exportando as transcrições: a auditoria é estática e não viu nenhuma
 conversa.

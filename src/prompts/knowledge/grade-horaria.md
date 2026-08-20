@@ -3,7 +3,7 @@
 > **Arquivo gerado automaticamente** a partir de `data/grade-aulas.csv`
 > (exportação da grade do sistema). Não edite este `.md` à mão: atualize o
 > CSV e rode `npm run grade`, senão a próxima geração desfaz a edição.
-> Última geração: 18/08/2026.
+> Última geração: 20/08/2026.
 
 ## Como usar esta grade no atendimento
 
@@ -292,8 +292,9 @@ entra a qualquer momento e a sala lota. Aqui cada sessão tem hora de início
 e um limite de alunos (de 10 a 35, conforme o horário), então o aluno
 sempre treina com relação aluno/professor confortável — que é o que permite o
 acompanhamento técnico incluso no plano (ver `planos-e-valores.md`).
-O agendamento é feito no app FITI, e o aluno pode manter até 2 sessões
-agendadas ao mesmo tempo, sem limite de sessões por dia.
+O agendamento é feito no app FITI, sem limite de sessões por dia. O aluno
+mantém até 3 agendamentos pendentes ao mesmo tempo, no máximo 1 por
+modalidade — ver `operacional-adulto.md` e `suporte-fiti.md`.
 
 Sessões (início de cada uma):
 

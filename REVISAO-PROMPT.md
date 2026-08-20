@@ -1,6 +1,6 @@
 # Revisão do prompt e da base — achados de 19/08/2026
 
-> Auditoria do `vendas.md`, dos 8 knowledge files e do caminho de código que
+> Auditoria do `vendas.md`, dos knowledge files (8 na época, 9 hoje) e do caminho de código que
 > monta o system prompt, feita depois da primeira rodada de testes pela página
 > `/teste`. É uma **lista de correções pendentes**, não um relatório: cada item
 > diz onde está, por que importa e o que fazer.
@@ -38,7 +38,7 @@ node scripts/exportar-conversas.js --canal=web-test
 | 2 | Contradições da base e do gerador da grade | `knowledge/*.md`, `scripts/gerar-grade-horaria.js` | deploy na VPS |
 | 3 | Follow-up agendado por `scheduled_for` (bloco 7) | `src/services/ai-agent.js` + fila | deploy na VPS |
 | 4 | Campo `dados_coletados` no handoff | `src/services/ai-tools.js` | deploy na VPS |
-| 5 | Roteiro da frente 2 (aluno matriculado) e o fechamento 12:30–15:00 | `src/prompts/vendas.md` | `npm run prompt` |
+| 5 | Resto do roteiro da frente 2 (aluno matriculado) e o fechamento 12:30–15:00 | `src/prompts/vendas.md` | `npm run prompt` |
 
 Lembrete das duas armadilhas já conhecidas: **prompt só entra no banco pelo
 `npm run prompt`**, e **knowledge file só chega na VPS por deploy** — editar o
@@ -61,6 +61,9 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Clube Sábado na ordem de oferta (bloco 4) | `vendas.md` §6 | `npm run prompt` |
 | Agregadores sem nome fixo — só o ponteiro para a base (bloco 4) | `vendas.md`, frentes de trabalho | `npm run prompt` |
 | "Três frentes" e o cafezinho virando placeholder (bloco 5) | `vendas.md` | `npm run prompt` |
+| Roteiro da frente 2: objeto esquecido e app FITI | `vendas.md` + novo `knowledge/suporte-fiti.md` | `npm run prompt` + deploy |
+| Limite de agendamento completado: 3 no total, 1 por modalidade | `knowledge/operacional-adulto.md` | deploy |
+| Achados e perdidos, e a linha "Feriados" da tabela de horário, que tinha uma célula faltando | `knowledge/informacoes-gerais.md` | deploy |
 
 ### A ancoragem nova, em uma linha
 
@@ -189,7 +192,7 @@ Onde a base se contradiz, o agente escolhe uma versão por sorteio — e não av
 
 | Contradição | Onde | O que vale |
 |---|---|---|
-| **2 vs 3 agendamentos simultâneos** | `operacional-adulto.md` e `contrato-resumo.md` dizem 3; `grade-horaria.md` (seção Musculação) diz 2 | 3 — já decidido em 18/08 |
+| ✅ **2 vs 3 agendamentos simultâneos** — resolvido em 20/08/2026 | `grade-horaria.md` dizia 2; o gerador e o `.md` agora dizem o mesmo que a base | **3 no total, no máximo 1 por modalidade.** A regra completa veio das mensagens de erro do FITI; o "2" era simplesmente errado |
 | **Duração da aula adulta** | `atividades.md` diz 45 min; `grade-horaria.md` diz que "não consta", sob o título "não invente estes dados" | 45 min. Como está, o agente transfere numa pergunta já respondida |
 | **Piscina aquecida** | `informacoes-gerais.md` dá a temperatura (30–30,5 °C) e a FAQ confirma, mas a nota da seção Estrutura avisa que a afirmação "nunca foi confirmada" | O dado. A nota ficou obsoleta quando o campo foi preenchido, e hoje só serve para o agente hesitar num diferencial forte |
 | **Idade da natação bebê** | "até entre 3,5 e 4 anos" em três arquivos; "a 3 anos e 6 meses" no cabeçalho da seção Natação Bebê da grade | "entre 3,5 e 4 anos" — decisão do item 6 do pente fino |
@@ -226,7 +229,7 @@ FITI (como diz o `contrato-resumo.md`), não só na sexta.
 - ✅ **Wellhub/Gympass — aplicado em 20/08/2026.** Apareciam no prompt (frente 2, "convênio ou agregador") na
   frase que diz que agregador é atendido normalmente — mas a base é clara: só
   Totalpass, a partir do TP4. Basta tirar os nomes e deixar o ponteiro.
-- **A frente 2 (aluno matriculado) não tem roteiro.** O prompt é ~95% venda. Como
+- 🔸 **A frente 2 (aluno matriculado) não tinha roteiro — começou em 20/08/2026** (objeto esquecido e app FITI; o resto continua pendente). O prompt era ~95% venda. Como
   o WhatsApp de atendimento é o mesmo número principal da academia
   (11 94071-5006), quando o canal real entrar no ar **a maioria do volume será
   aluno, não lead** — e para esse público o prompt só oferece regras de
