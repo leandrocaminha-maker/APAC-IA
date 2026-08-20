@@ -288,6 +288,10 @@ function gerar() {
   out.push('2. **"até N vagas" é a capacidade máxima do horário, NÃO a quantidade de');
   out.push('   vagas livres.** Nunca afirme que há vaga. Para confirmar vaga, use');
   out.push('   `transferir_para_humano`.');
+  out.push('   Pelo mesmo motivo, **não existe aqui qual horário é mais cheio ou mais');
+  out.push('   vazio**: esta grade não registra movimento nem ocupação. Nunca diga que');
+  out.push('   um horário "é o pico", "costuma lotar" ou "é mais tranquilo" — isso é');
+  out.push('   invenção, mesmo quando parece óbvio.');
   out.push('3. **Esse número também não é o tamanho da turma.** No mesmo horário a');
   out.push('   piscina recebe mais de uma turma, divididas por nível. Os tamanhos de');
   out.push('   turma da natação infantil (até 5 iniciantes de 3 a 5 anos, até 6');

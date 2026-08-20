@@ -13,20 +13,18 @@
 > ⚠️ As referências de linha valem para o estado do repositório em 19/08/2026
 > (commit `38f41df`). Elas andam a cada edição — confira o trecho, não o número.
 
-## Contexto: o que esta auditoria não viu
+## Contexto: o que esta auditoria não viu — ✅ resolvido em 20/08/2026
 
-A revisão foi feita numa máquina **sem `.env`, sem `node_modules` e sem a chave
-`~/.ssh/aquap_vps`** — então não foi possível exportar as conversas nem entrar na
-VPS. É auditoria estática do texto e do código, cruzada com os números da rodada
-já registrados em `INFORMACOES-PENDENTES.md` (3 conversas, 34 mensagens, 3 em 3
-terminando em handoff).
+A revisão de 19/08 foi feita numa máquina **sem `.env`, sem `node_modules` e sem
+a chave `~/.ssh/aquap_vps`** — então não foi possível exportar as conversas nem
+entrar na VPS. Foi auditoria estática do texto e do código.
 
-**Primeira coisa a fazer na máquina de casa** — ler o que os testes realmente
-produziram, para conferir o que a leitura estática não pega (tom, tamanho de
-mensagem, se o agente obedeceu o formato WhatsApp):
+**As transcrições foram lidas em 20/08/2026** e estão no bloco 8, no fim deste
+documento — inclusive o que a leitura estática não pega: tom, tamanho de
+mensagem, formato WhatsApp e o que o agente de fato fez. Para regenerar:
 
 ```bash
-node scripts/exportar-conversas.js --canal=web-test
+npm run conversas -- --canal=web-test
 # gera data/conversas/transcricoes.md e conversas.json (fora do git)
 ```
 
@@ -76,6 +74,10 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Idade da natação bebê: de 12 meses até entre 3,5 e 4 anos | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
 | Data, dia da semana e hora em `America/Sao_Paulo` no system (bloco 2) | `src/services/ai-agent.js` | deploy |
 | Bloco de contato montado sempre, mesmo sem nome (bloco 2) | `src/services/ai-agent.js` | deploy |
+| Cancelamento em três turnos, transferência no último (bloco 8) | `vendas.md` | `npm run prompt` |
+| "Uma transferência por conversa" — fim das chamadas duplicadas (bloco 8) | `vendas.md` | `npm run prompt` |
+| Valor por dia só existe na tabela adulto; nunca calcular (bloco 8) | `vendas.md` | `npm run prompt` |
+| Proibido afirmar pico, lotação ou tranquilidade de horário (bloco 8) | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
 | Retenção no cancelamento: motivo trabalhado por professor e consultor, mais o argumento de reduzir em vez de parar | `vendas.md` | `npm run prompt` |
 
 ### A ancoragem nova, em uma linha
@@ -333,6 +335,80 @@ depois, cancelada se a pessoa responder antes. Não exige construir nada.
 
 Vale também para o outro buraco conhecido: enquanto o handoff não notifica
 ninguém, o mesmo mecanismo dá o aviso de "ninguém respondeu esta fila".
+
+---
+
+## 8. Leitura das transcrições — 20/08/2026
+
+*O que a auditoria estática não pôde fazer. Base: `npm run conversas -- --canal=web-test`,
+**21 conversas, 238 mensagens, 15 com handoff**, de 19/08 02:57 a 20/08 21:58.*
+
+### O achado que muda como ler todo o resto
+
+**31% das respostas da Leia no corpus nunca teriam sido enviadas em produção** —
+37 de 119, em 15 das 21 conversas.
+
+A página `/teste` **não desliga a IA** no handoff, de propósito, para o teste não
+morrer no ponto que mais interessa avaliar. Mas no WhatsApp o
+`transferir_para_humano` pausa o bot. Então **toda conversa do corpus continua
+além do ponto onde a real teria parado**, e qualquer contagem de mensagens, tom
+ou condução depois do primeiro handoff descreve um bot que não existe.
+
+Efeito colateral que isso revelou: **30 chamadas de handoff em 15 conversas**,
+com a id12 chamando **sete vezes**. O modelo vê no histórico que já transferiu e
+transfere de novo, porque nada dizia o que fazer depois. ✅ Corrigido em
+20/08/2026 pela regra "Uma transferência por conversa" no `vendas.md`.
+
+**Ao ler transcrições daqui em diante:** corte a conversa no primeiro handoff. O
+que vem depois é laboratório, não atendimento.
+
+### A taxa de handoff ainda não dá para comparar
+
+| | Conversas | Com handoff |
+|---|---|---|
+| Antes das mudanças de 20/08 | 18 | 14 (**78%**) |
+| Depois | 3 | 1 |
+
+As 3 conversas do "depois" incluem duas de verificação técnica. **A ancoragem
+nova, a régua da Objeção 4 e a política de descontos não foram exercitadas uma
+única vez.** O número de referência para a próxima rodada é **78%**.
+
+### Formato: a preocupação do bloco 5 não se confirmou
+
+Em 119 respostas, **zero** ocorrências de `**`, `##`, tabela ou bloco de código.
+Mediana de 260 caracteres e 2 linhas por resposta; 2 respostas acima de 600
+caracteres; nenhuma com mais de 2 emojis.
+
+O bloco 5 sugeria acrescentar exemplos em formato WhatsApp como contrapeso à
+pressão de imitação dos ~96 mil caracteres de base em markdown. **Não é
+necessário** — a regra declarativa está segurando sozinha.
+
+### Duas invenções — ✅ ambas corrigidas em 20/08/2026
+
+| O que ela inventou | Onde | Correção |
+|---|---|---|
+| *"As 19h são mesmo o pico aqui"* | id25 | A grade não registra movimento nem ocupação. Regra nova no gerador proíbe afirmar pico, lotação ou tranquilidade de horário |
+| *"No Anual dá cerca de R$ 7,50 por dia"*, sobre natação infantil | id12 | Calculado (227÷30). A tabela "valor por dia" é **só de adulto**. O `vendas.md` agora proíbe calcular valor por dia fora dela — e a criança nada 2x na semana, então "por dia" engana mesmo se o número fechasse |
+
+### O defeito do roteiro de cancelamento — ✅ corrigido em 20/08/2026
+
+A id25 rodou às 18:47, depois do deploy do roteiro. A Leia perguntou o motivo
+como mandava o texto, ouviu *"não tem vaga para eu parar o carro"* e **transferiu
+no turno seguinte**. Dois turnos depois o cliente digitou o motivo real — *"as
+aulas estão muito chatas"* — e ela conduziu bem, oferecendo troca de modalidade.
+
+**Em produção nada disso teria acontecido:** o bot estava pausado desde o
+estacionamento, e o motivo real nunca apareceria.
+
+O defeito era do texto, não do modelo: "sempre pergunte o motivo antes de
+encaminhar" foi cumprido ao pé da letra — perguntou, recebeu *uma* resposta,
+encaminhou. Faltava dizer que **o primeiro motivo dito quase nunca é o real** e
+que a alternativa concreta vem **antes** do encaminhamento. O cancelamento virou
+regra de três turnos, com a transferência no último.
+
+Junto veio outro sintoma no mesmo diálogo: ela escreveu "já estou te passando
+para um consultor" e, na mesma mensagem, seguiu perguntando. Ou encaminhou, ou
+está conduzindo — agora está dito.
 
 ---
 

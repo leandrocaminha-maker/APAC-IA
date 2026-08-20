@@ -11,6 +11,10 @@
 2. **"até N vagas" é a capacidade máxima do horário, NÃO a quantidade de
    vagas livres.** Nunca afirme que há vaga. Para confirmar vaga, use
    `transferir_para_humano`.
+   Pelo mesmo motivo, **não existe aqui qual horário é mais cheio ou mais
+   vazio**: esta grade não registra movimento nem ocupação. Nunca diga que
+   um horário "é o pico", "costuma lotar" ou "é mais tranquilo" — isso é
+   invenção, mesmo quando parece óbvio.
 3. **Esse número também não é o tamanho da turma.** No mesmo horário a
    piscina recebe mais de uma turma, divididas por nível. Os tamanhos de
    turma da natação infantil (até 5 iniciantes de 3 a 5 anos, até 6

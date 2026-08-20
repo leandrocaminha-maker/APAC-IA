@@ -309,8 +309,16 @@ O que ainda mexe no resultado e continua pendente:
    resposta curta de confirmação para imagem seria mais barata e evitaria o
    silêncio em qualquer outro caso.
 
-Comece exportando as transcrições: a auditoria é estática e não viu nenhuma
-conversa.
+As transcrições **foram lidas em 20/08/2026** — bloco 8 da revisão. O que sair de
+lá vira correção; o que ficou pendente está abaixo.
+
+⚠️ **Ao ler transcrições, corte a conversa no primeiro handoff.** A `/teste` não
+desliga a IA de propósito, mas o WhatsApp desliga: 31% das respostas do corpus
+(37 de 119) descrevem um bot que em produção já estaria pausado.
+
+⚠️ **Referência para comparar rodadas: 78% de handoff** (14 em 18 conversas, até
+as mudanças de 20/08). As 3 conversas posteriores não bastam para nada — a
+ancoragem nova e a política de descontos ainda não foram exercitadas.
 
 ### Tarefa combinada
 
