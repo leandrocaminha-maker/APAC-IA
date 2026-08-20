@@ -19,6 +19,24 @@ do aluno, não pelo plano — o valor é o mesmo nos três níveis):
 - **Intermediário:** 3 sessões
 - **Aperfeiçoamento:** 5 sessões
 
+**De que nível estamos falando** — a família fala pelo nome do nível ("meu filho
+está no N3", "ela passou pro Golfinho"), e o plano fala por frequência. Esta é a
+tradução entre os dois vocabulários:
+
+| Frequência | Turmas de 3 a 5 anos | Turmas de 6 a 12 anos |
+|---|---|---|
+| **Iniciante** — 2 sessões | Adaptação, Estrelinha N1, Peixinho N2 | N1 Branca, N2 Branca |
+| **Intermediário** — 3 sessões | Golfinho I, Golfinho II, Jubarte | N3 Amarela, N4 Amarela |
+| **Aperfeiçoamento** — 5 sessões | — | N5 Laranja, N6 Laranja, N7 Vermelha, N8 Vermelha, Atleta |
+
+**A trilha de 3 a 5 anos não chega ao Aperfeiçoamento** — ela vai até
+Intermediário, e o salto para 5 sessões acontece na faixa de 6 a 12.
+
+Isso bate com o que a base infantil já diz por outro caminho: ao chegar no
+**Golfinho I** a criança ganha 1 aula extra por semana (2 + 1 = 3), e nas turmas
+de 6 a 12 o **N3 Amarela** ganha 1 extra (3) e o **N5 Laranja** ganha 3 extras
+(5). Níveis e detalhamento de cada um em `base-conhecimento-natacao-infantil.md`.
+
 ### Natação Infantil — 3 a 12 anos
 
 | Tipo de plano | Valor | Detalhes |

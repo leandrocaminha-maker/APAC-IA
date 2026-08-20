@@ -24,6 +24,11 @@
 * Iniciantes ficam em turmas reduzidas de até 5     alunos.
 *Ao chegar no nível Golfinho I, passa ter direito a uma aula de natação extra na semana.
 
+> **Nível ↔ frequência do plano:** a tabela que traduz estes níveis para
+> Iniciante / Intermediário / Aperfeiçoamento (2 / 3 / 5 sessões por semana) está
+> em `planos-e-valores.md`. Use-a sempre que a família falar pelo nome do nível e
+> a pergunta for sobre quantas vezes por semana a criança nada.
+
 ### Adaptação (3 a 5 anos)
 
 Ganhar confiança no meio líquido, aprender a controlar a respiração ao submergir, brincar com os colegas e materiais, deslocar-se na plataforma e realizar pequenos saltos e flutuações.

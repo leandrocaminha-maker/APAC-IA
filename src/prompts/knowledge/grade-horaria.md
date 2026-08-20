@@ -23,7 +23,12 @@
    é o par (ver a regra na próxima seção).
 6. Dois horários seguidos da mesma modalidade (ex.: 19:00 e 19:40) são turmas
    diferentes, não uma aula longa.
-7. A grade pode mudar; ao fechar a matrícula, o horário é confirmado pelo consultor.
+7. **Nem todo horário infantil lista os níveis que atende.** Quando o horário
+   não especificar os níveis, assuma que **todos os níveis daquele grupo
+   etário estão inclusos** — não diga que o nível da criança não é atendido
+   ali, e não transfira por causa disso. A confirmação do nível na turma é
+   do consultor, junto com a vaga.
+8. A grade pode mudar; ao fechar a matrícula, o horário é confirmado pelo consultor.
 
 ## Aulas x funcionamento
 

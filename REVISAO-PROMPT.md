@@ -72,6 +72,8 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Prazo do atestado: também aceito após o retorno, se não frequentou | `contrato-resumo.md`, `operacional-adulto.md`, `vendas.md` | ambos |
 | Descontos não acumulam: quem se enquadra nos dois tem 10%, não 20% | `knowledge/planos-e-valores.md` | deploy |
 | Nota obsoleta da piscina removida (bloco 3) | `knowledge/informacoes-gerais.md` | deploy |
+| Mapeamento nível ↔ frequência (Iniciante/Intermediário/Aperfeiçoamento × Adaptação…Atleta) | `knowledge/planos-e-valores.md` + ponteiro na base infantil | deploy |
+| Horário infantil sem níveis listados = todos os níveis do grupo | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
 | Retenção no cancelamento: motivo trabalhado por professor e consultor, mais o argumento de reduzir em vez de parar | `vendas.md` | `npm run prompt` |
 
 ### A ancoragem nova, em uma linha
@@ -211,7 +213,7 @@ Onde a base se contradiz, o agente escolhe uma versão por sorteio — e não av
 bloco "Pendências desta grade"). Corrigir só o markdown seria desfeito no
 próximo `npm run grade`.
 
-### Um mapeamento que falta
+### Um mapeamento que falta — ✅ aplicado em 20/08/2026
 
 `planos-e-valores.md` define frequência semanal por **Iniciante / Intermediário /
 Aperfeiçoamento** (2 / 3 / 5 sessões). A base infantil fala em **Golfinho I**,
