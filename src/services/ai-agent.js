@@ -246,15 +246,23 @@ function buildDynamicContext(contactInfo = {}) {
     `- Tags: ${(contactInfo.tags || []).join(', ') || 'nenhuma'}`,
   ];
 
-  // Explícito nos três estados: um contato sem `is_prospect` definido não é a
-  // mesma coisa que um aluno matriculado, e tratar como aluno faria o agente
-  // pular o roteiro de venda com quem é lead.
-  if (contactInfo.is_prospect === true) {
-    linhas.push('- É prospect: Sim (ainda não é aluno)');
-  } else if (contactInfo.is_prospect === false) {
-    linhas.push('- É prospect: Não (já é aluno matriculado)');
+  // `is_prospect` NÃO é dado verificado. Nasce TRUE por padrão em `contacts.js`
+  // e em `teste.js`, e nada no sistema o coloca em false — nem o
+  // `evo_member_id`, que existe no schema com índice e que nenhum código
+  // preenche (0 de 11 contatos em 20/08/2026). Ou seja: hoje não há sinal
+  // algum separando lead de aluno matriculado.
+  //
+  // Por isso só o `false` vira afirmação. Reportar "Sim" como fato faria o
+  // agente abrir toda conversa em modo venda — inclusive com aluno matriculado,
+  // que é a maioria do volume esperado no número principal da academia.
+  if (contactInfo.is_prospect === false) {
+    linhas.push('- É prospect: Não — já é aluno matriculado (confirmado)');
   } else {
-    linhas.push('- É prospect: não sabemos — descubra na conversa antes de assumir');
+    linhas.push(
+      '- É prospect: NÃO CONFIRMADO. O sistema marca todo contato novo como ' +
+      'prospect por padrão, então isto não quer dizer que a pessoa seja um ' +
+      'lead — pode ser um aluno matriculado. Descubra na conversa.',
+    );
   }
 
   return `\n\n${linhas.join('\n')}`;

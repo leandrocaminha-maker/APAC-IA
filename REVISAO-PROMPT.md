@@ -32,9 +32,10 @@ npm run conversas -- --canal=web-test
 
 | # | Bloco | Onde | Vale no atendimento depois de |
 |---|---|---|---|
-| 1 | Follow-up agendado por `scheduled_for` (bloco 7) | `src/services/ai-agent.js` + fila | deploy na VPS |
-| 2 | Campo `dados_coletados` no handoff (bloco 6) | `src/services/ai-tools.js` | deploy na VPS |
-| 3 | Resto do roteiro da frente 2 e o fechamento 12:30–15:00 (bloco 4) | `src/prompts/vendas.md` | `npm run prompt` |
+| 1 | Preencher `evo_member_id` na criação do contato, para existir sinal de lead vs aluno (bloco 9) | `src/services/contacts.js` + `evo-client.js` | deploy na VPS |
+| 2 | Follow-up agendado por `scheduled_for` (bloco 7) | `src/services/ai-agent.js` + fila | deploy na VPS |
+| 3 | Campo `dados_coletados` no handoff (bloco 6) | `src/services/ai-tools.js` | deploy na VPS |
+| 4 | Resto do roteiro da frente 2 e o fechamento 12:30–15:00 (bloco 4) | `src/prompts/vendas.md` | `npm run prompt` |
 
 Lembrete das duas armadilhas já conhecidas: **prompt só entra no banco pelo
 `npm run prompt`**, e **knowledge file só chega na VPS por deploy** — editar o
@@ -78,6 +79,8 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | "Uma transferência por conversa" — fim das chamadas duplicadas (bloco 8) | `vendas.md` | `npm run prompt` |
 | Valor por dia só existe na tabela adulto; nunca calcular (bloco 8) | `vendas.md` | `npm run prompt` |
 | Proibido afirmar pico, lotação ou tranquilidade de horário (bloco 8) | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
+| Abertura reescrita: lê a 1ª mensagem, não presume lead, sem fórmula fixa (bloco 9) | `vendas.md` §1 e §2 | `npm run prompt` |
+| `is_prospect` deixa de sair como fato quando é só o default (bloco 9) | `src/services/ai-agent.js` | deploy |
 | Retenção no cancelamento: motivo trabalhado por professor e consultor, mais o argumento de reduzir em vez de parar | `vendas.md` | `npm run prompt` |
 
 ### A ancoragem nova, em uma linha
@@ -409,6 +412,36 @@ regra de três turnos, com a transferência no último.
 Junto veio outro sintoma no mesmo diálogo: ela escreveu "já estou te passando
 para um consultor" e, na mesma mensagem, seguiu perguntando. Ou encaminhou, ou
 está conduzindo — agora está dito.
+
+---
+
+## 9. 🔴 Não existe sinal de lead vs aluno — e o default mente
+
+*Achado de 20/08/2026, ao investigar por que toda abertura saía em modo venda.*
+
+**`is_prospect` nunca é verificado.** Nasce `TRUE` por padrão no schema
+([001_whatsapp_schema.sql:42](supabase/migrations/001_whatsapp_schema.sql#L42)) e é
+escrito como `true` na criação em `contacts.js` e `teste.js`. **Nada, em lugar
+nenhum, o coloca em `false`.**
+
+**`evo_member_id` é o vínculo com o aluno e ninguém preenche.** Existe no schema
+com índice próprio, e **0 de 11 contatos** o têm em 20/08/2026.
+
+Ou seja: hoje **não há nenhum sinal separando lead de aluno matriculado** — e o
+`É prospect: Sim` que o system emitia era um default se apresentando como fato,
+empurrando o agente para o roteiro de venda com todo mundo. No número principal
+da academia, onde a maioria do volume será aluno, isso erra a maior parte das
+conversas.
+
+✅ **Paliativo aplicado em 20/08/2026:** `buildDynamicContext` só afirma quando o
+dado é `false`; `true` sai como "NÃO CONFIRMADO", com a explicação de que é o
+default do sistema. A abertura foi reescrita para não presumir lead. É honesto,
+mas é contorno: o agente descobre conversando.
+
+**Correção de verdade:** preencher `evo_member_id` na criação do contato,
+buscando o telefone no EVO — o `evo-client.js` já existe. Com isso `is_prospect`
+vira dado real, e a abertura pode se ajustar antes da primeira palavra. Depende
+de normalizar o telefone antes da busca, que já é débito conhecido.
 
 ---
 

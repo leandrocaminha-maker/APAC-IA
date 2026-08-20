@@ -293,16 +293,21 @@ preços. Detalhe e as decisões por trás em "O que já foi aplicado".
 
 O que ainda mexe no resultado e continua pendente:
 
-1. **Follow-up agendado** (bloco 7 da revisão) — `wa_message_queue.scheduled_for`,
+1. **Não existe sinal de lead vs aluno** (bloco 9 da revisão) — `is_prospect`
+   nasce `true` e nada o põe em `false`; `evo_member_id` existe no schema e
+   ninguém preenche (0 de 11 contatos). A abertura foi reescrita para não
+   presumir, mas isso é contorno: preencher o `evo_member_id` na criação do
+   contato é o que resolve.
+2. **Follow-up agendado** (bloco 7 da revisão) — `wa_message_queue.scheduled_for`,
    o worker e a rota já existem e ninguém enfileira mensagem futura. Enquanto
    isso, quem some depois de ver preço some em silêncio.
-2. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
+3. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
    está no começo: cobre objeto esquecido, dificuldade com o app FITI
    (`suporte-fiti.md`), afastamento médico, troca de horário e cancelamento de
    contrato. Falta o resto do que chega de aluno, como reposição de aula. Continua
    sendo a maior lacuna de escopo para quando o WhatsApp principal entrar no ar,
    porque ali a maioria do volume será aluno, não lead.
-3. **Imagem chega e o bot fica mudo.** `webhook.js` registra foto, documento e
+4. **Imagem chega e o bot fica mudo.** `webhook.js` registra foto, documento e
    vídeo sem responder nada — áudio ao menos ganha um "não consigo ouvir". Isso
    passou a importar quando o roteiro de afastamento passou a pedir foto de
    atestado: o roteiro contorna transferindo antes da foto chegar, mas uma
