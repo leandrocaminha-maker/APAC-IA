@@ -293,22 +293,16 @@ preços. Detalhe e as decisões por trás em "O que já foi aplicado".
 
 O que ainda mexe no resultado e continua pendente:
 
-1. **O agente não sabe que dia é hoje** — nenhuma data entra no system, com a
-   grade horária inteira carregada no contexto. Corrige em `ai-agent.js`, no
-   bloco depois do `cache_control`, junto com o bug do contexto de contato que
-   some quando não há nome.
-2. **Follow-up agendado** (bloco 7 da revisão) — `wa_message_queue.scheduled_for`,
+1. **Follow-up agendado** (bloco 7 da revisão) — `wa_message_queue.scheduled_for`,
    o worker e a rota já existem e ninguém enfileira mensagem futura. Enquanto
    isso, quem some depois de ver preço some em silêncio.
-3. **Contradições da base — fechadas em 20/08/2026.** As quatro do bloco 3 e o
-   mapeamento nível ↔ frequência foram corrigidos no gerador e no `.md` juntos.
-4. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
+2. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
    está no começo: cobre objeto esquecido, dificuldade com o app FITI
    (`suporte-fiti.md`), afastamento médico, troca de horário e cancelamento de
    contrato. Falta o resto do que chega de aluno, como reposição de aula. Continua
    sendo a maior lacuna de escopo para quando o WhatsApp principal entrar no ar,
    porque ali a maioria do volume será aluno, não lead.
-5. **Imagem chega e o bot fica mudo.** `webhook.js` registra foto, documento e
+3. **Imagem chega e o bot fica mudo.** `webhook.js` registra foto, documento e
    vídeo sem responder nada — áudio ao menos ganha um "não consigo ouvir". Isso
    passou a importar quando o roteiro de afastamento passou a pedir foto de
    atestado: o roteiro contorna transferindo antes da foto chegar, mas uma
@@ -389,12 +383,12 @@ detalhes:
 - **Evolution na 8080 poderia ser fechada** — o backend fala com ela por dentro
   da `apac-network` e o QR sai por `/admin/whatsapp/qrcode`.
 - **`ai_enabled` é gravado mas nunca lido** — só `status === 'human'` é checado.
-- **Nenhuma data ou hora entra no system prompt** — com a grade horária inteira
-  no contexto, o agente não responde "tem aula hoje?" e não sabe se está fora do
-  horário de atendimento ([REVISAO-PROMPT.md](REVISAO-PROMPT.md), bloco 2).
-- **O bloco de contato desaparece sem nome** — `contactInfo.name ? ... : ''` em
-  `ai-agent.js` derruba também o `is_prospect` e as tags. Na página `/teste` o
-  contato nasce sem nome, então boa parte dos testes rodou sem esse contexto.
+- ~~**Nenhuma data ou hora entra no system prompt**~~ e ~~**o bloco de contato
+  desaparece sem nome**~~ — **resolvidos em 20/08/2026.** `buildDynamicContext`
+  em `ai-agent.js` monta a camada 3 sempre, com data, dia da semana e hora em
+  `America/Sao_Paulo`, e com o contato completo mesmo sem nome. Fica **depois**
+  do `cache_control`: antes do breakpoint a hora invalidaria o cache a cada
+  minuto.
 - **Telefone não é normalizado** antes das buscas no EVO.
 - **CORS só lista `localhost`** em `server.js`; faltam os domínios de produção.
 

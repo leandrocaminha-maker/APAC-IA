@@ -30,6 +30,11 @@ const MAX_TOOL_ITERATIONS = 5;
 
 const FALLBACK_TEXT = 'Desculpe, não consegui processar sua solicitação no momento.';
 
+// A academia é uma só e fica em São Paulo. O servidor roda em UTC, então sem
+// isto a data e a hora que o agente enxerga ficariam 3 horas à frente — e à
+// meia-noite ele erraria o dia da semana inteiro, que é o dado que a grade usa.
+const TIMEZONE = 'America/Sao_Paulo';
+
 // O SDK já reenvia sozinho em 429 e 5xx — era exatamente o que faltava
 // quando um 503 transitório do provedor derrubava o atendimento.
 const client = new Anthropic({
@@ -202,6 +207,60 @@ async function loadConversationHistory(conversationId, { limit = 20, excludeMess
 }
 
 /**
+ * Monta a camada 3 do system: a data/hora de agora e o contato da conversa.
+ *
+ * **Data e hora.** Sem isto o modelo não tem relógio nenhum, e a grade horária
+ * inteira está no contexto: ele não responde "tem natação hoje à noite?" nem
+ * "amanhã de manhã", não sabe se a academia está aberta agora, e chega a
+ * sugerir uma aula experimental "hoje" sem saber que hoje é domingo. Não
+ * calculamos aqui se está aberto — o horário de funcionamento vive na base de
+ * conhecimento, e duplicá-lo em código criaria mais uma fonte para divergir.
+ *
+ * **Por que o bloco é montado sempre.** A versão anterior era
+ * `contactInfo.name ? bloco : ''`: sem nome, o bloco inteiro sumia e levava
+ * junto o `is_prospect`, que é o que distingue lead de aluno. Na página
+ * `/teste` o contato nasce com `name: null`, então boa parte das conversas de
+ * teste rodou sem contexto de contato algum.
+ */
+function buildDynamicContext(contactInfo = {}) {
+  const agora = new Date();
+  const formatar = (opcoes) =>
+    new Intl.DateTimeFormat('pt-BR', { timeZone: TIMEZONE, ...opcoes }).format(agora);
+
+  const linhas = [
+    '## AGORA',
+    `- Data: ${formatar({ day: '2-digit', month: '2-digit', year: 'numeric' })}`,
+    `- Dia da semana: ${formatar({ weekday: 'long' })}`,
+    `- Hora: ${formatar({ hour: '2-digit', minute: '2-digit' })} (horário de Brasília)`,
+    '',
+    'Use isto para "hoje", "amanhã", "hoje à noite" e para saber se a academia',
+    'está aberta neste momento — o horário de funcionamento está na base de',
+    'conhecimento. Nunca sugira uma aula em dia ou horário em que a academia',
+    'não abre.',
+    '',
+    '## CONTATO ATUAL',
+    contactInfo.name
+      ? `- Nome: ${contactInfo.name}`
+      : '- Nome: ainda não informado — pergunte quando fizer sentido',
+    `- Telefone: ${contactInfo.phone || 'N/A'}`,
+    `- Tags: ${(contactInfo.tags || []).join(', ') || 'nenhuma'}`,
+  ];
+
+  // Explícito nos três estados: um contato sem `is_prospect` definido não é a
+  // mesma coisa que um aluno matriculado, e tratar como aluno faria o agente
+  // pular o roteiro de venda com quem é lead.
+  if (contactInfo.is_prospect === true) {
+    linhas.push('- É prospect: Sim (ainda não é aluno)');
+  } else if (contactInfo.is_prospect === false) {
+    linhas.push('- É prospect: Não (já é aluno matriculado)');
+  } else {
+    linhas.push('- É prospect: não sabemos — descubra na conversa antes de assumir');
+  }
+
+  return `\n\n${linhas.join('\n')}`;
+}
+
+/**
  * Processa uma mensagem do usuário com o agente IA.
  *
  * O prompt é composto por 3 camadas:
@@ -232,28 +291,24 @@ export async function processMessage({
   // Camada 2: Knowledge files (planos, horários, FAQ)
   const knowledge = await loadKnowledgeFiles();
 
-  // Camada 3: Contexto do contato atual
-  const contactContext = contactInfo.name
-    ? `\n\n## CONTATO ATUAL\n- Nome: ${contactInfo.name}\n- Telefone: ${contactInfo.phone || 'N/A'}\n- É prospect: ${contactInfo.is_prospect ? 'Sim' : 'Não (já é aluno)'}\n- Tags: ${(contactInfo.tags || []).join(', ') || 'nenhuma'}`
-    : '';
+  // Camada 3: o que muda a cada mensagem — agora e contato.
+  const dynamicContext = buildDynamicContext(contactInfo);
 
   // O system vai em DOIS blocos por causa do prompt caching.
   //
   // As camadas 1 e 2 são byte-a-byte idênticas em toda mensagem de todo
   // cliente — elas levam o breakpoint de cache e passam a custar ~10% na
-  // leitura. O contexto do contato muda a cada conversa, então fica DEPOIS
-  // do breakpoint: se viesse antes, invalidaria o cache a cada contato
-  // diferente e nunca haveria acerto.
+  // leitura. A camada 3 muda a cada conversa E a cada minuto, então fica
+  // DEPOIS do breakpoint: se a hora viesse antes, invalidaria o cache a cada
+  // minuto e nunca haveria acerto.
   const system = [
     {
       type: 'text',
       text: systemPrompt + knowledge,
       cache_control: { type: 'ephemeral' },
     },
+    { type: 'text', text: dynamicContext },
   ];
-  if (contactContext) {
-    system.push({ type: 'text', text: contactContext });
-  }
 
   // Carrega histórico e acrescenta a mensagem atual
   const history = await loadConversationHistory(conversationId, { excludeMessageId });

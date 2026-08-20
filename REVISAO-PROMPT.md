@@ -34,10 +34,9 @@ node scripts/exportar-conversas.js --canal=web-test
 
 | # | Bloco | Onde | Vale no atendimento depois de |
 |---|---|---|---|
-| 1 | Data/hora no system e bloco de contato que some sem nome (bloco 2) | `src/services/ai-agent.js` | deploy na VPS |
-| 2 | Follow-up agendado por `scheduled_for` (bloco 7) | `src/services/ai-agent.js` + fila | deploy na VPS |
-| 3 | Campo `dados_coletados` no handoff (bloco 6) | `src/services/ai-tools.js` | deploy na VPS |
-| 4 | Resto do roteiro da frente 2 e o fechamento 12:30–15:00 (bloco 4) | `src/prompts/vendas.md` | `npm run prompt` |
+| 1 | Follow-up agendado por `scheduled_for` (bloco 7) | `src/services/ai-agent.js` + fila | deploy na VPS |
+| 2 | Campo `dados_coletados` no handoff (bloco 6) | `src/services/ai-tools.js` | deploy na VPS |
+| 3 | Resto do roteiro da frente 2 e o fechamento 12:30–15:00 (bloco 4) | `src/prompts/vendas.md` | `npm run prompt` |
 
 Lembrete das duas armadilhas já conhecidas: **prompt só entra no banco pelo
 `npm run prompt`**, e **knowledge file só chega na VPS por deploy** — editar o
@@ -75,6 +74,8 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Horário infantil sem níveis listados = todos os níveis do grupo | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
 | Duração das aulas: seção própria na grade, 45 min adultas e coletivas | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
 | Idade da natação bebê: de 12 meses até entre 3,5 e 4 anos | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
+| Data, dia da semana e hora em `America/Sao_Paulo` no system (bloco 2) | `src/services/ai-agent.js` | deploy |
+| Bloco de contato montado sempre, mesmo sem nome (bloco 2) | `src/services/ai-agent.js` | deploy |
 | Retenção no cancelamento: motivo trabalhado por professor e consultor, mais o argumento de reduzir em vez de parar | `vendas.md` | `npm run prompt` |
 
 ### A ancoragem nova, em uma linha
@@ -170,7 +171,7 @@ e a descrição da tool. Os dois foram corrigidos.
 
 ---
 
-## 2. 🔴 O agente não sabe que dia é hoje
+## 2. 🔴 O agente não sabe que dia é hoje — ✅ aplicado em 20/08/2026
 
 Em `ai-agent.js` (`processMessage`, camada 3) o único bloco dinâmico é o do
 contato — nome, telefone, prospect, tags. **Nenhuma data ou hora entra no system
@@ -187,7 +188,7 @@ significa que o agente:
 **no segundo elemento do array `system`**, junto do contexto do contato — depois
 do `cache_control`. Antes do breakpoint ele invalidaria o cache a cada minuto.
 
-### Bug de contexto no mesmo trecho
+### Bug de contexto no mesmo trecho — ✅ aplicado em 20/08/2026
 
 `contactInfo.name ? ... : ''` faz o bloco inteiro desaparecer quando não há nome.
 Na página `/teste` o contato nasce com `name: null` (`routes/teste.js`), então
