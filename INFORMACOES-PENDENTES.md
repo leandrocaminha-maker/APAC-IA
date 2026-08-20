@@ -120,9 +120,11 @@ Golfinho I / N3 Amarela / N5 Laranja, e nenhum arquivo liga os dois vocabulário
 "Meu filho está no N3, quantas vezes por semana ele nada?" hoje exige três saltos
 de inferência.
 
-**Vigência a confirmar:** `planos-e-valores.md` diz que a tabela adulto foi
-"reformulada em Setembro/2026" — data futura. Se ainda não entrou em vigor, o
-agente está cotando preço que não vale.
+**Vigência da tabela — resolvido em 20/08/2026:** a tabela adulto vale. Quando o
+agente entrar em conversas reais ela já estará em vigor. E a regra geral: **o
+agente não deve saber de vigência de tabela nenhuma** — a tabela que está na
+base é, por definição, a que vale. A linha de vigência saiu do cabeçalho do
+`planos-e-valores.md`.
 
 ---
 

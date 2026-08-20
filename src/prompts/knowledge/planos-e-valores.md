@@ -1,9 +1,5 @@
 # Planos e Valores — AP Academia
 
-> Vigência: tabela infantil de Janeiro/2026; tabela adulto reformulada em
-> Setembro/2026 (foco em conversão para plano Anual). Clube Sábado incluído em
-> 18/08/2026.
->
 > Regras de uso do plano adulto (agendamento, suspensão, devolução,
 > cancelamento) ficam em `operacional-adulto.md`.
 > Edite este arquivo sempre que os planos ou valores mudarem.

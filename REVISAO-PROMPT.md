@@ -5,9 +5,10 @@
 > `/teste`. É uma **lista de correções pendentes**, não um relatório: cada item
 > diz onde está, por que importa e o que fazer.
 >
-> Nada aqui foi aplicado. Ver [HANDOFF.md](HANDOFF.md) para o estado do
-> projeto e [INFORMACOES-PENDENTES.md](INFORMACOES-PENDENTES.md) para as
-> lacunas de conteúdo da base.
+> ✅ **Parcialmente aplicado em 20/08/2026** — ver "O que já foi aplicado",
+> logo abaixo. O resto segue pendente. Ver [HANDOFF.md](HANDOFF.md) para o
+> estado do projeto e [INFORMACOES-PENDENTES.md](INFORMACOES-PENDENTES.md) para
+> as lacunas de conteúdo da base.
 >
 > ⚠️ As referências de linha valem para o estado do repositório em 19/08/2026
 > (commit `38f41df`). Elas andam a cada edição — confira o trecho, não o número.
@@ -33,24 +34,70 @@ node scripts/exportar-conversas.js --canal=web-test
 
 | # | Bloco | Onde | Vale no atendimento depois de |
 |---|---|---|---|
-| 1 | Regras de handoff + aula experimental | `src/prompts/vendas.md` | `npm run prompt` |
-| 2 | Data/hora e bloco de contato | `src/services/ai-agent.js` | deploy na VPS |
-| 3 | Contradições da base e do gerador da grade | `knowledge/*.md`, `scripts/gerar-grade-horaria.js` | deploy na VPS |
-| 4 | Lacunas do roteiro (Clube Sábado, aluno matriculado) | `src/prompts/vendas.md` | `npm run prompt` |
-| 5 | Campo `dados_coletados` no handoff | `src/services/ai-tools.js` | deploy na VPS |
+| 1 | Data/hora e bloco de contato | `src/services/ai-agent.js` | deploy na VPS |
+| 2 | Contradições da base e do gerador da grade | `knowledge/*.md`, `scripts/gerar-grade-horaria.js` | deploy na VPS |
+| 3 | Follow-up agendado por `scheduled_for` (bloco 7) | `src/services/ai-agent.js` + fila | deploy na VPS |
+| 4 | Campo `dados_coletados` no handoff | `src/services/ai-tools.js` | deploy na VPS |
+| 5 | Roteiro da frente 2 (aluno matriculado) e o fechamento 12:30–15:00 | `src/prompts/vendas.md` | `npm run prompt` |
 
 Lembrete das duas armadilhas já conhecidas: **prompt só entra no banco pelo
 `npm run prompt`**, e **knowledge file só chega na VPS por deploy** — editar o
 arquivo local não muda nada no atendimento.
 
+## ✅ O que já foi aplicado — 20/08/2026
+
+Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
+`vendas.md` exige `npm run prompt`, knowledge file exige deploy.
+
+| O quê | Onde | Falta |
+|---|---|---|
+| Vigência da tabela removida (ver "Respondido pelo Leandro", no fim) | `knowledge/planos-e-valores.md` | deploy |
+| Ancoragem em turnos, no lugar dos "10 segundos" (bloco 5) | `vendas.md` §6 | `npm run prompt` |
+| Régua da Objeção 4 — desconto e "está caro" | `vendas.md`, matriz de objeções | `npm run prompt` |
+| Handoff Financeiro reescopado para aluno matriculado (bloco 1b) | `vendas.md`, "Quando transferir" | `npm run prompt` |
+| Aula experimental: responde, ajuda a escolher o horário, e só então transfere (bloco 1a) | `vendas.md`, fim da matriz de objeções | `npm run prompt` |
+| FITI separando pergunta de venda de problema de conta (bloco 1c) | `vendas.md`, "Quando transferir" | `npm run prompt` |
+| Contrapeso na regra de "dado fora da base" (bloco 1d) | `vendas.md` + `ai-tools.js` | `npm run prompt` + deploy |
+| Clube Sábado na ordem de oferta (bloco 4) | `vendas.md` §6 | `npm run prompt` |
+| Agregadores sem nome fixo — só o ponteiro para a base (bloco 4) | `vendas.md`, frentes de trabalho | `npm run prompt` |
+| "Três frentes" e o cafezinho virando placeholder (bloco 5) | `vendas.md` | `npm run prompt` |
+
+### A ancoragem nova, em uma linha
+
+Mensal (com a adesão) **citado e descartado na mesma frase** → Assinatura
+descrita como formato mais comum → fecho com pergunta de reação e a promessa de
+**montar um plano** para ela → turno seguinte, o Anual, único plano que a Leia
+diz indicar. Regra de turno, não de tempo: o modelo roda uma vez por mensagem
+recebida e não tem relógio.
+
+Três decisões que sustentam isso, para não serem desfeitas por engano:
+
+- **A âncora é o Mensal, não a Assinatura** — R$ 279 + R$ 184 de adesão contra
+  R$ 239 é uma âncora bem mais alta que R$ 239 contra R$ 199. Descartá-la na
+  mesma frase evita o susto: a batida deixa de ser "é caro demais" e vira "ela
+  está do meu lado". E não custa um turno a mais.
+- **O gancho promete composição, nunca preço menor.** Dizer que existe algo mais
+  barato avisa que o valor recém-dado não era real, e a pessoa para de avaliar a
+  proposta para esperar a oferta "de verdade".
+- **"É o que eu indico" aparece uma única vez, e é no Anual.** Recomendar a
+  Assinatura e trocar a recomendação depois é exatamente o que faz a conversa
+  parecer enrolação.
+
+⚠️ **Por que a Objeção 4 tinha que ir junto:** a ancoragem nova põe a adesão de
+R$ 184 na mesa mais cedo, de propósito — é ela que faz a isenção do Anual valer
+alguma coisa. Sem o reescopo do Financeiro, isso aumentaria o handoff em vez de
+reduzir.
+
 ---
 
-## 1. 🔴 Por que todo lead bem conduzido termina em handoff
+---
+
+## 1. 🔴 Por que todo lead bem conduzido termina em handoff — ✅ blocos a, b, c e d aplicados em 20/08/2026
 
 Os três motivos registrados na rodada de 19/08 não são acaso: são quatro regras
 do prompt disparando cedo demais. É o bloco de maior impacto na conversão.
 
-### a) A regra da aula experimental está desatualizada
+### a) A regra da aula experimental está desatualizada — ✅ aplicado em 20/08/2026
 
 `vendas.md` (fim da matriz de objeções, ~linha 391) ainda diz que as condições da
 aula experimental "estão PENDENTE" e manda transferir se a pessoa perguntar como
@@ -64,7 +111,7 @@ manda fechar.
 grade**, e só então transferir — com atividade e horário já combinados no
 `motivo`. É o mesmo handoff, com valor completamente diferente para o consultor.
 
-### b) "Financeiro … negociação" captura objeção de preço de lead novo
+### b) "Financeiro … negociação" captura objeção de preço de lead novo — ✅ aplicado em 20/08/2026
 
 `vendas.md`, seção "Quando transferir para humano": *"Financeiro — pagamento
 pendente, cobrança, estorno, negociação"*, sob a instrução "imediatamente, sem
@@ -80,7 +127,7 @@ explícita: *pedido de desconto ou reclamação de preço em venda nova → prim
 Anual isento de adesão e a combinação de formas de pagamento; só transfira se a
 pessoa insistir em condição fora de tabela.*
 
-### c) A regra do FITI se contradiz
+### c) A regra do FITI se contradiz — ✅ aplicado em 20/08/2026
 
 O cabeçalho da seção diz "transferir **imediatamente, sem tentar resolver**"; o
 item do FITI diz "apresente o processo padrão de agendamento e na sequência
@@ -90,7 +137,7 @@ transfira". Nas duas leituras o handoff acontece.
 pergunta de venda (responde e segue); *"não consigo entrar no app / minha reserva
 sumiu"* é conta (transfere).
 
-### d) A regra guarda-chuva tem três reforços e nenhum contrapeso
+### d) A regra guarda-chuva tem três reforços e nenhum contrapeso — ✅ aplicado em 20/08/2026
 
 "Qualquer dado que não esteja na base de conhecimento" (`vendas.md`) +
 `NO_KNOWLEDGE_GUARD` (`ai-agent.js`) + a descrição da tool
@@ -99,6 +146,12 @@ sumiu"* é conta (transfere).
 **Correção:** acrescentar o contrapeso que hoje não existe em lugar nenhum —
 *antes de transferir por falta de dado, verifique se a pergunta pode ser
 respondida com o que existe; transfira só o que falta, sem encerrar a conversa.*
+
+⚠️ **Correção da auditoria:** `NO_KNOWLEDGE_GUARD` não é um terceiro reforço no
+uso normal. Lendo `ai-agent.js`, ele só entra quando a base **falha ao carregar**
+(pasta vazia ou erro de leitura) — nesse cenário mandar transferir é o
+comportamento certo e ficou como está. Os reforços reais eram dois: o `vendas.md`
+e a descrição da tool. Os dois foram corrigidos.
 
 ---
 
@@ -163,14 +216,14 @@ FITI (como diz o `contrato-resumo.md`), não só na sexta.
 
 ## 4. 🟡 Buracos no roteiro de venda
 
-- **Clube Sábado não aparece uma única vez no `vendas.md`.** A base diz "antes de
+- ✅ **Clube Sábado — aplicado em 20/08/2026.** Não aparecia uma única vez no `vendas.md`. A base diz "antes de
   descartar um lead por indisponibilidade na semana, ofereça o Clube Sábado", mas
   a "Ordem de oferta" do prompt só conhece Performa / Aqua / Plus. Quem só pode
   sábado hoje ouve "não temos horário".
 - **O fechamento das 12:30 às 15:00** é tratado pela base como informação de
   venda, e a etapa 4 do prompt (Disponibilidade) não pergunta nada a respeito.
   Descobrir isso depois da matrícula é churn.
-- **Wellhub/Gympass aparecem no prompt** (frente 2, "convênio ou agregador") na
+- ✅ **Wellhub/Gympass — aplicado em 20/08/2026.** Apareciam no prompt (frente 2, "convênio ou agregador") na
   frase que diz que agregador é atendido normalmente — mas a base é clara: só
   Totalpass, a partir do TP4. Basta tirar os nomes e deixar o ponteiro.
 - **A frente 2 (aluno matriculado) não tem roteiro.** O prompt é ~95% venda. Como
@@ -183,7 +236,7 @@ FITI (como diz o `contrato-resumo.md`), não só na sexta.
 
 ## 5. 🟡 Instruções que o modelo não consegue cumprir
 
-### "Aguarde aproximadamente 10 segundos"
+### "Aguarde aproximadamente 10 segundos" — ✅ aplicado em 20/08/2026
 
 Na seção 6 (Apresentação dos planos e valores). O agente não tem relógio nem
 indicador de digitação: responde uma vez por mensagem recebida. Na prática ou
@@ -197,7 +250,7 @@ A intenção é boa e é uma regra de **turno**, não de segundos:
 
 (Aproveite e corrija o "aroximadamente".)
 
-### "menos que um cafezinho"
+### "menos que um cafezinho" — ✅ aplicado em 20/08/2026
 
 Está colado num exemplo que pode sair com R$ 9,90/dia (Estilo de Vida Plus). Em
 São Paulo isso não sustenta a comparação e queima credibilidade no ponto mais
@@ -206,7 +259,7 @@ consumo diário de valor equivalente"; o exemplo é que precisa virar placeholde
 
 ### Outros
 
-- **"Seu trabalho tem duas frentes:"** seguido de três itens.
+- ✅ **"Seu trabalho tem duas frentes:" seguido de três itens** — corrigido para "três frentes" em 20/08/2026.
 - **Formato de saída.** O prompt proíbe `**`, `##` e tabelas — e vem acompanhado
   de ~96 mil caracteres escritos exatamente nesse formato. É muita pressão de
   imitação contra uma regra declarativa. Contrapeso barato: um bloco curto com
@@ -236,14 +289,50 @@ resolvidos os itens 3 e 5, se a diluição ainda incomodar, aí vale medir.
 
 ---
 
+## 7. 🔴 Follow-up: a infraestrutura existe e ninguém usa
+
+*Achado de 20/08/2026, fora da auditoria original.*
+
+O agente **só roda quando chega mensagem** — um `messages.create` por mensagem
+recebida, sem debounce e sem agendador ([ai-agent.js:264](src/services/ai-agent.js#L264)).
+Consequência: **quem some, some em silêncio.** Nenhuma regra de prompt recupera
+essa conversa, porque não existe turno em que o modelo possa agir.
+
+Isso é grave logo depois do turno da âncora, que é onde a pessoa vê preço pela
+primeira vez. Foi por isso que o fecho do turno virou pergunta + promessa de
+montar um plano: reduz o risco. **Mas reduzir não é recuperar.**
+
+O que recupera é follow-up agendado — e **está tudo pronto, só não é chamado:**
+
+- [001_whatsapp_schema.sql:112](supabase/migrations/001_whatsapp_schema.sql#L112) —
+  `wa_message_queue.scheduled_for TIMESTAMPTZ`, com índice em `(status, scheduled_for)`
+- [queue-processor.js:32](src/workers/queue-processor.js#L32) — o worker já filtra
+  `scheduled_for <= now()`: mensagem com data futura fica parada e sai na hora
+- [api.js:120](src/routes/api.js#L120) — a rota já aceita `scheduled_for` no corpo
+
+Nada no fluxo do agente enfileira mensagem com data futura. **Correção:** quando
+um turno de preço terminar sem resposta, enfileirar uma retomada para ~24h
+depois, cancelada se a pessoa responder antes. Não exige construir nada.
+
+Vale também para o outro buraco conhecido: enquanto o handoff não notifica
+ninguém, o mesmo mecanismo dá o aviso de "ninguém respondeu esta fila".
+
+---
+
 ## O que foi conferido e está certo
 
 A aritmética inteira da tabela de preços adulto — as 12 células de economia
 mensal, economia anual e valor por dia — bate com os preços dos três planos e com
 a taxa de adesão de R$ 184. É o dado de maior risco da base e está consistente.
 
-## Pergunta para o Leandro
+## Respondido pelo Leandro — 20/08/2026
 
-`planos-e-valores.md` diz "tabela adulto reformulada em **Setembro/2026**" —
-data futura em relação a 19/08/2026. **Se a tabela ainda não entrou em vigor, o
-agente está cotando preço que não vale.** Confirmar a vigência.
+**Vigência da tabela adulto: não é questão.** A tabela vale, e já estará em
+vigor quando o agente atender conversas reais. Mais que isso, virou regra
+permanente: **o agente não deve saber de vigência de tabela.** A tabela que está
+na base é, por definição, a que vale — datas de vigência só criam hesitação e
+ressalva numa resposta que deveria ser direta.
+
+Aplicado: a linha `> Vigência: ...` saiu do cabeçalho do `planos-e-valores.md`.
+Ao editar preços no futuro, troque os números e não registre período de validade
+no arquivo.

@@ -271,15 +271,39 @@ caso o modelo alucine a chamada. **Tool ativa: apenas `transferir_para_humano`.*
 ### Aplicar a revisão do prompt
 
 [REVISAO-PROMPT.md](REVISAO-PROMPT.md) tem os achados da auditoria de
-19/08/2026 com a ordem de aplicação. Os dois primeiros blocos são os que mexem
-no resultado:
+19/08/2026 com a ordem de aplicação, e agora também o que já foi aplicado.
 
-1. **Regras de handoff no `vendas.md`** — quatro regras disparando cedo demais,
-   incluindo a da aula experimental, que ainda diz `PENDENTE` para um dado que a
-   base já responde. Precisa de `npm run prompt` depois.
-2. **O agente não sabe que dia é hoje** — nenhuma data entra no system, com a
+⚠️ **Em 20/08/2026 o `vendas.md`, o `planos-e-valores.md` e o `ai-tools.js`
+mudaram no repositório e nada disso está valendo no atendimento.** Antes de
+qualquer teste novo:
+
+```bash
+npm run prompt   # publica o vendas.md no banco
+# + deploy na VPS, para o planos-e-valores.md e o ai-tools.js
+```
+
+O que entrou: a auditoria de 19/08 foi aplicada por inteiro no `vendas.md` —
+ancoragem de preço em turnos (Mensal descartado → Assinatura → Anual), régua da
+Objeção 4 para desconto e "está caro", as quatro regras de handoff que disparavam
+cedo demais (Financeiro, aula experimental, FITI, dado fora da base), Clube
+Sábado na ordem de oferta, agregadores sem nome fixo, "três frentes" e o
+cafezinho virando placeholder. Fora do prompt: a descrição da tool
+`transferir_para_humano` em `ai-tools.js` e a linha de vigência da tabela de
+preços. Detalhe e as decisões por trás em "O que já foi aplicado".
+
+O que ainda mexe no resultado e continua pendente:
+
+1. **O agente não sabe que dia é hoje** — nenhuma data entra no system, com a
    grade horária inteira carregada no contexto. Corrige em `ai-agent.js`, no
-   bloco depois do `cache_control`.
+   bloco depois do `cache_control`, junto com o bug do contexto de contato que
+   some quando não há nome.
+2. **Follow-up agendado** (bloco 7 da revisão) — `wa_message_queue.scheduled_for`,
+   o worker e a rota já existem e ninguém enfileira mensagem futura. Enquanto
+   isso, quem some depois de ver preço some em silêncio.
+3. **Contradições da base**, que vivem no `gerar-grade-horaria.js` e não só no
+   markdown.
+4. **A frente 2 (aluno já matriculado) continua sem roteiro** — a maior lacuna
+   de escopo para quando o WhatsApp principal entrar no ar.
 
 Comece exportando as transcrições: a auditoria é estática e não viu nenhuma
 conversa.

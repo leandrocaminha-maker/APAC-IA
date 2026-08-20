@@ -122,7 +122,7 @@ const allToolDeclarations = [
   },
   {
     name: 'transferir_para_humano',
-    description: 'Transfere a conversa para um consultor humano e pausa o bot. Use quando: assunto financeiro, problema no app FITI, afastamento/cancelamento, reclamação, pedido explícito de falar com uma pessoa, ou dado que não está na base de conhecimento.',
+    description: 'Transfere a conversa para um consultor humano e pausa o bot. Use quando: financeiro de aluno JÁ MATRICULADO (pagamento pendente, cobrança, estorno), problema de CONTA no app FITI (não consegue entrar, reserva sumiu), afastamento/cancelamento, reclamação, ou pedido explícito de falar com uma pessoa. NÃO use para: objeção de preço ou pedido de desconto em venda nova, nem "como funciona o agendamento?" — essas você responde. Se faltar um dado na base, confira antes se outra parte da base responde; faltando mesmo, responda o resto e transfira só o ponto que falta.',
     input_schema: {
       type: 'object',
       properties: {
