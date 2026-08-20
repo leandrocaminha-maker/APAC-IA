@@ -68,8 +68,10 @@ Anual é isento dela). Texto integral em `contrato-resumo.md`.
   cada um com **7 dias de antecedência** (`contrato-resumo.md`).
 - **Afastamento médico:** vale para **qualquer plano**, inclusive Assinatura,
   mediante **atestado**. Não é pausa: o pagamento continua e os dias parados são
-  **acrescentados ao fim do plano** (`contrato-resumo.md`). O atestado pode ser
-  enviado por **foto na própria conversa do WhatsApp** — quem lança é o
+  **acrescentados ao fim do plano** (`contrato-resumo.md`). O desejável é
+  apresentar o atestado assim que souber do afastamento, mas **também é aceito
+  depois do retorno, desde que não tenha frequentado no período**. O atestado
+  pode ser enviado por **foto na própria conversa do WhatsApp** — quem lança é o
   consultor, e o **original é entregue no retorno**.
 - **Congelamento do plano, ou lançamento de dias além do previsto acima:** casos
   fora dessas regras são tratados com os gestores — transferir para humano.

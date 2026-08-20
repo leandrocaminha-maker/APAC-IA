@@ -105,7 +105,7 @@ vale apresentar os planos quando fizer sentido.
 | Assunto | Política |
 | --- | --- |
 | Falta e reposição de aula | não há reposição de aulas perdidas, exceto em casos de força maior com apresentação de atestado médico. Vale para adulto e infantil. Os tíquetes extras dos níveis Intermediário e Aperfeiçoamento (`contrato-resumo.md`) são sessões a mais na semana, não reposição de falta. |
-| Troca de horário de turma | depende de disponibilidade e confirmalçao do professor |
+| Troca de horário de turma | depende de **disponibilidade de vaga** e da **liberação técnica do professor**. Na infantil o professor também avalia a adaptação da criança ao novo grupo — é avaliação técnica dele, não pedido administrativo. |
 | Cancelamento de contrato | `contrato-resumo.md` — muda conforme o plano (Assinatura, Anual, Mensal) |
 | Atraso na chegada à aula | como regra geral 10 minutos, porém fica a critério do professor. |
 | Acompanhante na aula infantil | na natação bebê o responsável entra na água, nas primeiras aulas de crianças inseguras o responsável pode acompanhar do deck. |

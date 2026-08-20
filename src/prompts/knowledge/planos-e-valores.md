@@ -148,3 +148,34 @@ infantil quanto para adultos a partir de 13 anos.**
 
 Use isso na venda para adulto: no sábado ele não fica preso a uma aula só, tem a
 grade inteira do plano à disposição.
+
+---
+
+## 4. Descontos
+
+Estes são os **únicos descontos que existem**. Valem sobre qualquer plano, e quem
+confirma o enquadramento e aplica é o consultor.
+
+| Desconto | Quem tem | Quanto |
+|---|---|---|
+| **65+** | pessoa com **65 anos ou mais** | **10%** sobre qualquer plano |
+| **Família** | núcleo familiar com **3 ou mais integrantes matriculados** | **10%** para cada integrante |
+
+**O que conta como núcleo familiar:** os **responsáveis mais os filhos menores de
+18 anos**. Parente fora desse núcleo não entra na conta.
+
+**Quando 2 já são alunos e entra o terceiro:** o terceiro tem os 10% na matrícula
+dele, de imediato. Os outros dois passam a ter o desconto **na renovação de cada
+um** — não é retroativo e não entra no meio do plano em curso.
+
+**Não existe desconto por negociação.** A academia não trabalha com isso: não é
+alçada do consultor nem de ninguém. Podem existir **campanhas promocionais
+eventuais** e, quando existirem, estarão descritas **aqui neste arquivo**. Se não
+houver campanha escrita aqui, não há campanha em vigor.
+
+⚠️ **O acúmulo dos dois descontos não está definido.** Se a pessoa se enquadrar
+nos dois (65+ e família), não some os percentuais nem escolha por conta própria —
+quem confirma é o consultor.
+
+Lembrete de `contrato-resumo.md`: **atraso no pagamento cancela os descontos
+concedidos.**

@@ -66,6 +66,10 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Achados e perdidos, e a linha "Feriados" da tabela de horário, que tinha uma célula faltando | `knowledge/informacoes-gerais.md` | deploy |
 | Afastamento médico: regra, foto do atestado na conversa e handoff no mesmo turno | `vendas.md` + `contrato-resumo.md` + `operacional-adulto.md` | `npm run prompt` + deploy |
 | Contradição do contrato resolvida: afastamento médico vale para **todos** os planos; férias/trancamento só o Anual | `knowledge/contrato-resumo.md` | deploy |
+| Política de descontos: 65+, família de 3+, e nenhuma negociação | novo bloco em `knowledge/planos-e-valores.md` | deploy |
+| Objeção 4 reescrita: desconto deixou de ser motivo de transferência | `vendas.md`, matriz de objeções | `npm run prompt` |
+| Roteiro da frente 2: troca de horário de turma e cancelamento de contrato | `vendas.md` + `knowledge/informacoes-gerais.md` | `npm run prompt` + deploy |
+| Prazo do atestado: também aceito após o retorno, se não frequentou | `contrato-resumo.md`, `operacional-adulto.md`, `vendas.md` | ambos |
 
 ### A ancoragem nova, em uma linha
 

@@ -304,8 +304,8 @@ O que ainda mexe no resultado e continua pendente:
    markdown.
 4. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
    está no começo: cobre objeto esquecido, dificuldade com o app FITI
-   (`suporte-fiti.md`) e afastamento médico. Falta o resto do que chega de aluno
-   — troca de horário de turma, reposição, cancelamento de contrato. Continua
+   (`suporte-fiti.md`), afastamento médico, troca de horário e cancelamento de
+   contrato. Falta o resto do que chega de aluno, como reposição de aula. Continua
    sendo a maior lacuna de escopo para quando o WhatsApp principal entrar no ar,
    porque ali a maioria do volume será aluno, não lead.
 5. **Imagem chega e o bot fica mudo.** `webhook.js` registra foto, documento e

@@ -62,10 +62,14 @@ transferido começa depois do plano atual dela. Pedido por
 | | Quem tem | Regra |
 |---|---|---|
 | Férias (trancamento) | **Anual** | 30 dias no ano, em até **3 pedidos**, solicitados com **7 dias de antecedência** |
-| Afastamento médico | **todos os planos** | Só com **atestado, apresentado com antecedência**; o pagamento continua e os dias parados são **acrescentados ao fim do plano** |
+| Afastamento médico | **todos os planos** | Só com **atestado**; o pagamento continua e os dias parados são **acrescentados ao fim do plano** |
 
 **Férias/trancamento é exclusividade do Anual** — Assinatura e Mensal não têm.
 **Afastamento médico, esse vale para qualquer plano**, inclusive Assinatura.
+
+**Quando apresentar o atestado:** o desejável é apresentar **assim que souber que
+vai precisar ficar afastado**. Mas **também é aceito depois do retorno**, desde
+que a pessoa **não tenha frequentado** durante o período do atestado.
 
 **Como o atestado chega:** a pessoa pode **enviar a foto do atestado na própria
 conversa do WhatsApp**, e o consultor lança o afastamento a partir dela. O
