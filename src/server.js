@@ -33,6 +33,8 @@ app.use(cors({
     'http://localhost:3000',       // AQUAP dev
     'http://localhost:3001',       // pagtos_ap dev
     'http://localhost:3002',       // NFS-e dev
+    'https://leia.apacademia.com.br',  // este serviço, atrás do nginx
+    /\.apacademia\.com\.br$/,       // apps irmãos em produção
     /\.supabase\.co$/,             // Supabase
     /\.w12app\.com\.br$/,          // EVO
   ],

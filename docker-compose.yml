@@ -83,7 +83,11 @@ services:
     container_name: apac-ia-sales
     restart: unless-stopped
     ports:
-      - "${PORT:-3100}:3100"
+      # Só no loopback: quem expõe este serviço à internet é o nginx da VPS,
+      # em https://leia.apacademia.com.br. Publicar em 0.0.0.0 deixaria
+      # /admin, /api e /teste acessíveis por IP em HTTP puro, ao lado do
+      # caminho com TLS — e o /teste trafega conversa de cliente.
+      - "127.0.0.1:${PORT:-3100}:3100"
     env_file:
       - .env
     environment:
