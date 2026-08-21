@@ -112,6 +112,10 @@ isso já está no plano.
 | Assinatura (mensal recorrente) | R$ 239 | R$ 299 | R$ 329 |
 | Mensal | R$ 279 | R$ 338 | R$ 379 |
 
+⚠️ **A taxa de adesão de R$ 184 é cobrada no Mensal E na Assinatura.** Só o Anual
+é isento. Ao citar o valor da Assinatura, cite a adesão junto — o valor dela não
+é só a mensalidade.
+
 ### Por que o Anual compensa (usar na apresentação)
 
 O plano **Anual não paga a taxa de adesão de R$ 184**, que é cobrada tanto no

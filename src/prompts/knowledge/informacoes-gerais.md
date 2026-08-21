@@ -51,6 +51,11 @@ Clube Sábado (`planos-e-valores.md`).
 Horário de funcionamento não é o mesmo que horário de aula — as turmas estão em
 `grade-horaria.md`, e a última aula da noite começa às 21:00.
 
+**Janela para contato ativo:** follow-up, retomada de conversa e qualquer
+chamada partindo da academia acontecem **somente das 9h00 às 20h30**. Fora dessa
+faixa não se inicia contato — responder quem escreveu é outra coisa, e vale a
+qualquer hora.
+
 ## Estrutura
 
 - Piscina: piscina de 15m coberta e aquecida, 4 raias, mantida entre 30 e 30,5 graus celsius. Tratamento comOzônio. Uso de controle eletrônico de paramentros de qualidade.
@@ -106,6 +111,26 @@ vale apresentar os planos quando fizer sentido.
 | Atraso na chegada à aula | como regra geral 10 minutos, porém fica a critério do professor. |
 | Acompanhante na aula infantil | na natação bebê o responsável entra na água, nas primeiras aulas de crianças inseguras o responsável pode acompanhar do deck. |
 | Objeto esquecido | há uma **caixa de achados e perdidos** para itens comuns; **objetos de valor ficam guardados na recepção**. |
+
+## Atendimento a PCD e necessidades específicas
+
+- **Atendimento a pessoa com deficiência, e a criança com TEA ou outra
+  necessidade específica:** `PENDENTE`. Não afirme que a academia atende nem que
+  não atende, e não descreva adaptação nenhuma — transfira para um consultor.
+  A estrutura física acessível está descrita em Estrutura, acima, e isso você
+  pode informar; o que falta é a política de atendimento.
+
+## Serviços de saúde e bem-estar
+
+Se a academia oferece, se é à parte do plano, e quanto custa: **tudo `PENDENTE`**
+para a lista abaixo. Não afirme que existe nem que não existe — transfira.
+
+Fisioterapia · Hidroterapia · Quiropraxia · Massagem relaxante · Liberação
+miofascial · Drenagem linfática · Acupuntura
+
+Não confunda com as atividades da grade (`atividades.md`), que são aulas, nem com
+o **acompanhamento técnico** incluso no plano (`planos-e-valores.md`), que é
+avaliação física, plano de treino e reavaliações com os professores.
 
 ## Perguntas frequentes
 

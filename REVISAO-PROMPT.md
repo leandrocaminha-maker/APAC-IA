@@ -81,6 +81,10 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Proibido afirmar pico, lotação ou tranquilidade de horário (bloco 8) | `scripts/gerar-grade-horaria.js` + `grade-horaria.md` | deploy |
 | Abertura reescrita: lê a 1ª mensagem, não presume lead, sem fórmula fixa (bloco 9) | `vendas.md` §1 e §2 | `npm run prompt` |
 | `is_prospect` deixa de sair como fato quando é só o default (bloco 9) | `src/services/ai-agent.js` | deploy |
+| Identificação como **virtual** obrigatória em toda abertura (bloco 10) | `vendas.md` §1 | `npm run prompt` |
+| Adesão de R$ 184 dita também na Assinatura, no turno 1 (bloco 10) | `vendas.md` §6 + `planos-e-valores.md` | ambos |
+| PCD/TEA e serviços de saúde marcados `PENDENTE` (bloco 10) | `knowledge/informacoes-gerais.md` | deploy |
+| Janela de contato ativo 9h00–20h30 (bloco 10) | `knowledge/informacoes-gerais.md` | deploy |
 | Retenção no cancelamento: motivo trabalhado por professor e consultor, mais o argumento de reduzir em vez de parar | `vendas.md` | `npm run prompt` |
 
 ### A ancoragem nova, em uma linha
@@ -336,6 +340,12 @@ Nada no fluxo do agente enfileira mensagem com data futura. **Correção:** quan
 um turno de preço terminar sem resposta, enfileirar uma retomada para ~24h
 depois, cancelada se a pessoa responder antes. Não exige construir nada.
 
+⚠️ **Restrição definida em 20/08/2026: contato ativo só das 9h00 às 20h30.**
+Follow-up, retomada e qualquer mensagem partindo da academia respeitam essa
+janela — o `scheduled_for` calculado tem de cair dentro dela, empurrando para as
+9h00 do dia seguinte quando cair fora. Responder quem escreveu é outra coisa, e
+vale a qualquer hora. Também em `informacoes-gerais.md`.
+
 Vale também para o outro buraco conhecido: enquanto o handoff não notifica
 ninguém, o mesmo mecanismo dá o aviso de "ninguém respondeu esta fila".
 
@@ -442,6 +452,70 @@ mas é contorno: o agente descobre conversando.
 buscando o telefone no EVO — o `evo-client.js` já existe. Com isso `is_prospect`
 vira dado real, e a abertura pode se ajustar antes da primeira palavra. Depende
 de normalizar o telefone antes da busca, que já é débito conhecido.
+
+---
+
+## 10. Segunda leitura das transcrições — 20/08/2026, noite
+
+*Base: 35 conversas, 376 mensagens. **14 conversas novas** desde a primeira
+leitura, 13 delas já com o prompt reescrito do dia.*
+
+### O que as mudanças do dia fizeram
+
+| Métrica | Prompt antigo (18 conversas) | Prompt novo (13 conversas) |
+|---|---|---|
+| Handoff | 78% | 62% |
+| **Handoffs duplicados na mesma conversa** | **6 conversas** (uma com 7) | **0** |
+| Violações de formato WhatsApp | 0 | 0 |
+| Preço citado fora da base | 2 | **0** |
+| Tamanho mediano da resposta | 260 | 237 |
+
+Os 62% enganam para baixo se lidos como "ainda transfere muito": **a natureza do
+handoff mudou**. Dos 8, cinco são **lead qualificado indo fechar** — aula
+experimental marcada, plano escolhido, matrícula. Um é achados e perdidos
+(procedimento correto), um é cancelamento por mudança de cidade (correto), e um é
+a lacuna de PCD. **Nenhum por preço, desconto ou FITI.**
+
+### Três roteiros validados em conversa real
+
+**Ancoragem (id36).** Turno 1: Mensal com adesão, descartado na mesma frase
+("esse eu nem indico, é só referência"), depois Assinatura descrita como formato
+comum, fechando com pergunta e a promessa de montar um plano. Turno 2: *"E é aqui
+que eu de fato te indico o Anual"* — o "eu indico" apareceu **uma única vez**, no
+Anual. Fechou.
+
+**FITI (id34).** Login quebrado resolvido ponta a ponta, **zero handoff**: ela
+pediu a mensagem de erro, conduziu pelo "Não consigo acessar", e o cliente
+respondeu "consegui, obrigado". No prompt antigo isso era transferência imediata.
+
+**Uma transferência por conversa.** De 6 conversas com handoff duplicado para 0.
+
+### Quatro correções que esta leitura gerou
+
+**1. A palavra "virtual" sumiu — 16 de 17 aberturas antes, 0 de 7 depois.** A
+culpa foi da minha instrução "uma linha mesmo": a pressão por concisão jogou fora
+justamente o qualificador que informa a pessoa de que ela fala com uma máquina.
+✅ Agora a identificação como **virtual** é obrigatória e explicitamente não é a
+primeira coisa a cair quando encurta.
+
+**2. Pergunta objetiva matava a identificação inteira.** "vá direto ao assunto"
+foi cumprido literalmente: em id30, id32, id34, id38, id40 ela respondeu sem
+dizer quem era. ✅ Agora é saudação breve + identificação + resposta, na mesma
+mensagem, em até duas linhas antes do assunto.
+
+**3. 🔴 A taxa de adesão nunca foi dita na Assinatura — 4 de 4 conversas de
+preço.** Ela grudava os R$ 184 no Mensal e apresentava a Assinatura como se fosse
+só a mensalidade. Causa: meu Turno 1 dizia "não adiante economia nem isenção de
+adesão", lido como "não fale de adesão". ✅ Corrigido no prompt e reforçado na
+tabela de preços da base. **É omissão material** — a conta muda na hora de
+assinar — e ainda esvaziava o turno 2, porque "o Anual é isento" só vale para
+quem sabe que os outros dois pagam.
+
+**4. Duas lacunas de base viraram `PENDENTE` explícito**, em vez de caírem na
+regra guarda-chuva: atendimento a **PCD e a criança com TEA** (apareceu em id40,
+de um responsável decidindo matrícula) e os **serviços de saúde e bem-estar**
+(fisioterapia, hidroterapia, quiropraxia, massagem, liberação miofascial,
+drenagem, acupuntura).
 
 ---
 

@@ -83,7 +83,9 @@ Sobrou pouco, e nada que trave uma venda:
 
 | Prioridade | Dado | Onde |
 |---|---|---|
-| ⚪ | Descontos: família, matrícula antecipada, convênio empresa | `planos-e-valores.md` — só entra se existirem mesmo |
+| 🔴 | **Atendimento a PCD, e a criança com TEA ou outra necessidade específica** | `informacoes-gerais.md` — já apareceu numa conversa de teste (id40, 20/08) e o agente teve de transferir. É pergunta de mãe/pai decidindo matrícula, não curiosidade |
+| 🔴 | **Serviços de saúde e bem-estar:** fisioterapia, hidroterapia, quiropraxia, massagem relaxante, liberação miofascial, drenagem linfática, acupuntura — a academia oferece? É à parte do plano? Quanto custa? | `informacoes-gerais.md` — hoje está tudo `PENDENTE` e o agente transfere em qualquer uma dessas |
+| ✅ | ~~Descontos: família, matrícula antecipada, convênio empresa~~ — respondido em 20/08/2026 | `planos-e-valores.md` seção 4: 65+ e família de 3 ou mais, 10%, sem acúmulo e sem negociação |
 | ⚪ | Quais sessões de musculação são as de 11–12 anos (a grade não marca) | `grade-horaria.md` — hoje o agente cita a faixa sem apontar o horário |
 | ⚪ | Diferencial das aulas coletivas terrestres (Hatha Ioga, GAP, Power Local, Cycling, Ritmos, Boxe) | `atividades.md` — as aquáticas e a musculação já têm; nessas o agente só descreve a aula |
 
