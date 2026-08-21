@@ -301,13 +301,20 @@ O que ainda mexe no resultado e continua pendente:
 2. **Follow-up agendado** (bloco 7 da revisão) — `wa_message_queue.scheduled_for`,
    o worker e a rota já existem e ninguém enfileira mensagem futura. Enquanto
    isso, quem some depois de ver preço some em silêncio.
-3. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
+3. **Follow-up depois do consultor** (bloco 11) — a reativação existe
+   (`POST /admin/conversations/:id/reactivate`), e desde 20/08/2026 o que o
+   consultor digita no WhatsApp é gravado. Falta o gatilho, a retomada agendada e
+   a instrução no prompt para a Leia ler o que foi combinado antes de falar.
+   ⚠️ Efeito colateral já visível: se o consultor responder com a conversa ainda
+   `active`, ele e o bot falam ao mesmo tempo — decidir se mensagem humana pausa
+   o bot é decisão de operação, ainda não tomada.
+4. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
    está no começo: cobre objeto esquecido, dificuldade com o app FITI
    (`suporte-fiti.md`), afastamento médico, troca de horário e cancelamento de
    contrato. Falta o resto do que chega de aluno, como reposição de aula. Continua
    sendo a maior lacuna de escopo para quando o WhatsApp principal entrar no ar,
    porque ali a maioria do volume será aluno, não lead.
-4. **Imagem chega e o bot fica mudo.** `webhook.js` registra foto, documento e
+5. **Imagem chega e o bot fica mudo.** `webhook.js` registra foto, documento e
    vídeo sem responder nada — áudio ao menos ganha um "não consigo ouvir". Isso
    passou a importar quando o roteiro de afastamento passou a pedir foto de
    atestado: o roteiro contorna transferindo antes da foto chegar, mas uma
