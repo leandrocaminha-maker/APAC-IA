@@ -71,6 +71,12 @@ atualizado.
 
 ---
 
+> **Estado em 20/08/2026:** os dois itens 🔴 no topo da lista abaixo — atendimento
+> a PCD/TEA e os serviços de saúde e bem-estar — são os que travam resposta em
+> conversa real. O de PCD já apareceu numa conversa de teste, com um responsável
+> decidindo matrícula. Tudo o mais que estava pendente de decisão sua foi
+> respondido nesta data.
+
 ## O que ainda falta na base
 
 Conferido arquivo por arquivo em 19/08/2026: **não existe mais nenhum `PENDENTE`

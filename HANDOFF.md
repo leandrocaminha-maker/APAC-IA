@@ -1,10 +1,58 @@
 # Estado do projeto — handoff
 
-> Snapshot de 19/08/2026. Documento de continuidade: descreve onde o projeto
-> parou e o que a próxima sessão deve fazer.
+> **Snapshot de 20/08/2026, fim do dia.** Documento de continuidade: descreve
+> onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
-> Para as correções de prompt e base já levantadas e ainda não aplicadas, ver
+> Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## Comece por aqui — 21/08/2026
+
+**O dia 20/08 foi longo.** O prompt saiu de 18,5 mil para ~42 mil caracteres, a
+base ganhou um arquivo, o serviço saiu do IP nu para HTTPS em domínio próprio, e
+as transcrições foram lidas duas vezes. Onze commits.
+
+**Três coisas para saber antes de tocar em qualquer coisa:**
+
+1. **A URL mudou.** A página de teste agora é
+   **`https://leia.apacademia.com.br/teste`**. O acesso por
+   `http://108.174.151.51:3100` foi fechado de propósito — a porta só escuta no
+   loopback e o nginx é a única entrada. **Avise o time**, o link antigo morreu.
+2. **Está tudo publicado e no ar.** Prompt no banco, knowledge files e código na
+   VPS. Nada pendente de `npm run prompt` nem de deploy.
+3. **Nada do que mudou hoje foi testado em volume.** As 13 conversas com o
+   prompt novo são um começo, não uma amostra.
+
+### A decisão que ficou aberta
+
+**A porta 8080 da Evolution continua exposta na internet**, em HTTP puro,
+protegida só pela `AUTHENTICATION_API_KEY`. Quem tiver essa chave controla o
+WhatsApp da academia — é exposição maior do que a da 3100 que acabamos de fechar.
+
+Não foi fechada para não bloquear a conexão do número, que é iminente. As opções,
+na ordem em que eu recomendaria:
+
+1. Fechar no loopback e pegar o QR por `/admin/whatsapp/qrcode`, que já existe e
+   agora sai por HTTPS. Precisando do manager da Evolution, túnel SSH.
+2. Publicar atrás do nginx, com TLS, em caminho ou subdomínio próprio.
+3. Deixar como está até conectar o WhatsApp, e fechar logo depois.
+
+### O que vinha a seguir
+
+O objetivo que motivou o domínio e o TLS: **um painel para o consultor**. Fila de
+handoffs → abrir e ler a conversa → responder, agendar follow-up, devolver para a
+Leia. O raciocínio inteiro e o que já existe pronto estão no **bloco 11** da
+revisão.
+
+Resumo do porquê: a Leia não pode agendar o follow-up no momento do handoff,
+porque ali ela só tem a **intenção** ("quer experimental amanhã 9h20"). Quem cria
+o **fato** é o consultor, depois, no FITI — e pode ser outro horário, ou plano
+fechado sem experimental nenhuma. Então quem enfileira tem que ser ele.
+
+Falta para o painel: um endpoint que devolva mensagens **por id de conversa** (só
+existe por telefone, na API de integração), um para responder pelo painel, e a
+página. O login por cookie assinado já existe e funciona na `/teste`; a fila de
+handoffs, a reativação do bot e o enfileiramento com `scheduled_for` também.
 
 ## Onde estamos
 
@@ -16,22 +64,31 @@ O agente é hoje **conversacional + handoff**: não escreve em sistema nenhum, n
 consulta o EVO e não promete voucher. É a superfície certa para escrever e testar
 o prompt sem risco de efeito colateral em produção.
 
-**Fase atual (19/08/2026): rodada de testes.** A base de conhecimento está
-preenchida, o prompt publicado e a página `/teste` no ar na VPS. O foco agora é
-o time testar situações variadas pela página; com dados suficientes vem a
-revisão das conversas e o ajuste fino antes de colocar em operação.
+⚠️ **O WhatsApp nunca foi conectado.** A instância `apacademia` não existe na
+Evolution (`webhook/find` devolve *"instance does not exist"*), então o canal real
+está desligado e a `/teste` é a única superfície viva. Foi isso que tornou seguro
+fechar a 3100: não há webhook externo chamando.
 
-A **auditoria estática** do prompt, dos knowledge files e do caminho de código
-que monta o system já foi feita e está em
-[REVISAO-PROMPT.md](REVISAO-PROMPT.md), com a ordem de aplicação. O que falta é
-ler as transcrições — a auditoria rodou numa máquina sem `.env`, sem
-`node_modules` e sem a chave da VPS, então nenhuma conversa foi lida.
+**Fase atual: rodada de testes.** A base está preenchida, o prompt publicado e a
+página no ar. O foco é o time testar situações variadas; a próxima rodada precisa
+exercitar de propósito o que mudou em 20/08 — pedir desconto, reclamar de preço,
+pedir cancelamento com motivo raso, esquecer um objeto, não conseguir agendar.
 
-Para puxar o material da revisão (na máquina com o `.env`, não na VPS):
+As transcrições **foram lidas duas vezes em 20/08** (blocos 8 e 10 da revisão).
+Para regenerar:
 
 ```bash
 node scripts/exportar-conversas.js --canal=web-test
 ```
+
+⚠️ **Ao ler transcrições, corte a conversa no primeiro handoff.** A `/teste` não
+desliga a IA de propósito, mas o WhatsApp desliga — 31% das respostas do corpus
+descrevem um bot que em produção já estaria pausado.
+
+⚠️ **Referência para comparar rodadas: 78% de handoff** com o prompt antigo (14
+em 18 conversas). Com o prompt novo, 62% em 13 conversas — mas o que mudou foi a
+natureza: 5 dos 8 são lead qualificado indo fechar, e nenhum é por preço,
+desconto ou FITI.
 
 O `npm run` está barrado no Windows do Leandro pela política de execução do
 PowerShell (`npm` é um `.ps1`) — por isso a chamada direta ao `node`.
@@ -61,10 +118,30 @@ bloco 8b da migration.
 | Host | `root@108.174.151.51`, porta **22022** |
 | Chave | `~/.ssh/aquap_vps` — **é esta**; as `id_ed25519_vps` e `id_rsa_vps` não estão autorizadas neste servidor |
 | Projeto | `/var/www/apac-ia-sales` |
+| Domínio | **`leia.apacademia.com.br`** — Cloudflare na frente, nginx terminando TLS na VPS |
 
 ```bash
 ssh -p 22022 -i ~/.ssh/aquap_vps root@108.174.151.51
 ```
+
+### nginx e TLS — montado em 20/08/2026
+
+A VPS já servia `apacademia`, `aqua` e `pagtos` pelo nginx, com um `.conf` por
+subdomínio em `/etc/nginx/conf.d/` e certbot. O `leia.conf` seguiu esse padrão e
+faz `proxy_pass` para `localhost:3100`.
+
+| | |
+|---|---|
+| Certificado | Let's Encrypt, expira **19/11/2026**, já no `certbot-renew.timer` |
+| Porta 3100 | **só no loopback** (`127.0.0.1:3100:3100` no compose) — nginx é a única entrada |
+| Porta 8080 | **ainda aberta em `0.0.0.0`** — ver "A decisão que ficou aberta", no topo |
+
+⚠️ **Se algum dia precisar emitir certificado para um subdomínio novo:** a
+Cloudflare está em **Full (strict)** e fala HTTPS com o origin. Domínio sem
+certificado ainda no origin faz ela devolver **526**, e o desafio HTTP-01 do
+certbot nunca chega ao nginx. A saída é passar o registro para **DNS only**
+(nuvem cinza) na Cloudflare, emitir, e religar o proxy. Vale só para a primeira
+emissão — renovação funciona com o proxy ligado, que é como os outros renovam.
 
 Deploy completo (código e knowledge files; o prompt não passa por aqui):
 
@@ -121,7 +198,7 @@ ajustar prompt e base.
 
 | Item | Valor |
 |---|---|
-| URL | `http://<IP_DA_VPS>:3100/teste` — sem domínio, IP direto |
+| URL | **`https://leia.apacademia.com.br/teste`** — o acesso por IP na 3100 foi fechado em 20/08 |
 | Senha | `Leia` (única, sem usuário) — troque em `TESTE_SENHA` |
 | Canal no banco | `wa_conversations.channel = 'web-test'` |
 | Desligar | `TESTE_HABILITADO=false` + restart |
@@ -132,10 +209,10 @@ ajustar prompt e base.
 cd /var/www/apac-ia-sales
 git pull
 docker compose up -d --build backend
-sudo ufw allow 3100/tcp        # se o firewall estiver ativo
 ```
 
-Confira em `http://<IP>:3100/health` antes de mandar o link para o time.
+Confira em `https://leia.apacademia.com.br/health` antes de mandar o link para o
+time. Não abra a 3100 no firewall: ela escuta só no loopback de propósito.
 
 ### Como os testes ficam gravados
 
@@ -171,9 +248,11 @@ Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
 
 ### Limites e riscos aceitos
 
-- **É HTTP puro, sem TLS.** Senha e conversas trafegam em claro. Aceitável para
-  uma sala de teste com senha compartilhada e dados fictícios — não use a página
-  com dado real de cliente.
+- ~~**É HTTP puro, sem TLS.**~~ **Resolvido em 20/08/2026:** a página só é
+  servida por `https://leia.apacademia.com.br`. Continua valendo a ressalva da
+  **senha padrão `Leia`**, única e compartilhada — troque em `TESTE_SENHA`, ou
+  desligue com `TESTE_HABILITADO=false` quando a rodada acabar. O backend avisa
+  isso no log a cada restart.
 - **Cada resposta gasta crédito de API.** Por isso os tetos: 8 tentativas de
   senha por IP a cada 15 min, 1,2s entre mensagens, 80 mensagens por sessão e
   800 por dia (`TESTE_MAX_MSGS_*`).
@@ -181,7 +260,54 @@ Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
 - **Desligue a página quando a rodada de testes acabar** — senha curta em IP
   público não é para ficar no ar indefinidamente.
 
-## O que foi feito nesta sessão
+## O que foi feito em 20/08/2026
+
+Onze commits, de `d07d4df` a `0808af3`. O detalhe de cada achado está nos blocos
+8 a 11 de [REVISAO-PROMPT.md](REVISAO-PROMPT.md); aqui fica o mapa.
+
+### Prompt e base — a auditoria de 19/08 foi aplicada por inteiro
+
+- **Ancoragem de preço reescrita como regra de turno.** A instrução mandava
+  "aguarde 10 segundos", que o modelo não tem como cumprir — e o ramo "se não
+  houver resposta, apresente o Anual" nunca disparava, porque o agente só roda
+  quando chega mensagem. Agora: Mensal com a adesão, descartado na mesma frase →
+  Assinatura descrita → Anual no turno seguinte, com teto de dois turnos. O "é o
+  que eu indico" aparece **uma vez só**, no Anual.
+- **Régua da Objeção 4** para desconto e "está caro", com a política nova: 10%
+  para 65+, 10% por integrante em família de 3 ou mais, sem acúmulo, **e nenhuma
+  negociação**. Pedido de desconto deixou de ser motivo de handoff.
+- **As quatro regras de handoff que disparavam cedo demais** foram reescopadas —
+  Financeiro, aula experimental, FITI e "dado fora da base".
+- **Roteiro da frente 2 (aluno matriculado) começou:** objeto esquecido, app
+  FITI, afastamento médico, troca de horário e cancelamento de contrato.
+- **Todas as contradições da base fechadas** (bloco 3), mais o mapeamento de
+  nível ↔ frequência da natação infantil.
+- Novo `knowledge/suporte-fiti.md`.
+
+### Código
+
+- **O agente ganhou relógio** — data, dia da semana e hora em `America/Sao_Paulo`
+  no system, depois do `cache_control`. Sem isso ele não respondia "tem aula
+  hoje?" com a grade inteira no contexto.
+- **O bloco de contato parou de sumir** quando não havia nome, o que levava junto
+  o `is_prospect`.
+- **Mensagens do consultor no WhatsApp deixaram de ser descartadas** — o
+  `key.fromMe` era `return` puro, e tudo o que o humano digitava sumia.
+- **Infra:** domínio, TLS, porta 3100 fechada, CORS.
+
+### As duas leituras de transcrição
+
+A primeira (bloco 8) achou que 31% das respostas do corpus nunca teriam sido
+enviadas em produção, e que 6 conversas tinham handoff duplicado — uma com sete.
+A segunda (bloco 10), já com o prompt novo, achou zero duplicados, zero preço
+fora da base, e que a palavra "virtual" tinha sumido das aberturas.
+
+**O padrão que se repetiu:** quase todo defeito encontrado veio de instrução
+minha lida ao pé da letra — "uma linha mesmo" comeu o "virtual", "vá direto ao
+assunto" comeu a identificação, "não adiante isenção de adesão" fez a Assinatura
+ser apresentada sem a taxa. Vale a suspeita ao escrever a próxima regra.
+
+## O que foi feito na sessão de 19/08/2026
 
 ### Segurança
 
@@ -268,31 +394,30 @@ caso o modelo alucine a chamada. **Tool ativa: apenas `transferir_para_humano`.*
 
 ## Próxima sessão
 
-### Aplicar a revisão do prompt
+### Onde retomar
 
-[REVISAO-PROMPT.md](REVISAO-PROMPT.md) tem os achados da auditoria de
-19/08/2026 com a ordem de aplicação, e agora também o que já foi aplicado.
-
-⚠️ **Em 20/08/2026 o `vendas.md`, o `planos-e-valores.md` e o `ai-tools.js`
-mudaram no repositório e nada disso está valendo no atendimento.** Antes de
-qualquer teste novo:
+**Está tudo publicado e no ar** — prompt no banco, base e código na VPS. Nada
+esperando `npm run prompt` nem deploy. Confira com:
 
 ```bash
-npm run prompt   # publica o vendas.md no banco
-# + deploy na VPS, para o planos-e-valores.md e o ai-tools.js
+npm run prompt -- --dry   # deve dizer "O banco já está igual ao arquivo"
 ```
 
-O que entrou: a auditoria de 19/08 foi aplicada por inteiro no `vendas.md` —
-ancoragem de preço em turnos (Mensal descartado → Assinatura → Anual), régua da
-Objeção 4 para desconto e "está caro", as quatro regras de handoff que disparavam
-cedo demais (Financeiro, aula experimental, FITI, dado fora da base), Clube
-Sábado na ordem de oferta, agregadores sem nome fixo, "três frentes" e o
-cafezinho virando placeholder. Fora do prompt: a descrição da tool
-`transferir_para_humano` em `ai-tools.js` e a linha de vigência da tabela de
-preços. Detalhe e as decisões por trás em "O que já foi aplicado".
+Duas frentes, e a segunda depende de gente:
 
-O que ainda mexe no resultado e continua pendente:
+**1. O painel do consultor.** É o que motivou o domínio e o TLS de 20/08, e o
+raciocínio inteiro está no bloco 11 da revisão. Eu começaria por aqui.
 
+**2. Uma bateria de testes com foco no que mudou.** Não dá para pedir ao time
+enquanto o painel não existir, mas é o que valida o dia 20/08. Roteiros a
+exercitar de propósito, porque nenhum foi: pedir desconto, reclamar de preço,
+pedir cancelamento com um motivo raso, esquecer um objeto, não conseguir agendar
+no FITI, perguntar sobre atendimento a PCD.
+
+### O que ainda mexe no resultado e continua pendente
+
+0. **Fechar a 8080 da Evolution**, ou decidir conscientemente não fechar — ver
+   "A decisão que ficou aberta", no topo. É o item de segurança em aberto.
 1. **Não existe sinal de lead vs aluno** (bloco 9 da revisão) — `is_prospect`
    nasce `true` e nada o põe em `false`; `evo_member_id` existe no schema e
    ninguém preenche (0 de 11 contatos). A abertura foi reescrita para não
