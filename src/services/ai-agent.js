@@ -181,7 +181,7 @@ async function loadConversationHistory(conversationId, { limit = 20, excludeMess
   // primeiras da conversa, e a memória do bot congelaria no início dela).
   let query = supabase
     .from('wa_messages')
-    .select('id, direction, content, created_at')
+    .select('id, direction, content, sent_by, created_at')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -196,7 +196,15 @@ async function loadConversationHistory(conversationId, { limit = 20, excludeMess
     .filter(msg => msg.content)
     .map(msg => ({
       role: msg.direction === 'inbound' ? 'user' : 'assistant',
-      content: msg.content,
+      // Nem toda mensagem que saiu daqui foi escrita pelo agente: desde
+      // 20/08/2026 o webhook também grava o que o consultor humano digita
+      // direto no WhatsApp. Elas entram como `assistant` porque vieram do nosso
+      // lado da conversa, mas precisam vir marcadas — sem isso o modelo lê a
+      // fala do consultor como se fosse dele, e passa a se achar dono de
+      // combinações que não fez.
+      content: msg.sent_by?.startsWith('human')
+        ? `[mensagem escrita por um consultor humano, não por você] ${msg.content}`
+        : msg.content,
     }));
 
   // A janela das últimas N pode começar no meio da conversa, numa fala do bot.

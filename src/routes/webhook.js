@@ -74,12 +74,6 @@ async function handleIncomingMessage(event) {
   const messageData = data.message || data;
   const key = data.key || messageData.key || {};
 
-  // Ignora mensagens enviadas por nós
-  if (key.fromMe) {
-    logger.debug('[webhook] Ignorando mensagem própria');
-    return;
-  }
-
   // Ignora mensagens de grupo (por enquanto)
   if (key.remoteJid?.includes('@g.us')) {
     logger.debug('[webhook] Ignorando mensagem de grupo');
@@ -134,6 +128,14 @@ async function handleIncomingMessage(event) {
 
   // Extrai nome do contato (push name do WhatsApp)
   const pushName = data.pushName || messageData.pushName || null;
+
+  // Mensagem saindo do NOSSO número: ou é o eco do que a Leia acabou de mandar,
+  // ou é o consultor humano digitando direto no WhatsApp. O segundo caso precisa
+  // ser gravado; o primeiro já está no banco.
+  if (key.fromMe) {
+    await registrarMensagemDeSaida({ phone, content, contentType, evolutionMsgId: key.id });
+    return;
+  }
 
   logger.info(`[webhook] 📩 ${phone} (${pushName || '?'}): ${content.slice(0, 100)}`);
 
@@ -218,6 +220,74 @@ async function handleIncomingMessage(event) {
       contact.id
     );
   }
+}
+
+/**
+ * Registra uma mensagem que saiu do NOSSO número.
+ *
+ * A Evolution devolve pelo webhook tudo o que sai da instância, inclusive o que
+ * a própria Leia acabou de enviar. O caso que interessa aqui é o outro: o
+ * **consultor humano respondendo direto do WhatsApp**, no aparelho. Até
+ * 20/08/2026 essas mensagens eram descartadas, e o histórico ficava com o
+ * cliente falando e ninguém respondendo — o que falseava a análise das conversas
+ * e impediria o agente de retomar uma conversa que passou por um humano sem
+ * repetir o que já foi combinado.
+ *
+ * Não roda a IA: mensagem nossa não pede resposta nossa.
+ *
+ * **Como distinguir do eco.** Duas checagens, porque uma só não basta:
+ *
+ * 1. `evolution_msg_id` — o envio da Leia grava esse id na hora. Se já existe,
+ *    este webhook é o eco do nosso próprio disparo.
+ * 2. Mesmo conteúdo, mesmo contato, nos últimos 30 segundos. Cobre dois casos
+ *    que a primeira não pega: a corrida entre o webhook chegar e o `sendAndSave`
+ *    terminar de gravar, e o envio em que a Evolution não devolveu `key.id`
+ *    (aí a mensagem da Leia foi gravada com `evolution_msg_id` nulo).
+ */
+async function registrarMensagemDeSaida({ phone, content, contentType, evolutionMsgId }) {
+  const contact = await getOrCreateContact(phone);
+  const conversation = await getOrCreateConversation(contact.id);
+
+  if (evolutionMsgId) {
+    const { data: mesmoId } = await supabase
+      .from('wa_messages')
+      .select('id')
+      .eq('evolution_msg_id', evolutionMsgId)
+      .limit(1);
+
+    if (mesmoId?.length) {
+      logger.debug('[webhook] Eco do nosso próprio envio (id já registrado)');
+      return;
+    }
+  }
+
+  const desde = new Date(Date.now() - 30_000).toISOString();
+  const { data: mesmoTexto } = await supabase
+    .from('wa_messages')
+    .select('id')
+    .eq('contact_id', contact.id)
+    .eq('direction', 'outbound')
+    .eq('content', content)
+    .gte('created_at', desde)
+    .limit(1);
+
+  if (mesmoTexto?.length) {
+    logger.debug('[webhook] Eco do nosso próprio envio (mesmo texto agora há pouco)');
+    return;
+  }
+
+  await saveMessage({
+    conversationId: conversation.id,
+    contactId: contact.id,
+    direction: 'outbound',
+    content,
+    contentType,
+    sentBy: 'human:whatsapp',
+    evolutionMsgId: evolutionMsgId || null,
+    status: 'sent',
+  });
+
+  logger.info(`[webhook] 👤 consultor → ${phone}: ${content.slice(0, 80)}`);
 }
 
 /**

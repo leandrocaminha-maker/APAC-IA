@@ -85,6 +85,7 @@ Decidido e escrito com o Leandro. **Nada disso vale no atendimento ainda:**
 | Adesão de R$ 184 dita também na Assinatura, no turno 1 (bloco 10) | `vendas.md` §6 + `planos-e-valores.md` | ambos |
 | PCD/TEA e serviços de saúde marcados `PENDENTE` (bloco 10) | `knowledge/informacoes-gerais.md` | deploy |
 | Janela de contato ativo 9h00–20h30 (bloco 10) | `knowledge/informacoes-gerais.md` | deploy |
+| Mensagens do consultor no WhatsApp deixam de ser descartadas (bloco 11) | `src/routes/webhook.js` + `ai-agent.js` | deploy |
 | Retenção no cancelamento: motivo trabalhado por professor e consultor, mais o argumento de reduzir em vez de parar | `vendas.md` | `npm run prompt` |
 
 ### A ancoragem nova, em uma linha
@@ -516,6 +517,67 @@ regra guarda-chuva: atendimento a **PCD e a criança com TEA** (apareceu em id40
 de um responsável decidindo matrícula) e os **serviços de saúde e bem-estar**
 (fisioterapia, hidroterapia, quiropraxia, massagem, liberação miofascial,
 drenagem, acupuntura).
+
+---
+
+## 11. O consultor humano: o que ele vê e como o agente volta
+
+*Levantado em 20/08/2026, a partir de duas perguntas do Leandro.*
+
+### Como o consultor vê a conversa hoje
+
+**Pelo WhatsApp, e só.** Não existe tela de conversa: o único HTML do projeto é
+a `/teste`, e todo o `/admin/*` é API JSON. Nada notifica ninguém no handoff — o
+`ws` do projeto é transporte do cliente Supabase, não canal de tempo real para
+operador.
+
+O que os endpoints devolvem:
+
+| Endpoint | Devolve |
+|---|---|
+| `GET /admin/conversations?status=human` | só metadados — sem mensagens |
+| `GET /admin/handoffs` | a fila: motivo, contato, data |
+| `GET /api/conversations/:phone` | histórico completo, mas por telefone, na API de integração |
+| `GET /admin/conversas-teste` | mensagens completas, só do canal `web-test` |
+
+Como o número é o principal da academia, na prática quem está com o aparelho vê
+tudo em tempo real. O banco serve para análise, não para operação.
+
+### ✅ O buraco do `fromMe` — corrigido em 20/08/2026
+
+`webhook.js` descartava toda mensagem com `key.fromMe`, então **tudo o que o
+consultor digitava no WhatsApp sumia**: o histórico gravado ficava com o cliente
+falando e ninguém respondendo.
+
+Agora `registrarMensagemDeSaida` grava essas mensagens como `outbound` com
+`sent_by: 'human:whatsapp'`, sem rodar a IA. O eco do próprio envio da Leia é
+descartado por **duas** checagens — `evolution_msg_id` já gravado, e mesmo texto
+para o mesmo contato nos últimos 30 segundos. A segunda não é redundante: cobre a
+corrida entre o webhook chegar e o `sendAndSave` gravar, e o caso em que a
+Evolution não devolve `key.id`.
+
+E `loadConversationHistory` passou a marcar essas falas — sem isso o modelo leria
+o consultor como se fosse ele mesmo e se acharia dono de combinações que não fez.
+
+### O que falta para o follow-up pós-consultor
+
+A reativação **já existe**: `POST /admin/conversations/:id/reactivate` devolve a
+conversa para `active`. Mas ela é um interruptor, não um follow-up. Faltam:
+
+1. **Enfileirar a retomada** com `scheduled_for` (bloco 7), dentro da janela
+   9h00–20h30.
+2. **Dizer à Leia, no prompt, que ela está retomando** uma conversa que passou
+   por um humano: ler o que foi combinado antes de falar e nunca refazer o que já
+   foi acertado. O dado agora existe; falta a instrução.
+3. **Um gatilho** — hoje alguém teria de chamar o endpoint na mão, com o id da
+   conversa e a chave de admin.
+
+### ⚠️ Risco que a correção deixa à vista
+
+Se o consultor responder enquanto a conversa ainda está `active`, **os dois falam
+ao mesmo tempo** — o bot não sabe que um humano entrou. Antes isso era invisível;
+agora fica registrado. Decidir se uma mensagem humana deve pausar o bot
+automaticamente é decisão de operação, e não foi tomada.
 
 ---
 
