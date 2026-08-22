@@ -163,6 +163,25 @@ export async function cadastrarProspect(lead, { usuario = null, dados = {} } = {
 // ──────────────────────────────────────────────
 
 /**
+ * O serviço que autoriza a aula experimental, com cache.
+ *
+ * É procurado pela flag `experimentalClass`, não pelo id fixo: alguém
+ * recriar o serviço no EVO mudaria o número, e o agendamento passaria a
+ * falhar por um motivo que ninguém ligaria ao id.
+ */
+let cacheServicoExperimental = { valor: null, em: 0 };
+const CACHE_SERVICO_MS = 30 * 60 * 1000;
+
+async function servicoExperimental() {
+  if (cacheServicoExperimental.valor && Date.now() - cacheServicoExperimental.em < CACHE_SERVICO_MS) {
+    return cacheServicoExperimental.valor;
+  }
+  const servico = await evoClient.buscarServicoExperimental();
+  if (servico) cacheServicoExperimental = { valor: servico, em: Date.now() };
+  return servico;
+}
+
+/**
  * Agenda a aula experimental no EVO e move o lead de etapa.
  *
  * Cadastra o prospect antes se ainda não existir: o endpoint do EVO exige
@@ -180,6 +199,21 @@ export async function agendarExperimental(lead, dados, { usuario = null } = {}) 
   const { idProspect, lead: leadAtual } = await cadastrarProspect(lead, { usuario });
   const base = leadAtual || lead;
 
+  // O endpoint do EVO exige um serviço que autorize a experimental. Em vez
+  // de pedir isso ao consultor — que não tem por que saber id de serviço —
+  // achamos sozinhos o que está marcado com `experimentalClass: true`
+  // (hoje "AULA EXPERIMENTAL", R$ 0). Se o EVO não tiver nenhum, seguimos
+  // sem: o erro que ele devolver é mais informativo do que um nosso.
+  let idService = dados.idService;
+  if (!idService && !dados.servico) {
+    try {
+      const servico = await servicoExperimental();
+      if (servico) idService = servico.idService;
+    } catch (err) {
+      logger.warn(`[evo-sync] Não consegui achar o serviço de experimental: ${err.message}`);
+    }
+  }
+
   try {
     const raw = await evoClient.agendarAulaExperimental({
       idProspect,
@@ -187,7 +221,7 @@ export async function agendarExperimental(lead, dados, { usuario = null } = {}) 
       atividade: dados.atividade,
       servico: dados.servico,
       idActivity: dados.idActivity,
-      idService: dados.idService,
+      idService,
       atividadeExiste: dados.atividadeExiste,
     });
 

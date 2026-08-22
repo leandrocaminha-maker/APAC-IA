@@ -325,16 +325,76 @@ export async function buscarGrade(params = {}) {
 // Serviços, planos e produtos
 // ──────────────────────────────────────────────
 
-/** Serviços avulsos (ex.: MATRÍCULA, aula experimental). Note o singular. */
-export async function listarServicos(params = {}) {
-  const lista = await evoFetch(`/api/v1/service${qs(params)}`);
-  return (Array.isArray(lista) ? lista : []).filter(s => s?.inactive !== true);
+/**
+ * Desembrulha as respostas de catálogo do EVO.
+ *
+ * ⚠️ Elas não são todas do mesmo formato. `/api/v1/service` devolve um
+ * array; `/api/v3/membership` devolve um objeto paginado
+ * `{ qtde, lista, list, ... }` — e tratá-lo como array devolve vazio em
+ * silêncio, que foi exatamente o que aconteceu: o painel mostrava zero
+ * planos numa conta com 53 ativos.
+ */
+function desembrulhar(resposta) {
+  if (Array.isArray(resposta)) return { itens: resposta, total: resposta.length };
+  const itens = resposta?.list ?? resposta?.lista ?? [];
+  return { itens: Array.isArray(itens) ? itens : [], total: resposta?.qtde ?? itens.length };
 }
 
-/** Planos / mensalidades. */
+/**
+ * Percorre um endpoint paginado até o fim.
+ *
+ * `take` é limitado a 50 pelo EVO nesses recursos. O teto de páginas evita
+ * que um filtro mal montado vire uma varredura da base inteira — a conta
+ * tem 518 planos históricos, e só ~53 interessam.
+ */
+async function paginar(caminho, params = {}, { maxPaginas = 6 } = {}) {
+  const take = 50;
+  const todos = [];
+
+  for (let pagina = 0; pagina < maxPaginas; pagina++) {
+    const resposta = await evoFetch(`${caminho}${qs({ ...params, take, skip: pagina * take })}`);
+    const { itens, total } = desembrulhar(resposta);
+
+    todos.push(...itens);
+    if (itens.length < take || todos.length >= total) break;
+  }
+
+  return todos;
+}
+
+/**
+ * Serviços avulsos (MATRÍCULA, AULA EXPERIMENTAL...). Note o singular no
+ * caminho — `/api/v1/services` é 404.
+ *
+ * `active: true` por padrão: sem ele a listagem vem dominada por serviços
+ * desativados, e oferecer serviço morto ao cliente é pior do que não
+ * oferecer nada.
+ */
+export async function listarServicos(params = {}) {
+  return paginar('/api/v1/service', { active: true, ...params });
+}
+
+/**
+ * Planos / mensalidades.
+ *
+ * Mesma história do `active`, e mais grave aqui: a primeira página sem
+ * filtro é inteira de planos de 2014, todos com `inactive: true`.
+ */
 export async function listarPlanos(params = {}) {
-  const lista = await evoFetch(`/api/v3/membership${qs(params)}`);
-  return (Array.isArray(lista) ? lista : []).filter(m => m?.inactive !== true);
+  return paginar('/api/v3/membership', { active: true, ...params });
+}
+
+/**
+ * O serviço que autoriza a aula experimental.
+ *
+ * O endpoint de agendamento pede um `service`/`idService`, e a conta tem
+ * um serviço marcado com `experimentalClass: true` (hoje o id 6, "AULA
+ * EXPERIMENTAL", R$ 0). Procurar pela flag em vez de fixar o número
+ * sobrevive a alguém recriar o serviço no EVO.
+ */
+export async function buscarServicoExperimental() {
+  const servicos = await listarServicos();
+  return servicos.find(s => s?.experimentalClass === true) || null;
 }
 
 // ──────────────────────────────────────────────
@@ -491,6 +551,7 @@ export const evoClient = {
   // catálogo
   listarServicos,
   listarPlanos,
+  buscarServicoExperimental,
   // vendas
   criarVenda,
   buscarVendas,
