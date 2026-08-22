@@ -86,7 +86,10 @@ export async function cadastrarProspect(lead, { usuario = null, dados = {} } = {
   if (existente?.idProspect) {
     const atualizado = await marcarSync(lead.id, {
       evo_id_prospect: existente.idProspect,
-      evo_id_member: existente.idMember || null,
+      // `|| lead.evo_id_member` porque um ex-aluno reativado já teve o
+      // vínculo gravado por `buscar_cadastro`, e o prospect do EVO não
+      // conhece esse laço — sem isto o vínculo seria apagado aqui.
+      evo_id_member: existente.idMember || lead.evo_id_member || null,
       evo_sync: 'sincronizado',
       evo_sync_error: null,
       evo_synced_at: new Date().toISOString(),

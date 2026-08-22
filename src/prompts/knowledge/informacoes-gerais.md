@@ -82,8 +82,26 @@ _estúdio de Pilates
 >
 > `transferir_para_humano` aqui virou exceção, não regra: só quando o
 > agendamento não for possível (turma cheia, horário fora da grade que a pessoa
-> não aceita trocar, sistema recusando) ou quando quem pede **já é aluno** — a
-> aula experimental é do fluxo de oportunidade, não de matriculado.
+> não aceita trocar, sistema recusando) ou quando quem pede **é aluno ativo** —
+> a aula experimental é do fluxo de oportunidade, não de matriculado.
+
+## Ex-aluno que volta
+
+**Quem está sem contrato há mais de 3 meses volta à condição de lead** e pode
+fazer aula experimental normalmente, como qualquer oportunidade nova.
+
+⚠️ O EVO **não** faz esse caminho de volta sozinho: lá, uma vez `member`,
+sempre `member` — mesmo sem contrato desde 2021. Quem aplica a regra é a Leia,
+pela tool `buscar_cadastro`, que cruza o status do cadastro com a data de fim do
+último contrato.
+
+Na prática o próprio EVO concorda: tentar matricular um aluno inativo numa aula
+devolve *"Agendamento indisponível pelo motivo: Inactive member"*. Por isso o
+retorno é registrado como oportunidade nova, com o número do cadastro antigo
+anotado para o consultor ver o histórico.
+
+Quem parou há **menos** de 3 meses é caso de **retenção**, não de lead novo:
+aí vale o consultor.
 
 ## Matrícula
 

@@ -271,9 +271,62 @@ export async function buscarMembros(params = {}) {
   return Array.isArray(lista) ? lista : [];
 }
 
-/** Perfil completo de um membro. */
+/** Perfil completo de um membro. Traz `membershipStatus`, que a listagem não garante. */
 export async function buscarMembroPorId(idMember) {
   return evoFetch(`/api/v2/members/${idMember}`);
+}
+
+/** Contratos (planos) de um membro, do mais antigo ao mais recente. */
+export async function buscarContratosDoMembro(idMember) {
+  const resposta = await evoFetch(`/api/v3/membermembership${qs({ idMember, take: 50 })}`);
+  const lista = Array.isArray(resposta) ? resposta : (resposta?.list ?? resposta?.lista ?? []);
+  return Array.isArray(lista) ? lista : [];
+}
+
+/**
+ * Situação do aluno para efeito de funil.
+ *
+ * O EVO só sabe dizer `Active` / `Inactive` — não existe caminho de volta de
+ * `member` para `prospect`, então quem se matriculou em 2018 e parou em 2021
+ * continua sendo "aluno" para sempre. A academia não opera assim: passados
+ * alguns meses sem contrato, a pessoa volta a ser oportunidade.
+ *
+ * Aqui juntamos as duas informações que o EVO tem em lugares diferentes — o
+ * status do perfil e a data de fim do último contrato — para responder o que
+ * de fato importa: **esta pessoa pode fazer aula experimental?**
+ *
+ * @returns {Promise<{ativo:boolean, mesesInativo:number|null, fimUltimoContrato:string|null, reativavel:boolean, membro:object}>}
+ */
+export async function situacaoDoMembro(idMember, { mesesReativacao = config.evo.mesesReativacao } = {}) {
+  const membro = await buscarMembroPorId(idMember);
+  const ativo = String(membro?.membershipStatus || '').toLowerCase() === 'active';
+
+  if (ativo) {
+    return { ativo: true, mesesInativo: 0, fimUltimoContrato: null, reativavel: false, membro };
+  }
+
+  const contratos = await buscarContratosDoMembro(idMember).catch(() => []);
+  const fins = contratos
+    .map(c => c.membershipEnd)
+    .filter(Boolean)
+    .map(d => new Date(d))
+    .filter(d => !Number.isNaN(d.getTime()))
+    .sort((a, b) => b - a);
+
+  // Sem contrato nenhum: alguém cadastrado como membro que nunca fechou plano.
+  // Conta como reativável — é lead, não aluno.
+  const fim = fins[0] || null;
+  const mesesInativo = fim
+    ? Math.floor((Date.now() - fim.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+    : null;
+
+  return {
+    ativo: false,
+    mesesInativo,
+    fimUltimoContrato: fim ? fim.toISOString().slice(0, 10) : null,
+    reativavel: mesesInativo === null || mesesInativo >= mesesReativacao,
+    membro,
+  };
 }
 
 // ──────────────────────────────────────────────
@@ -558,6 +611,8 @@ export const evoClient = {
   // membros
   buscarMembros,
   buscarMembroPorId,
+  buscarContratosDoMembro,
+  situacaoDoMembro,
   // experimental e grade
   agendarAulaExperimental,
   listarAtividades,

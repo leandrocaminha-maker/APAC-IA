@@ -250,24 +250,73 @@ const handlers = {
     }
 
     try {
-      // 1. Já é aluno?
+      // 1. Existe cadastro de aluno? Se existir, ele está ATIVO?
+      //
+      // A distinção é o ponto todo: o EVO não devolve `member` para
+      // `prospect` nunca — quem se matriculou em 2018 e parou em 2021
+      // continua "aluno" para sempre. A academia não opera assim, e a
+      // própria API concorda na prática: tentar matricular um inativo numa
+      // aula devolve "Agendamento indisponível pelo motivo: Inactive
+      // member". Quem parou há mais de `mesesReativacao` volta a ser lead.
       if (telefone) {
         const { cellphone } = evoClient.separarDdi(telefone);
         const membros = await evoClient.buscarMembros({ phone: cellphone, take: 5 });
+
         if (membros.length) {
           const m = membros[0];
+          const situacao = await evoClient.situacaoDoMembro(m.idMember);
+          const perfil = situacao.membro || m;
+          const dados = {
+            nome: [perfil.firstName, perfil.lastName].filter(Boolean).join(' '),
+            email: perfil.email || null,
+            nascimento: perfil.birthDate ? String(perfil.birthDate).slice(0, 10) : null,
+            celular: cellphone,
+          };
+
+          if (situacao.ativo || !situacao.reativavel) {
+            return {
+              success: true,
+              encontrado: 'aluno',
+              idMember: m.idMember,
+              ativo: situacao.ativo,
+              mesesInativo: situacao.mesesInativo,
+              dados,
+              mensagem: situacao.ativo
+                ? 'Esta pessoa JÁ É ALUNA ativa. Aula experimental é para quem ainda não é aluno. ' +
+                  'Confirme o que ela quer de fato — experimentar outra modalidade é assunto de consultor.'
+                : `Parou há apenas ${situacao.mesesInativo} mês(es). Ainda é caso de retenção, não de lead novo — ` +
+                  'trate como aluno e transfira para o consultor.',
+            };
+          }
+
+          // Ex-aluno que voltou: é lead de novo.
+          //
+          // Guardamos o vínculo com o cadastro antigo no lead para o
+          // consultor ver os dois lados no painel — e para uma venda futura
+          // sair no cadastro de aluno que já existe, em vez de criar outro.
+          try {
+            const { lead } = await leadDaConversa(contexto);
+            await supabase
+              .from('crm_leads')
+              .update({ evo_id_member: m.idMember, full_name: lead.full_name || dados.nome })
+              .eq('id', lead.id);
+          } catch (err) {
+            logger.warn(`[ai-tools] Não consegui vincular o ex-aluno ao lead: ${err.message}`);
+          }
+
           return {
             success: true,
-            encontrado: 'aluno',
+            encontrado: 'ex_aluno',
             idMember: m.idMember,
-            dados: {
-              nome: [m.firstName, m.lastName].filter(Boolean).join(' '),
-              email: m.email || null,
-              nascimento: m.birthDate ? String(m.birthDate).slice(0, 10) : null,
-              celular: m.cellphone || null,
-            },
-            mensagem: 'Esta pessoa JÁ É ALUNA da academia. Aula experimental é para quem ainda não é aluno. ' +
-              'Confirme com ela o que ela quer de fato — experimentar outra modalidade é assunto de consultor.',
+            mesesInativo: situacao.mesesInativo,
+            fimUltimoContrato: situacao.fimUltimoContrato,
+            dados,
+            mensagem:
+              `Foi aluna, mas está sem contrato há ${situacao.mesesInativo ?? 'muitos'} meses` +
+              `${situacao.fimUltimoContrato ? ` (último até ${situacao.fimUltimoContrato})` : ''}. ` +
+              'Pelas regras da academia ela VOLTOU À CONDIÇÃO DE LEAD e PODE fazer aula experimental. ' +
+              'Trate como quem está voltando, não como desconhecida: confirme os dados acima, ' +
+              'não peça tudo de novo, e siga com `cadastrar_prospect` e depois o agendamento.',
           };
         }
       }
@@ -346,13 +395,24 @@ const handlers = {
     try {
       const { lead } = await leadDaConversa(contexto);
 
+      // Ex-aluno reativado: a nota liga o cadastro novo ao antigo.
+      //
+      // O EVO não tem como vincular prospect a member, então sem isto o
+      // consultor abriria uma oportunidade que parece de alguém que nunca
+      // pisou na academia — quando na verdade é um retorno, e o histórico
+      // muda a conversa de venda.
+      const observacoes = lead.evo_id_member
+        ? `Cadastrado pela Leia no WhatsApp. RETORNO de ex-aluno — cadastro anterior: member #${lead.evo_id_member}. ` +
+          `Interesse: ${args.interesse || 'não informado'}.`
+        : `Cadastrado pela Leia no WhatsApp. Interesse: ${args.interesse || 'não informado'}.`;
+
       const r = await evoSync.cadastrarProspect(lead, {
         dados: {
           nomeCompleto: nome,
           dataNascimento: args.data_nascimento || null,
           email: args.email || null,
           telefone: args.telefone || contexto?.phone,
-          observacoes: `Cadastrado pela Leia no WhatsApp. Interesse: ${args.interesse || 'não informado'}.`,
+          observacoes,
         },
       });
 

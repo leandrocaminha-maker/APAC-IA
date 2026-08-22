@@ -56,6 +56,15 @@ export const config = {
     // sujar o sistema de produção da academia. Leitura continua real.
     dryRun: env('EVO_DRY_RUN', 'false') === 'true',
 
+    // Depois de quantos meses sem contrato um ex-aluno volta a ser lead.
+    //
+    // O EVO não faz esse caminho de volta: uma vez `member`, sempre `member`,
+    // mesmo sem contrato desde 2021. Como a academia trata quem sumiu há mais
+    // de 3 meses como oportunidade nova — e é assim que o painel opera —,
+    // quem passa deste prazo volta a receber o fluxo de lead, incluindo aula
+    // experimental.
+    mesesReativacao: parseInt(env('EVO_MESES_REATIVACAO', '3'), 10),
+
     // Intervalo do worker que reconcilia o funil com o EVO. Existe porque
     // o EVO não emite evento de mudança de prospect: sem esta varredura,
     // o que o consultor faz dentro do EVO não chega ao painel.
