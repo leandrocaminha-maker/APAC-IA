@@ -16,6 +16,7 @@ import webhookRouter from './routes/webhook.js';
 import apiRouter from './routes/api.js';
 import adminRouter from './routes/admin.js';
 import testeRouter from './routes/teste.js';
+import crmRouter from './routes/crm.js';
 import { startQueueProcessor } from './workers/queue-processor.js';
 
 const app = express();
@@ -33,7 +34,7 @@ app.use(cors({
     'http://localhost:3000',       // AQUAP dev
     'http://localhost:3001',       // pagtos_ap dev
     'http://localhost:3002',       // NFS-e dev
-    'https://leia.apacademia.com.br',  // este serviço, atrás do nginx
+    'https://crm.apacademia.com.br',  // este serviço, atrás do nginx
     /\.apacademia\.com\.br$/,       // apps irmãos em produção
     /\.supabase\.co$/,             // Supabase
     /\.w12app\.com\.br$/,          // EVO
@@ -76,6 +77,13 @@ app.use('/admin', adminRouter);
 // Página de teste do agente (auth por senha única, sem usuário)
 app.use('/teste', testeRouter);
 
+// Painel do consultor (auth por consultor, cookie assinado)
+app.use('/crm', crmRouter);
+
+// A raiz do domínio é o painel — crm.apacademia.com.br leva direto a ele
+// em vez de cair no 404 genérico.
+app.get('/', (req, res) => res.redirect('/crm'));
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
@@ -100,6 +108,7 @@ app.listen(config.port, () => {
   logger.info(`   API:     http://localhost:${config.port}/api/`);
   logger.info(`   Admin:   http://localhost:${config.port}/admin/`);
   logger.info(`   Teste:   http://localhost:${config.port}/teste`);
+  logger.info(`   Painel:  http://localhost:${config.port}/crm`);
   logger.info(`   Health:  http://localhost:${config.port}/health`);
 
   if (config.teste.habilitada && config.teste.senha === 'Leia') {
@@ -107,8 +116,52 @@ app.listen(config.port, () => {
       'defina TESTE_SENHA no .env, ou TESTE_HABILITADO=false ao terminar os testes');
   }
 
+  if (config.evo.dryRun) {
+    logger.warn('[evo] EVO_DRY_RUN=true — nenhuma escrita chega ao EVO. ' +
+      'Cadastro, agendamento e venda são simulados.');
+  }
+
+  if (config.crm.habilitado && !config.crm.evoWebhookSecret) {
+    logger.warn('[crm] EVO_WEBHOOK_SECRET não definido — /webhook/evo responde 503 ' +
+      'e o funil não recebe venda nem conversão do EVO.');
+  }
+
+  if (config.crm.habilitado && !config.crm.sessionSecret) {
+    logger.warn('[crm] CRM_SESSION_SECRET não definido — as sessões do painel ' +
+      'caem a cada restart do container.');
+  }
+
+  conferirTabelasDoCrm();
+
   // Inicia worker de fila
   startQueueProcessor();
 });
+
+/**
+ * Avisa no boot se a migration 002 ainda não rodou.
+ *
+ * Sem isto o sintoma é confuso: o login do painel responde "e-mail ou senha
+ * incorretos" — porque a consulta a crm_users falha e o código trata como
+ * usuário inexistente — e ninguém desconfia de tabela faltando. O mesmo
+ * diagnóstico caro que a 001 já produziu uma vez.
+ */
+async function conferirTabelasDoCrm() {
+  if (!config.crm.habilitado) return;
+
+  const { supabase } = await import('./lib/supabase.js');
+  const { error } = await supabase.from('crm_leads').select('id').limit(1);
+
+  if (error?.code === 'PGRST205' || /schema cache/i.test(error?.message || '')) {
+    logger.error(
+      '[crm] As tabelas do CRM não existem (ou estão sem GRANT para service_role). ' +
+      'Rode supabase/migrations/002_crm_schema.sql no SQL Editor do Supabase. ' +
+      'Até lá o painel abre mas o login falha como se a senha estivesse errada.'
+    );
+  } else if (error) {
+    logger.error('[crm] Não consegui ler crm_leads:', error.message);
+  } else {
+    logger.info('[crm] Tabelas do CRM acessíveis');
+  }
+}
 
 export default app;

@@ -40,6 +40,39 @@ export const config = {
     dns: env('EVO_API_DNS', 'APACADEMIA'),
     token: env('EVO_API_TOKEN', ''),
     baseUrl: 'https://evo-integracao-api.w12app.com.br',
+
+    // Filial. 1 = AP ACADEMIA - PIRITUBA, confirmado em /api/v1/prospects.
+    idBranch: parseInt(env('EVO_ID_BRANCH', '1'), 10),
+
+    // Como o lead vindo da Leia aparece no relatório de origem do EVO.
+    // O campo é usado de verdade na conta (INDICAÇÃO, WEBSITE / GOOGLE,
+    // INSTAGRAN...), então vale entrar com um valor próprio em vez de cair
+    // no "-NÃO INFORMADO", que hoje é 42% dos cadastros.
+    canalMarketing: env('EVO_CANAL_MARKETING', 'WHATSAPP / LEIA'),
+
+    // Guarda de ensaio: com true, nenhuma escrita sai daqui — cadastro de
+    // prospect, agendamento e venda só são registrados no log e devolvem
+    // { dryRun: true }. Serve para percorrer o fluxo do painel inteiro sem
+    // sujar o sistema de produção da academia. Leitura continua real.
+    dryRun: env('EVO_DRY_RUN', 'false') === 'true',
+  },
+
+  // Painel CRM (crm.apacademia.com.br) — login por consultor.
+  //
+  // Diferente da /teste, que tem senha única: aqui o painel escreve venda
+  // em produção no EVO, e sem autor a tabela do funil não sabe dizer quem
+  // agendou nem quem vendeu.
+  crm: {
+    habilitado: env('CRM_HABILITADO', 'true') !== 'false',
+    // Sem valor definido, o segredo é sorteado no boot e as sessões caem a
+    // cada restart do container.
+    sessionSecret: env('CRM_SESSION_SECRET', ''),
+    sessaoHoras: parseInt(env('CRM_SESSAO_HORAS', '12'), 10),
+    // Secret que o EVO devolve no header do webhook. Sem ele, /webhook/evo
+    // é bloqueado (fail-closed) — o endpoint escreve no funil.
+    evoWebhookSecret: env('EVO_WEBHOOK_SECRET', ''),
+    // URL pública deste serviço, usada para registrar o webhook no EVO.
+    urlPublica: env('CRM_URL_PUBLICA', 'https://crm.apacademia.com.br'),
   },
 
   // Webhook

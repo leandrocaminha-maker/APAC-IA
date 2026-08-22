@@ -9,8 +9,26 @@ import { supabase } from '../lib/supabase.js';
 import { getOrCreateContact, getOrCreateConversation, saveMessage, handoffToHuman } from '../services/contacts.js';
 import { aiAgent } from '../services/ai-agent.js';
 import { sendText } from '../services/evolution.js';
+import { funil } from '../services/funil.js';
+import { evoSync } from '../services/evo-sync.js';
 
 const router = Router();
+
+/**
+ * Move o funil sem nunca derrubar o atendimento.
+ *
+ * O funil é observação, não caminho crítico: se o Supabase engasgar na
+ * hora de gravar a etapa, a mensagem do cliente ainda tem que ser
+ * respondida. Por isso toda chamada de funil no fluxo do WhatsApp passa
+ * por aqui em vez de ir direta.
+ */
+async function moverFunil(fn) {
+  try {
+    await fn();
+  } catch (err) {
+    logger.error('[webhook] Funil falhou (atendimento seguiu normalmente):', err.message);
+  }
+}
 
 /**
  * POST /webhook/evolution
@@ -61,6 +79,51 @@ router.post('/evolution', async (req, res) => {
     logger.error('[webhook] Erro ao processar webhook:', err);
     // Retorna 200 mesmo com erro para não gerar retry infinito
     res.status(200).json({ received: true, error: err.message });
+  }
+});
+
+/**
+ * POST /webhook/evo
+ * Webhooks do EVO / W12 — venda, conversão, contrato, matrícula em aula.
+ *
+ * O EVO manda um envelope enxuto e síncrono:
+ *   { IdW12, IdBranch, IdRecord, EventType, ApiCallback }
+ *
+ * Por isso a resposta é imediata e o processamento fica para depois: o
+ * dado de verdade está atrás do `ApiCallback`, que é outra chamada HTTP à
+ * API do EVO. Fazer isso dentro da requisição faria o EVO esperar por nós
+ * e reentregar por timeout.
+ *
+ * ⚠️ Autenticação é fail-closed. Sem EVO_WEBHOOK_SECRET configurado o
+ * endpoint responde 503 e não aceita nada — ele escreve no funil, e um
+ * webhook aberto deixa qualquer um marcar lead como ganho.
+ */
+router.post('/evo', async (req, res) => {
+  if (!config.crm.evoWebhookSecret) {
+    logger.error('[webhook/evo] EVO_WEBHOOK_SECRET não configurado — endpoint bloqueado');
+    return res.status(503).json({ erro: 'Webhook do EVO não configurado' });
+  }
+
+  const enviado = req.headers['x-evo-secret'] || req.query.secret;
+  if (enviado !== config.crm.evoWebhookSecret) {
+    logger.warn('[webhook/evo] Requisição rejeitada: secret ausente ou inválido');
+    return res.status(401).json({ erro: 'Secret inválido' });
+  }
+
+  // O EVO pode mandar um evento ou um lote.
+  const envelopes = Array.isArray(req.body) ? req.body : [req.body];
+  logger.info(`[webhook/evo] ${envelopes.length} evento(s): ${envelopes.map(e => e?.EventType || '?').join(', ')}`);
+
+  res.status(200).json({ recebido: envelopes.length });
+
+  // Depois da resposta: guardar e processar sem segurar o EVO.
+  for (const envelope of envelopes) {
+    try {
+      const evento = await evoSync.guardarEventoWebhook(envelope);
+      if (evento) await evoSync.processarEventoWebhook(evento);
+    } catch (err) {
+      logger.error('[webhook/evo] Falha ao processar evento:', err.message);
+    }
   }
 });
 
@@ -156,6 +219,10 @@ async function handleIncomingMessage(event) {
     status: 'delivered',
   });
 
+  // O lead entra no funil na primeira mensagem, e volta para "em conversa"
+  // a cada resposta — sem retroceder quem já avançou.
+  await moverFunil(() => funil.aoReceberMensagem(contact));
+
   // Se conversa está em modo humano, não processa com IA
   if (conversation.status === 'human') {
     logger.info(`[webhook] Conversa em modo humano — mensagem registrada sem resposta IA`);
@@ -198,6 +265,9 @@ async function handleIncomingMessage(event) {
         contact.id,
         aiResponse.handoffReason
       );
+      // O handoff deixa de ser uma linha numa fila que ninguém olha: vira
+      // etapa do funil, visível na tabela do painel com o tempo parado.
+      await moverFunil(() => funil.aoAbrirHandoff(contact, aiResponse.handoffReason));
     }
 
     // Envia resposta
@@ -286,6 +356,11 @@ async function registrarMensagemDeSaida({ phone, content, contentType, evolution
     evolutionMsgId: evolutionMsgId || null,
     status: 'sent',
   });
+
+  // Consultor digitando no aparelho é o sinal mais confiável de que ele
+  // assumiu o atendimento — mais do que qualquer botão no painel, que ele
+  // pode nunca clicar.
+  await moverFunil(() => funil.aoConsultorAssumir(contact, { via: 'whatsapp' }));
 
   logger.info(`[webhook] 👤 consultor → ${phone}: ${content.slice(0, 80)}`);
 }

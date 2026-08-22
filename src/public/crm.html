@@ -1,0 +1,1282 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>CRM — AP Academia</title>
+<style>
+  :root {
+    --fundo: #0f172a;
+    --painel: #1e293b;
+    --painel-2: #273449;
+    --borda: #334155;
+    --texto: #e2e8f0;
+    --suave: #94a3b8;
+    --acento: #22c55e;
+    --acento-escuro: #16a34a;
+    --alerta: #f59e0b;
+    --erro: #ef4444;
+    --info: #38bdf8;
+    --roxo: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--fundo);
+    color: var(--texto);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  button, input, select, textarea { font: inherit; }
+  button { cursor: pointer; }
+  a { color: var(--info); }
+
+  .campo {
+    width: 100%; padding: 10px 12px; border-radius: 9px;
+    border: 1px solid var(--borda); background: var(--fundo); color: var(--texto);
+  }
+  .campo:focus { outline: 2px solid var(--acento-escuro); outline-offset: -1px; }
+  .btn {
+    border: 1px solid var(--borda); background: var(--painel-2); color: var(--texto);
+    border-radius: 9px; padding: 9px 14px;
+  }
+  .btn:hover { border-color: var(--suave); }
+  .btn.primario { background: var(--acento); color: #06240f; border-color: var(--acento); font-weight: 700; }
+  .btn.perigo { background: transparent; color: var(--erro); border-color: #7f1d1d; }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn.pequeno { padding: 5px 10px; font-size: 13px; border-radius: 7px; }
+
+  /* ── Login ───────────────────────────────── */
+  #login { margin: auto; width: min(92vw, 380px); background: var(--painel);
+    border: 1px solid var(--borda); border-radius: 14px; padding: 30px 26px; }
+  #login h1 { font-size: 21px; margin: 0 0 4px; }
+  #login p { color: var(--suave); font-size: 14px; margin: 0 0 22px; }
+  #login .campo { margin-bottom: 12px; }
+  #login .btn { width: 100%; }
+  .erro-login { color: var(--erro); font-size: 14px; min-height: 20px; margin-top: 10px; }
+
+  /* ── Shell ───────────────────────────────── */
+  #app { display: none; flex: 1; flex-direction: column; min-height: 0; }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+    background: var(--painel); border-bottom: 1px solid var(--borda); flex-wrap: wrap; }
+  .marca { font-weight: 700; letter-spacing: .3px; }
+  .marca small { display: block; color: var(--suave); font-weight: 400; font-size: 11px; letter-spacing: 0; }
+  nav { display: flex; gap: 4px; }
+  nav button { background: transparent; border: 0; color: var(--suave);
+    padding: 8px 14px; border-radius: 8px; }
+  nav button.ativo { background: var(--painel-2); color: var(--texto); font-weight: 600; }
+  header .espaco { flex: 1; }
+  .quem { color: var(--suave); font-size: 13px; text-align: right; line-height: 1.3; }
+  .quem b { color: var(--texto); display: block; }
+
+  .fita-dryrun { background: #78350f; color: #fde68a; padding: 7px 16px; font-size: 13px;
+    border-bottom: 1px solid #92400e; }
+
+  main { flex: 1; min-height: 0; overflow: auto; }
+  .vista { display: none; padding: 18px; }
+  .vista.ativa { display: block; }
+  .vista.cheia { display: none; height: 100%; padding: 0; }
+  .vista.cheia.ativa { display: flex; }
+
+  /* ── Métricas ────────────────────────────── */
+  .metricas { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px; margin-bottom: 16px; }
+  .cartao { background: var(--painel); border: 1px solid var(--borda);
+    border-radius: 11px; padding: 13px 15px; }
+  .cartao .rotulo { color: var(--suave); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .cartao .valor { font-size: 25px; font-weight: 700; margin-top: 3px; }
+  .cartao .nota { color: var(--suave); font-size: 12px; }
+  .cartao.atencao .valor { color: var(--alerta); }
+  .cartao.ruim .valor { color: var(--erro); }
+  .cartao.bom .valor { color: var(--acento); }
+
+  /* ── Funil visual ────────────────────────── */
+  .funil-barras { background: var(--painel); border: 1px solid var(--borda);
+    border-radius: 11px; padding: 14px 16px; margin-bottom: 16px; }
+  .funil-linha { display: grid; grid-template-columns: 170px 1fr 44px;
+    align-items: center; gap: 10px; margin-bottom: 6px; font-size: 13px; }
+  .funil-linha:last-child { margin-bottom: 0; }
+  .barra { height: 9px; background: var(--painel-2); border-radius: 5px; overflow: hidden; }
+  .barra i { display: block; height: 100%; background: var(--acento); border-radius: 5px; }
+  .funil-linha .qtd { text-align: right; font-variant-numeric: tabular-nums; color: var(--suave); }
+
+  /* ── Filtros ─────────────────────────────── */
+  .filtros { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .filtros .campo { width: auto; padding: 8px 11px; }
+  .filtros .busca { min-width: 230px; }
+  .chips { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip { border: 1px solid var(--borda); background: var(--painel); color: var(--suave);
+    border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+  .chip.ativo { background: var(--acento-escuro); border-color: var(--acento); color: #f0fdf4; }
+
+  /* ── Tabela ──────────────────────────────── */
+  .tabela-caixa { background: var(--painel); border: 1px solid var(--borda);
+    border-radius: 11px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
+  th { text-align: left; color: var(--suave); font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: .4px; padding: 11px 13px;
+    border-bottom: 1px solid var(--borda); position: sticky; top: 0; background: var(--painel); }
+  th.ordenavel { cursor: pointer; user-select: none; }
+  th.ordenavel:hover { color: var(--texto); }
+  td { padding: 11px 13px; border-bottom: 1px solid #24324a; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--painel-2); }
+  tbody tr:last-child td { border-bottom: 0; }
+  .nome-lead { font-weight: 600; }
+  .nome-lead small { display: block; color: var(--suave); font-weight: 400; font-size: 12px; }
+
+  .etapa { display: inline-block; padding: 3px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .e-novo { background: #1e3a5f; color: #93c5fd; }
+  .e-em_conversa { background: #164e63; color: #67e8f9; }
+  .e-aguardando_consultor { background: #78350f; color: #fcd34d; }
+  .e-com_consultor { background: #3b2f63; color: #c4b5fd; }
+  .e-experimental_agendada { background: #164e2a; color: #86efac; }
+  .e-experimental_realizada { background: #14532d; color: #bbf7d0; }
+  .e-ganho { background: var(--acento-escuro); color: #f0fdf4; }
+  .e-perdido { background: #450a0a; color: #fca5a5; }
+
+  .parado-ok { color: var(--suave); }
+  .parado-atencao { color: var(--alerta); font-weight: 600; }
+  .parado-ruim { color: var(--erro); font-weight: 700; }
+  .vazio { color: #64748b; }
+  .aviso-vazio { padding: 40px; text-align: center; color: var(--suave); }
+
+  /* ── Gaveta da ficha ─────────────────────── */
+  #gaveta { position: fixed; inset: 0; background: rgba(2,6,23,.66);
+    display: none; z-index: 40; }
+  #gaveta.aberta { display: block; }
+  .gaveta-painel { position: absolute; right: 0; top: 0; bottom: 0;
+    width: min(96vw, 620px); background: var(--painel); border-left: 1px solid var(--borda);
+    display: flex; flex-direction: column; }
+  .gaveta-topo { padding: 16px 18px; border-bottom: 1px solid var(--borda);
+    display: flex; align-items: flex-start; gap: 12px; }
+  .gaveta-topo h2 { margin: 0 0 4px; font-size: 19px; }
+  .gaveta-topo .sub { color: var(--suave); font-size: 13px; }
+  .gaveta-abas { display: flex; gap: 4px; padding: 10px 14px 0; border-bottom: 1px solid var(--borda); }
+  .gaveta-abas button { background: transparent; border: 0; color: var(--suave);
+    padding: 8px 12px; border-radius: 8px 8px 0 0; font-size: 14px; }
+  .gaveta-abas button.ativo { background: var(--painel-2); color: var(--texto); font-weight: 600; }
+  .gaveta-corpo { flex: 1; overflow: auto; padding: 16px 18px; }
+  .gaveta-aba { display: none; }
+  .gaveta-aba.ativa { display: block; }
+
+  .par { display: grid; grid-template-columns: 130px 1fr; gap: 8px; padding: 7px 0;
+    border-bottom: 1px solid #24324a; font-size: 14px; }
+  .par dt { color: var(--suave); }
+  .par dd { margin: 0; }
+
+  .bloco { background: var(--fundo); border: 1px solid var(--borda);
+    border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .bloco h3 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase;
+    letter-spacing: .5px; color: var(--suave); }
+  .linha-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .linha-form.uma { grid-template-columns: 1fr; }
+
+  .evento { padding: 9px 0; border-bottom: 1px solid #24324a; font-size: 14px; }
+  .evento:last-child { border-bottom: 0; }
+  .evento .quando { color: var(--suave); font-size: 12px; }
+  .evento .autor { color: var(--roxo); font-size: 12px; }
+
+  /* ── Conversas ───────────────────────────── */
+  .split { display: flex; width: 100%; min-height: 0; }
+  .lista-conversas { width: 320px; border-right: 1px solid var(--borda);
+    overflow: auto; flex-shrink: 0; }
+  .item-conversa { padding: 12px 14px; border-bottom: 1px solid #24324a; cursor: pointer; }
+  .item-conversa:hover, .item-conversa.ativo { background: var(--painel-2); }
+  .item-conversa .topo { display: flex; justify-content: space-between; gap: 8px; }
+  .item-conversa b { font-size: 14px; }
+  .item-conversa .quando { color: var(--suave); font-size: 11px; white-space: nowrap; }
+  .item-conversa .previa { color: var(--suave); font-size: 12px; margin-top: 3px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .painel-conversa { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .conversa-topo { padding: 12px 16px; border-bottom: 1px solid var(--borda);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .mensagens { flex: 1; overflow: auto; padding: 16px; display: flex;
+    flex-direction: column; gap: 9px; }
+  .balao { max-width: 72%; padding: 9px 13px; border-radius: 13px; font-size: 14px;
+    white-space: pre-wrap; word-wrap: break-word; }
+  .balao.cliente { align-self: flex-start; background: var(--painel-2);
+    border-bottom-left-radius: 4px; }
+  .balao.leia { align-self: flex-end; background: #14532d; border-bottom-right-radius: 4px; }
+  .balao.consultor { align-self: flex-end; background: #3b2f63; border-bottom-right-radius: 4px; }
+  .balao .assinatura { display: block; font-size: 11px; opacity: .7; margin-top: 4px; }
+  .marca-handoff { align-self: center; background: #78350f; color: #fcd34d;
+    font-size: 12px; padding: 4px 12px; border-radius: 999px; }
+  .responder { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--borda); }
+  .responder .campo { flex: 1; resize: none; }
+
+  /* ── Simulador ───────────────────────────── */
+  #sim-mensagens { flex: 1; overflow: auto; padding: 18px; display: flex;
+    flex-direction: column; gap: 9px; max-width: 820px; width: 100%; margin: 0 auto; }
+  .sim-caixa { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; }
+  .sim-responder { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--borda);
+    max-width: 820px; width: 100%; margin: 0 auto; }
+
+  /* ── Ajustes ─────────────────────────────── */
+  .grade-ajustes { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .qr { background: #fff; padding: 12px; border-radius: 10px; display: inline-block; }
+  .qr img { display: block; width: 240px; height: 240px; }
+  pre.saida { background: var(--fundo); border: 1px solid var(--borda); border-radius: 8px;
+    padding: 10px; font-size: 12px; overflow: auto; max-height: 220px; white-space: pre-wrap; }
+
+  .aviso { padding: 10px 13px; border-radius: 9px; font-size: 13px; margin-bottom: 12px; }
+  .aviso.erro { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+  .aviso.ok { background: #14532d; color: #bbf7d0; border: 1px solid var(--acento-escuro); }
+  .aviso.info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #1d4ed8; }
+
+  #toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--painel-2); border: 1px solid var(--borda); color: var(--texto);
+    padding: 11px 18px; border-radius: 10px; z-index: 60; display: none; max-width: 90vw; }
+  #toast.erro { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
+  #toast.ok { background: #14532d; border-color: var(--acento-escuro); color: #bbf7d0; }
+
+  @media (max-width: 780px) {
+    .lista-conversas { width: 100%; }
+    .painel-conversa { display: none; }
+    .split.abriu .lista-conversas { display: none; }
+    .split.abriu .painel-conversa { display: flex; }
+    .linha-form { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══════════════════════════════════════════ -->
+<div id="login">
+  <h1>CRM AP Academia</h1>
+  <p>Painel do consultor</p>
+  <form id="form-login">
+    <input class="campo" type="email" id="login-email" placeholder="E-mail" autocomplete="username" required>
+    <input class="campo" type="password" id="login-senha" placeholder="Senha" autocomplete="current-password" required>
+    <button class="btn primario" type="submit" id="btn-entrar">Entrar</button>
+  </form>
+  <div class="erro-login" id="erro-login"></div>
+</div>
+
+<!-- ══ APP ════════════════════════════════════════════ -->
+<div id="app">
+  <div class="fita-dryrun" id="fita-dryrun" style="display:none">
+    ⚠️ <b>Modo ensaio (EVO_DRY_RUN)</b> — cadastro, agendamento e venda são simulados e
+    <b>não chegam ao EVO</b>. O funil anda normalmente.
+  </div>
+
+  <header>
+    <div class="marca">AP ACADEMIA<small>CRM · Leia</small></div>
+    <nav>
+      <button data-vista="funil" class="ativo">Funil</button>
+      <button data-vista="conversas">Conversas</button>
+      <button data-vista="simulador">Simulador</button>
+      <button data-vista="ajustes">Ajustes</button>
+    </nav>
+    <div class="espaco"></div>
+    <div class="quem"><b id="quem-nome"></b><span id="quem-papel"></span></div>
+    <button class="btn pequeno" id="btn-sair">Sair</button>
+  </header>
+
+  <main>
+    <!-- ── FUNIL ──────────────────────────────── -->
+    <section class="vista ativa" id="vista-funil">
+      <div class="metricas" id="metricas"></div>
+      <div class="funil-barras" id="funil-barras"></div>
+
+      <div class="chips" id="chips-etapas"></div>
+
+      <div class="filtros">
+        <input class="campo busca" id="f-busca" placeholder="Buscar por nome, telefone ou e-mail…">
+        <select class="campo" id="f-dono">
+          <option value="">Todos os consultores</option>
+          <option value="sem_dono">Sem dono</option>
+        </select>
+        <select class="campo" id="f-origem">
+          <option value="">Todas as origens</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="painel">Painel</option>
+          <option value="evo">EVO</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:6px;color:var(--suave);font-size:14px">
+          <input type="checkbox" id="f-fechados"> incluir fechados
+        </label>
+        <button class="btn" id="btn-novo-lead">+ Novo lead</button>
+        <button class="btn" id="btn-recarregar">Atualizar</button>
+      </div>
+
+      <div class="tabela-caixa">
+        <table>
+          <thead>
+            <tr>
+              <th class="ordenavel" data-col="full_name">Lead</th>
+              <th class="ordenavel" data-col="stage">Etapa</th>
+              <th class="ordenavel" data-col="stage_since">Parado há</th>
+              <th>Consultor</th>
+              <th>Interesse</th>
+              <th>EVO</th>
+              <th class="ordenavel" data-col="experimental_at">Experimental</th>
+              <th class="ordenavel" data-col="next_action_at">Próxima ação</th>
+              <th class="ordenavel" data-col="last_activity_at">Última atividade</th>
+            </tr>
+          </thead>
+          <tbody id="corpo-funil"></tbody>
+        </table>
+        <div class="aviso-vazio" id="funil-vazio" style="display:none">Nenhum lead com esses filtros.</div>
+      </div>
+      <p style="color:var(--suave);font-size:13px" id="funil-total"></p>
+    </section>
+
+    <!-- ── CONVERSAS ──────────────────────────── -->
+    <section class="vista cheia" id="vista-conversas">
+      <div class="split" id="split-conversas">
+        <div class="lista-conversas">
+          <div style="padding:12px 14px;border-bottom:1px solid var(--borda)">
+            <select class="campo" id="c-filtro">
+              <option value="">Todas as conversas</option>
+              <option value="human">Com consultor</option>
+              <option value="active">Com a Leia</option>
+              <option value="closed">Encerradas</option>
+            </select>
+          </div>
+          <div id="lista-conversas"></div>
+        </div>
+        <div class="painel-conversa" id="painel-conversa">
+          <div class="aviso-vazio" id="conversa-vazia">Escolha uma conversa à esquerda.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SIMULADOR ──────────────────────────── -->
+    <section class="vista cheia" id="vista-simulador">
+      <div class="sim-caixa">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--borda);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <b>Simulador</b>
+          <span style="color:var(--suave);font-size:13px">
+            Conversa com a Leia sem passar pelo WhatsApp. Fica gravada no canal
+            <code>web-test</code>, fora das métricas de atendimento.
+          </span>
+          <div style="flex:1"></div>
+          <button class="btn pequeno" id="btn-sim-reiniciar">Nova conversa</button>
+        </div>
+        <div id="sim-mensagens"></div>
+        <form class="sim-responder" id="form-sim">
+          <textarea class="campo" id="sim-texto" rows="1" placeholder="Escreva como se fosse um cliente…"></textarea>
+          <button class="btn primario" type="submit" id="btn-sim-enviar">Enviar</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ── AJUSTES ────────────────────────────── -->
+    <section class="vista" id="vista-ajustes">
+      <div class="grade-ajustes">
+        <div class="cartao">
+          <h3 style="margin-top:0">WhatsApp</h3>
+          <div id="wa-status" style="margin-bottom:10px;color:var(--suave)">Verificando…</div>
+          <button class="btn" id="btn-wa-instancia">Criar instância</button>
+          <button class="btn primario" id="btn-wa-qr">Gerar QR code</button>
+          <div id="wa-qr" style="margin-top:12px"></div>
+        </div>
+
+        <div class="cartao">
+          <h3 style="margin-top:0">Webhooks do EVO</h3>
+          <p style="color:var(--suave);font-size:13px;margin-top:0">
+            Assina os eventos que movem o funil: venda, conversão, contrato e matrícula em aula.
+            <b>Não existe evento de mudança de etapa de prospect no EVO</b> — essa parte depende
+            da sincronização abaixo.
+          </p>
+          <button class="btn" id="btn-wh-listar">Listar</button>
+          <button class="btn primario" id="btn-wh-registrar">Registrar</button>
+          <button class="btn" id="btn-evo-sync">Sincronizar prospects</button>
+          <pre class="saida" id="wh-saida" style="display:none"></pre>
+        </div>
+
+        <div class="cartao">
+          <h3 style="margin-top:0">Consultores</h3>
+          <div id="lista-usuarios" style="margin-bottom:12px"></div>
+          <div id="form-usuario" style="display:none">
+            <div class="linha-form">
+              <input class="campo" id="u-nome" placeholder="Nome">
+              <input class="campo" id="u-email" placeholder="E-mail" type="email">
+            </div>
+            <div class="linha-form">
+              <input class="campo" id="u-senha" placeholder="Senha (mín. 8)" type="password">
+              <select class="campo" id="u-papel">
+                <option value="consultor">Consultor</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </div>
+            <button class="btn primario" id="btn-criar-usuario">Criar consultor</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ══ GAVETA DA FICHA ════════════════════════════════ -->
+<div id="gaveta">
+  <div class="gaveta-painel" onclick="event.stopPropagation()">
+    <div class="gaveta-topo">
+      <div style="flex:1">
+        <h2 id="g-nome">—</h2>
+        <div class="sub" id="g-sub"></div>
+      </div>
+      <button class="btn pequeno" id="btn-fechar-gaveta">Fechar</button>
+    </div>
+    <div class="gaveta-abas">
+      <button data-aba="dados" class="ativo">Ficha</button>
+      <button data-aba="acoes">Ações</button>
+      <button data-aba="historico">Histórico</button>
+    </div>
+    <div class="gaveta-corpo">
+      <div class="gaveta-aba ativa" id="aba-dados"></div>
+      <div class="gaveta-aba" id="aba-acoes"></div>
+      <div class="gaveta-aba" id="aba-historico"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════
+// Utilidades
+// ══════════════════════════════════════════════════════
+
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+
+/**
+ * Toda chamada ao backend passa por aqui.
+ * O 401 é tratado num lugar só: sessão caiu → volta para o login, em vez
+ * de cada tela descobrir isso do seu jeito e mostrar erro genérico.
+ */
+async function api(caminho, opcoes = {}) {
+  const r = await fetch('/crm/api' + caminho, {
+    headers: opcoes.corpo ? { 'Content-Type': 'application/json' } : {},
+    method: opcoes.corpo ? (opcoes.metodo || 'POST') : (opcoes.metodo || 'GET'),
+    body: opcoes.corpo ? JSON.stringify(opcoes.corpo) : undefined,
+  });
+
+  if (r.status === 401) { mostrarLogin(); throw new Error('Sessão expirada'); }
+
+  const dado = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(dado.erro || `Erro ${r.status}`);
+  return dado;
+}
+
+let temporizadorToast;
+function toast(texto, tipo = '') {
+  const el = $('#toast');
+  el.textContent = texto;
+  el.className = tipo;
+  el.style.display = 'block';
+  clearTimeout(temporizadorToast);
+  temporizadorToast = setTimeout(() => { el.style.display = 'none'; }, 4200);
+}
+
+function esc(t) {
+  return String(t ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function dataHora(v) {
+  if (!v) return '';
+  return new Date(v).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function soData(v) {
+  if (!v) return '';
+  return new Date(v).toLocaleDateString('pt-BR');
+}
+
+/** "há 3h", "há 2d" — o dado que faz a coluna "parado há" ser útil. */
+function desde(v) {
+  if (!v) return { texto: '', classe: '' };
+  const ms = Date.now() - new Date(v).getTime();
+  const min = Math.floor(ms / 60000);
+  const h = Math.floor(min / 60);
+  const d = Math.floor(h / 24);
+
+  let texto;
+  if (min < 60) texto = `${min}min`;
+  else if (h < 48) texto = `${h}h`;
+  else texto = `${d}d`;
+
+  const classe = d >= 2 ? 'parado-ruim' : h >= 12 ? 'parado-atencao' : 'parado-ok';
+  return { texto, classe };
+}
+
+function telefoneBonito(p) {
+  if (!p) return '';
+  if (String(p).startsWith('teste')) return 'simulador';
+  const d = String(p).replace(/\D/g, '').replace(/^55/, '');
+  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return p;
+}
+
+const dinheiro = v => v == null ? '' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// ══════════════════════════════════════════════════════
+// Estado
+// ══════════════════════════════════════════════════════
+
+const estado = {
+  usuario: null,
+  rotulos: {},
+  etapas: [],
+  filtroEtapas: new Set(),
+  ordenar: 'last_activity_at',
+  direcao: 'desc',
+  leadAberto: null,
+  conversaAberta: null,
+  usuarios: [],
+};
+
+// ══════════════════════════════════════════════════════
+// Login
+// ══════════════════════════════════════════════════════
+
+function mostrarLogin() {
+  $('#login').style.display = '';
+  $('#app').style.display = 'none';
+}
+
+function mostrarApp() {
+  $('#login').style.display = 'none';
+  $('#app').style.display = 'flex';
+}
+
+$('#form-login').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('#btn-entrar');
+  btn.disabled = true;
+  $('#erro-login').textContent = '';
+
+  try {
+    const r = await fetch('/crm/api/entrar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: $('#login-email').value, senha: $('#login-senha').value }),
+    });
+    const dado = await r.json();
+    if (!r.ok) throw new Error(dado.erro || 'Não foi possível entrar.');
+    await iniciar();
+  } catch (err) {
+    $('#erro-login').textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#btn-sair').addEventListener('click', async () => {
+  await fetch('/crm/api/sair', { method: 'POST' });
+  location.reload();
+});
+
+// ══════════════════════════════════════════════════════
+// Navegação
+// ══════════════════════════════════════════════════════
+
+$$('nav button').forEach(b => b.addEventListener('click', () => {
+  $$('nav button').forEach(x => x.classList.remove('ativo'));
+  b.classList.add('ativo');
+  $$('.vista').forEach(v => v.classList.remove('ativa'));
+  $('#vista-' + b.dataset.vista).classList.add('ativa');
+
+  if (b.dataset.vista === 'conversas') carregarConversas();
+  if (b.dataset.vista === 'simulador') carregarSimulador();
+  if (b.dataset.vista === 'ajustes') carregarAjustes();
+}));
+
+// ══════════════════════════════════════════════════════
+// Funil
+// ══════════════════════════════════════════════════════
+
+async function carregarMetricas() {
+  const m = await api('/funil/metricas');
+
+  $('#metricas').innerHTML = `
+    <div class="cartao">
+      <div class="rotulo">Leads abertos</div>
+      <div class="valor">${m.abertos}</div>
+      <div class="nota">${m.total} no total</div>
+    </div>
+    <div class="cartao ${m.parados > 0 ? 'atencao' : ''}">
+      <div class="rotulo">Parados</div>
+      <div class="valor">${m.parados}</div>
+      <div class="nota">sem mexer há ${m.diasParado}+ dias</div>
+    </div>
+    <div class="cartao ${m.followupsVencidos > 0 ? 'ruim' : ''}">
+      <div class="rotulo">Follow-ups vencidos</div>
+      <div class="valor">${m.followupsVencidos}</div>
+      <div class="nota">passaram da data combinada</div>
+    </div>
+    <div class="cartao bom">
+      <div class="rotulo">Ganhos</div>
+      <div class="valor">${m.ganhos}</div>
+      <div class="nota">${dinheiro(m.receita)}</div>
+    </div>
+    <div class="cartao">
+      <div class="rotulo">Conversão</div>
+      <div class="valor">${m.conversao == null ? '—' : m.conversao + '%'}</div>
+      <div class="nota">sobre ${m.ganhos + m.perdidos} decididos</div>
+    </div>`;
+
+  const maior = Math.max(1, ...Object.values(m.porEtapa));
+  $('#funil-barras').innerHTML = estado.etapas.map(e => `
+    <div class="funil-linha">
+      <span>${esc(estado.rotulos[e] || e)}</span>
+      <span class="barra"><i style="width:${(m.porEtapa[e] || 0) / maior * 100}%"></i></span>
+      <span class="qtd">${m.porEtapa[e] || 0}</span>
+    </div>`).join('');
+}
+
+function montarChips() {
+  $('#chips-etapas').innerHTML = estado.etapas.map(e =>
+    `<button class="chip" data-etapa="${e}">${esc(estado.rotulos[e] || e)}</button>`
+  ).join('');
+
+  $$('#chips-etapas .chip').forEach(c => c.addEventListener('click', () => {
+    const e = c.dataset.etapa;
+    if (estado.filtroEtapas.has(e)) estado.filtroEtapas.delete(e);
+    else estado.filtroEtapas.add(e);
+    c.classList.toggle('ativo');
+    carregarFunil();
+  }));
+}
+
+async function carregarFunil() {
+  const p = new URLSearchParams();
+  if (estado.filtroEtapas.size) p.set('etapas', [...estado.filtroEtapas].join(','));
+  if ($('#f-busca').value.trim()) p.set('busca', $('#f-busca').value.trim());
+  if ($('#f-dono').value) p.set('dono', $('#f-dono').value);
+  if ($('#f-origem').value) p.set('origem', $('#f-origem').value);
+  if ($('#f-fechados').checked) p.set('fechados', 'true');
+  p.set('ordenar', estado.ordenar);
+  p.set('direcao', estado.direcao);
+
+  const dado = await api('/funil?' + p);
+  estado.etapas = dado.etapas;
+  estado.rotulos = dado.rotulos;
+
+  const corpo = $('#corpo-funil');
+  $('#funil-vazio').style.display = dado.leads.length ? 'none' : 'block';
+  $('#funil-total').textContent = dado.leads.length
+    ? `Mostrando ${dado.leads.length} de ${dado.total} leads.` : '';
+
+  corpo.innerHTML = dado.leads.map(l => {
+    const parado = desde(l.stage_since);
+    const proxima = l.next_action_at
+      ? (new Date(l.next_action_at) < new Date()
+          ? `<span class="parado-ruim">${dataHora(l.next_action_at)}</span>`
+          : dataHora(l.next_action_at))
+      : '<span class="vazio">—</span>';
+
+    const evo = l.evo_sync === 'erro'
+      ? '<span class="parado-ruim" title="' + esc(l.evo_sync_error || '') + '">erro</span>'
+      : l.evo_id_member ? `aluno ${l.evo_id_member}`
+      : l.evo_id_prospect ? `#${l.evo_id_prospect}`
+      : '<span class="vazio">não cadastrado</span>';
+
+    return `<tr data-id="${l.id}">
+      <td class="nome-lead">${esc(l.full_name || 'Sem nome')}
+        <small>${esc(telefoneBonito(l.phone || l.contato?.phone))} · ${esc(l.source || '')}</small></td>
+      <td><span class="etapa e-${l.stage}">${esc(estado.rotulos[l.stage] || l.stage)}</span></td>
+      <td class="${parado.classe}">${parado.texto}</td>
+      <td>${l.owner ? esc(l.owner.name) : '<span class="vazio">—</span>'}</td>
+      <td>${esc(l.interest || '') || '<span class="vazio">—</span>'}</td>
+      <td>${evo}</td>
+      <td>${l.experimental_at ? dataHora(l.experimental_at) : '<span class="vazio">—</span>'}</td>
+      <td>${proxima}</td>
+      <td>${dataHora(l.last_activity_at)}</td>
+    </tr>`;
+  }).join('');
+
+  $$('#corpo-funil tr').forEach(tr =>
+    tr.addEventListener('click', () => abrirFicha(tr.dataset.id)));
+}
+
+$$('th.ordenavel').forEach(th => th.addEventListener('click', () => {
+  const col = th.dataset.col;
+  if (estado.ordenar === col) estado.direcao = estado.direcao === 'asc' ? 'desc' : 'asc';
+  else { estado.ordenar = col; estado.direcao = 'desc'; }
+  carregarFunil();
+}));
+
+let temporizadorBusca;
+$('#f-busca').addEventListener('input', () => {
+  clearTimeout(temporizadorBusca);
+  temporizadorBusca = setTimeout(carregarFunil, 350);
+});
+['#f-dono', '#f-origem', '#f-fechados'].forEach(s =>
+  $(s).addEventListener('change', carregarFunil));
+$('#btn-recarregar').addEventListener('click', () => { carregarFunil(); carregarMetricas(); });
+
+$('#btn-novo-lead').addEventListener('click', async () => {
+  const nome = prompt('Nome completo do lead:');
+  if (!nome) return;
+  const telefone = prompt('Telefone (com DDD):') || '';
+  try {
+    const lead = await api('/leads', { corpo: { nomeCompleto: nome, telefone } });
+    toast('Lead criado.', 'ok');
+    await carregarFunil();
+    abrirFicha(lead.id);
+  } catch (err) { toast(err.message, 'erro'); }
+});
+
+// ══════════════════════════════════════════════════════
+// Ficha do lead (gaveta)
+// ══════════════════════════════════════════════════════
+
+$('#gaveta').addEventListener('click', e => {
+  if (e.target.id === 'gaveta') fecharGaveta();
+});
+$('#btn-fechar-gaveta').addEventListener('click', fecharGaveta);
+function fecharGaveta() { $('#gaveta').classList.remove('aberta'); estado.leadAberto = null; }
+
+$$('.gaveta-abas button').forEach(b => b.addEventListener('click', () => {
+  $$('.gaveta-abas button').forEach(x => x.classList.remove('ativo'));
+  b.classList.add('ativo');
+  $$('.gaveta-aba').forEach(a => a.classList.remove('ativa'));
+  $('#aba-' + b.dataset.aba).classList.add('ativa');
+}));
+
+async function abrirFicha(id) {
+  const ficha = await api('/leads/' + id);
+  estado.leadAberto = ficha;
+  const l = ficha.lead;
+
+  $('#g-nome').textContent = l.full_name || 'Sem nome';
+  $('#g-sub').innerHTML = `
+    <span class="etapa e-${l.stage}">${esc(estado.rotulos[l.stage] || l.stage)}</span>
+    &nbsp;${esc(telefoneBonito(l.phone || l.contato?.phone))}
+    ${l.owner ? ' · ' + esc(l.owner.name) : ' · <span class="vazio">sem dono</span>'}`;
+
+  // ── Ficha
+  $('#aba-dados').innerHTML = `
+    <dl style="margin:0">
+      ${[
+        ['Nome', l.full_name],
+        ['Telefone', telefoneBonito(l.phone || l.contato?.phone)],
+        ['E-mail', l.email],
+        ['Nascimento', l.birth_date ? soData(l.birth_date) : ''],
+        ['Interesse', l.interest],
+        ['Origem', l.source],
+        ['Prospect no EVO', l.evo_id_prospect ? '#' + l.evo_id_prospect : 'não cadastrado'],
+        ['Aluno no EVO', l.evo_id_member ? '#' + l.evo_id_member : '—'],
+        ['Sincronização', l.evo_sync + (l.evo_sync_error ? ' — ' + l.evo_sync_error : '')],
+        ['Experimental', l.experimental_at ? dataHora(l.experimental_at) + ' · ' + (l.experimental_status || '') : '—'],
+        ['Venda', l.sale_at ? dataHora(l.sale_at) + ' · ' + dinheiro(l.sale_value) : '—'],
+        ['Próxima ação', l.next_action_at ? dataHora(l.next_action_at) + ' — ' + (l.next_action_note || '') : '—'],
+        ['Nesta etapa há', desde(l.stage_since).texto],
+        ['Criado em', dataHora(l.created_at)],
+        ['Observações', l.notes],
+      ].map(([k, v]) => `<div class="par"><dt>${k}</dt><dd>${esc(v || '') || '<span class="vazio">—</span>'}</dd></div>`).join('')}
+    </dl>
+    <div class="bloco" style="margin-top:14px">
+      <h3>Editar</h3>
+      <div class="linha-form">
+        <input class="campo" id="ed-nome" placeholder="Nome completo" value="${esc(l.full_name || '')}">
+        <input class="campo" id="ed-email" placeholder="E-mail" value="${esc(l.email || '')}">
+      </div>
+      <div class="linha-form">
+        <input class="campo" id="ed-nasc" type="date" value="${l.birth_date || ''}">
+        <input class="campo" id="ed-interesse" placeholder="Interesse" value="${esc(l.interest || '')}">
+      </div>
+      <div class="linha-form uma">
+        <textarea class="campo" id="ed-obs" rows="2" placeholder="Observações">${esc(l.notes || '')}</textarea>
+      </div>
+      <button class="btn primario" id="btn-salvar-ficha">Salvar</button>
+    </div>
+    ${ficha.conversas.length ? `
+      <div class="bloco">
+        <h3>Conversas</h3>
+        ${ficha.conversas.map(c => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+            <span>#${c.id} · ${esc(c.channel)} · ${esc(c.status)}<br>
+              <small style="color:var(--suave)">${dataHora(c.last_message)}</small></span>
+            <button class="btn pequeno" data-conversa="${c.id}">Abrir</button>
+          </div>`).join('')}
+      </div>` : ''}`;
+
+  $('#btn-salvar-ficha').addEventListener('click', async () => {
+    try {
+      await api('/leads/' + l.id, {
+        metodo: 'PATCH',
+        corpo: {
+          nomeCompleto: $('#ed-nome').value,
+          email: $('#ed-email').value,
+          dataNascimento: $('#ed-nasc').value || null,
+          interesse: $('#ed-interesse').value,
+          observacoes: $('#ed-obs').value,
+        },
+      });
+      toast('Ficha salva.', 'ok');
+      abrirFicha(l.id); carregarFunil();
+    } catch (err) { toast(err.message, 'erro'); }
+  });
+
+  $$('#aba-dados [data-conversa]').forEach(b => b.addEventListener('click', () => {
+    fecharGaveta();
+    $$('nav button').forEach(x => x.classList.remove('ativo'));
+    $('nav button[data-vista=conversas]').classList.add('ativo');
+    $$('.vista').forEach(v => v.classList.remove('ativa'));
+    $('#vista-conversas').classList.add('ativa');
+    carregarConversas().then(() => abrirConversa(b.dataset.conversa));
+  }));
+
+  montarAcoes(l);
+  montarHistorico(ficha.eventos);
+  $('#gaveta').classList.add('aberta');
+}
+
+function montarAcoes(l) {
+  $('#aba-acoes').innerHTML = `
+    <div class="bloco">
+      <h3>Etapa</h3>
+      <div class="linha-form">
+        <select class="campo" id="ac-etapa">
+          ${estado.etapas.map(e => `<option value="${e}" ${e === l.stage ? 'selected' : ''}>${esc(estado.rotulos[e])}</option>`).join('')}
+        </select>
+        <button class="btn" id="btn-mudar-etapa">Mover</button>
+      </div>
+      <button class="btn pequeno" id="btn-assumir">Assumir este lead</button>
+    </div>
+
+    <div class="bloco">
+      <h3>1 · Cadastro no EVO</h3>
+      <p style="color:var(--suave);font-size:13px;margin-top:0">
+        ${l.evo_id_prospect
+          ? `Já cadastrado como prospect <b>#${l.evo_id_prospect}</b>.`
+          : 'O EVO precisa de <b>nome e sobrenome</b>. Nada mais é obrigatório.'}
+      </p>
+      <button class="btn ${l.evo_id_prospect ? '' : 'primario'}" id="btn-cadastrar-evo"
+        ${l.evo_id_prospect ? 'disabled' : ''}>Cadastrar prospect no EVO</button>
+    </div>
+
+    <div class="bloco">
+      <h3>2 · Aula experimental</h3>
+      <div class="linha-form">
+        <input class="campo" id="ac-exp-data" type="datetime-local">
+        <input class="campo" id="ac-exp-atividade" placeholder="Atividade (ex.: NATAÇÃO ADULTO)"
+          list="lista-atividades">
+      </div>
+      <datalist id="lista-atividades"></datalist>
+      <button class="btn primario" id="btn-agendar">Agendar no EVO</button>
+    </div>
+
+    <div class="bloco">
+      <h3>3 · Venda</h3>
+      <div class="linha-form">
+        <select class="campo" id="ac-plano"><option value="">— plano —</option></select>
+        <select class="campo" id="ac-servico"><option value="">— ou serviço —</option></select>
+      </div>
+      <div class="linha-form">
+        <input class="campo" id="ac-valor" type="number" step="0.01" placeholder="Valor (R$)">
+        <select class="campo" id="ac-pagamento">
+          <option value="6">Outro</option>
+          <option value="1">À vista</option>
+          <option value="5">Parcelado</option>
+        </select>
+      </div>
+      <button class="btn primario" id="btn-vender">Registrar venda</button>
+    </div>
+
+    <div class="bloco">
+      <h3>Follow-up no EVO</h3>
+      <p style="color:var(--suave);font-size:13px;margin-top:0">
+        Recado interno, aparece na ficha do EVO. <b>Não vai para o cliente.</b>
+      </p>
+      <div class="linha-form uma">
+        <textarea class="campo" id="ac-followup" rows="2" placeholder="Ex.: Ligar segunda, quer pensar sobre o anual."></textarea>
+      </div>
+      <div class="linha-form">
+        <input class="campo" id="ac-proxima" type="datetime-local">
+        <button class="btn primario" id="btn-followup">Lançar</button>
+      </div>
+    </div>`;
+
+  carregarCatalogo();
+
+  $('#btn-mudar-etapa').addEventListener('click', () => acao(
+    () => api(`/leads/${l.id}/etapa`, { corpo: { etapa: $('#ac-etapa').value } }), 'Etapa alterada.'));
+
+  $('#btn-assumir').addEventListener('click', () => acao(
+    () => api(`/leads/${l.id}/assumir`, { corpo: {} }), 'Lead assumido.'));
+
+  $('#btn-cadastrar-evo').addEventListener('click', () => acao(
+    () => api(`/leads/${l.id}/evo`, { corpo: {} }), 'Prospect cadastrado no EVO.'));
+
+  $('#btn-agendar').addEventListener('click', () => {
+    const dt = $('#ac-exp-data').value;
+    if (!dt) return toast('Escolha data e hora.', 'erro');
+    acao(() => api(`/leads/${l.id}/experimental`, {
+      corpo: { dataHora: dt.replace('T', ' '), atividade: $('#ac-exp-atividade').value || undefined },
+    }), 'Aula experimental agendada.');
+  });
+
+  $('#btn-vender').addEventListener('click', () => {
+    const plano = $('#ac-plano').value, servico = $('#ac-servico').value;
+    if (!plano && !servico) return toast('Escolha um plano ou um serviço.', 'erro');
+    acao(() => api(`/leads/${l.id}/venda`, {
+      corpo: {
+        idMembership: plano ? Number(plano) : undefined,
+        idService: servico ? Number(servico) : undefined,
+        valor: $('#ac-valor').value ? Number($('#ac-valor').value) : undefined,
+        formaPagamento: Number($('#ac-pagamento').value),
+      },
+    }), 'Venda registrada.');
+  });
+
+  $('#btn-followup').addEventListener('click', () => {
+    const msg = $('#ac-followup').value.trim();
+    if (!msg) return toast('Escreva o follow-up.', 'erro');
+    acao(() => api(`/leads/${l.id}/followup`, {
+      corpo: {
+        mensagem: msg,
+        proximaAcao: $('#ac-proxima').value
+          ? { quando: new Date($('#ac-proxima').value).toISOString(), nota: msg.slice(0, 200) }
+          : null,
+      },
+    }), 'Follow-up lançado no EVO.');
+  });
+}
+
+/** Executa uma ação da ficha, avisa e recarrega o que mudou. */
+async function acao(fn, mensagemOk) {
+  try {
+    const r = await fn();
+    toast(r?.dryRun ? mensagemOk + ' (ENSAIO — não foi ao EVO)' : mensagemOk, 'ok');
+    const id = estado.leadAberto?.lead?.id;
+    await carregarFunil();
+    await carregarMetricas();
+    if (id) abrirFicha(id);
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+}
+
+function montarHistorico(eventos) {
+  $('#aba-historico').innerHTML = eventos.length
+    ? eventos.map(e => `
+        <div class="evento">
+          <div>${esc(e.summary || e.type)}</div>
+          <span class="quando">${dataHora(e.occurred_at)}</span>
+          <span class="autor">· ${esc(e.actor || '')}</span>
+        </div>`).join('')
+    : '<p class="vazio">Nada registrado ainda.</p>';
+}
+
+let catalogoCarregado = false;
+async function carregarCatalogo() {
+  try {
+    const [planos, servicos, atividades] = await Promise.all([
+      api('/evo/planos').catch(() => []),
+      api('/evo/servicos').catch(() => []),
+      api('/evo/atividades').catch(() => []),
+    ]);
+
+    const sel = $('#ac-plano');
+    if (sel) sel.innerHTML = '<option value="">— plano —</option>' + planos.map(p =>
+      `<option value="${p.idMembership}">${esc(p.nameMembership || p.name)} — ${dinheiro(p.value)}</option>`).join('');
+
+    const sSel = $('#ac-servico');
+    if (sSel) sSel.innerHTML = '<option value="">— ou serviço —</option>' + servicos.map(s =>
+      `<option value="${s.idService}">${esc(s.nameService || s.name)} — ${dinheiro(s.value)}</option>`).join('');
+
+    const dl = $('#lista-atividades');
+    if (dl) dl.innerHTML = atividades.map(a => `<option value="${esc(a.name)}">`).join('');
+    catalogoCarregado = true;
+  } catch (err) {
+    console.warn('catálogo do EVO indisponível', err);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// Conversas
+// ══════════════════════════════════════════════════════
+
+async function carregarConversas() {
+  const p = new URLSearchParams();
+  if ($('#c-filtro').value) p.set('status', $('#c-filtro').value);
+
+  const { conversas } = await api('/conversas?' + p);
+
+  $('#lista-conversas').innerHTML = conversas.length ? conversas.map(c => `
+    <div class="item-conversa" data-id="${c.id}">
+      <div class="topo">
+        <b>${esc(c.contato?.name || telefoneBonito(c.contato?.phone) || 'Sem nome')}</b>
+        <span class="quando">${dataHora(c.last_message)}</span>
+      </div>
+      <div class="previa">${esc(telefoneBonito(c.contato?.phone))} · ${esc(c.status)}${c.assigned_to ? ' · ' + esc(c.assigned_to) : ''}</div>
+    </div>`).join('') : '<div class="aviso-vazio">Nenhuma conversa.</div>';
+
+  $$('#lista-conversas .item-conversa').forEach(el =>
+    el.addEventListener('click', () => abrirConversa(el.dataset.id)));
+}
+
+$('#c-filtro').addEventListener('change', carregarConversas);
+
+async function abrirConversa(id) {
+  const dado = await api(`/conversas/${id}/mensagens`);
+  estado.conversaAberta = dado;
+
+  $$('#lista-conversas .item-conversa').forEach(el =>
+    el.classList.toggle('ativo', el.dataset.id === String(id)));
+  $('#split-conversas').classList.add('abriu');
+
+  const c = dado.conversa;
+  const ehSimulador = c.channel === 'web-test';
+
+  $('#painel-conversa').innerHTML = `
+    <div class="conversa-topo">
+      <button class="btn pequeno" id="btn-voltar-lista" style="display:none">←</button>
+      <div style="flex:1">
+        <b>${esc(c.contato?.name || telefoneBonito(c.contato?.phone) || 'Sem nome')}</b><br>
+        <small style="color:var(--suave)">${esc(telefoneBonito(c.contato?.phone))} · ${esc(c.channel)} · ${esc(c.status)}</small>
+      </div>
+      ${dado.lead ? `<button class="btn pequeno" id="btn-abrir-lead">Ficha do lead</button>` : ''}
+      ${c.status === 'human' ? `<button class="btn pequeno" id="btn-reativar">Devolver para a Leia</button>` : ''}
+    </div>
+    <div class="mensagens" id="mensagens"></div>
+    ${ehSimulador ? '' : `
+      <form class="responder" id="form-responder">
+        <textarea class="campo" id="resposta" rows="1" placeholder="Responder pelo WhatsApp… (pausa a Leia)"></textarea>
+        <button class="btn primario" type="submit">Enviar</button>
+      </form>`}`;
+
+  $('#mensagens').innerHTML = dado.mensagens.map(m => {
+    const classe = m.de === 'cliente' ? 'cliente' : m.de === 'consultor' ? 'consultor' : 'leia';
+    const assinatura = m.de === 'consultor' ? esc(m.autor.replace('human:', ''))
+      : m.de === 'leia' ? 'Leia' : '';
+    return (m.handoff ? '<div class="marca-handoff">handoff pedido aqui</div>' : '')
+      + `<div class="balao ${classe}">${esc(m.texto)}
+           <span class="assinatura">${assinatura}${assinatura ? ' · ' : ''}${dataHora(m.em)}</span>
+         </div>`;
+  }).join('');
+
+  const cx = $('#mensagens');
+  cx.scrollTop = cx.scrollHeight;
+
+  if ($('#btn-abrir-lead')) $('#btn-abrir-lead').addEventListener('click', () => abrirFicha(dado.lead.id));
+  if ($('#btn-reativar')) $('#btn-reativar').addEventListener('click', async () => {
+    try {
+      await api(`/conversas/${id}/reativar`, { corpo: {} });
+      toast('Conversa devolvida para a Leia.', 'ok');
+      abrirConversa(id);
+    } catch (err) { toast(err.message, 'erro'); }
+  });
+
+  if ($('#form-responder')) $('#form-responder').addEventListener('submit', async e => {
+    e.preventDefault();
+    const texto = $('#resposta').value.trim();
+    if (!texto) return;
+    try {
+      await api(`/conversas/${id}/responder`, { corpo: { mensagem: texto } });
+      $('#resposta').value = '';
+      abrirConversa(id);
+      carregarConversas();
+    } catch (err) { toast(err.message, 'erro'); }
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// Simulador
+// ══════════════════════════════════════════════════════
+
+async function carregarSimulador() {
+  const dado = await api('/simulador/sessao');
+  desenharSimulador(dado.mensagens);
+}
+
+function desenharSimulador(mensagens) {
+  $('#sim-mensagens').innerHTML = mensagens.map(m =>
+    (m.handoff ? '<div class="marca-handoff">handoff pedido aqui</div>' : '')
+    + `<div class="balao ${m.de === 'voce' ? 'cliente' : 'leia'}">${esc(m.texto)}
+         <span class="assinatura">${m.de === 'voce' ? 'você' : 'Leia'} · ${dataHora(m.em)}</span></div>`
+  ).join('');
+  const cx = $('#sim-mensagens');
+  cx.scrollTop = cx.scrollHeight;
+}
+
+$('#form-sim').addEventListener('submit', async e => {
+  e.preventDefault();
+  const texto = $('#sim-texto').value.trim();
+  if (!texto) return;
+
+  const btn = $('#btn-sim-enviar');
+  btn.disabled = true;
+  $('#sim-texto').value = '';
+
+  const cx = $('#sim-mensagens');
+  cx.insertAdjacentHTML('beforeend',
+    `<div class="balao cliente">${esc(texto)}<span class="assinatura">você · agora</span></div>
+     <div class="balao leia" id="sim-digitando"><i>Leia está escrevendo…</i></div>`);
+  cx.scrollTop = cx.scrollHeight;
+
+  try {
+    const r = await api('/simulador/mensagem', { corpo: { mensagem: texto } });
+    $('#sim-digitando').remove();
+    if (r.handoff) {
+      cx.insertAdjacentHTML('beforeend', '<div class="marca-handoff">handoff pedido aqui</div>');
+    }
+    cx.insertAdjacentHTML('beforeend',
+      `<div class="balao leia">${esc(r.resposta)}<span class="assinatura">Leia · agora</span></div>`);
+    cx.scrollTop = cx.scrollHeight;
+  } catch (err) {
+    const d = $('#sim-digitando');
+    if (d) d.remove();
+    toast(err.message, 'erro');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#btn-sim-reiniciar').addEventListener('click', async () => {
+  await api('/simulador/reiniciar', { corpo: {} });
+  $('#sim-mensagens').innerHTML = '';
+  toast('Conversa reiniciada.', 'ok');
+});
+
+$('#sim-texto').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#form-sim').requestSubmit(); }
+});
+
+// ══════════════════════════════════════════════════════
+// Ajustes
+// ══════════════════════════════════════════════════════
+
+async function carregarAjustes() {
+  carregarUsuarios();
+
+  if (estado.usuario?.papel !== 'admin') {
+    $('#wa-status').textContent = 'Só administradores.';
+    return;
+  }
+
+  $('#form-usuario').style.display = '';
+
+  try {
+    const s = await api('/whatsapp/status');
+    const est = s.instance?.state || s.state || s.erro || 'desconhecido';
+    $('#wa-status').innerHTML = est === 'open'
+      ? '<span style="color:var(--acento)">✔ Conectado</span>'
+      : `<span style="color:var(--alerta)">${esc(est)}</span>`;
+  } catch (err) {
+    $('#wa-status').textContent = err.message;
+  }
+}
+
+$('#btn-wa-instancia').addEventListener('click', async () => {
+  try {
+    const r = await api('/whatsapp/instancia', { corpo: {} });
+    toast(r.criada ? 'Instância criada.' : 'Instância já existia.', 'ok');
+    carregarAjustes();
+  } catch (err) { toast(err.message, 'erro'); }
+});
+
+$('#btn-wa-qr').addEventListener('click', async () => {
+  $('#wa-qr').innerHTML = 'Gerando…';
+  try {
+    const r = await api('/whatsapp/qrcode');
+    if (r.base64) {
+      const src = r.base64.startsWith('data:') ? r.base64 : 'data:image/png;base64,' + r.base64;
+      $('#wa-qr').innerHTML = `<div class="qr"><img src="${src}" alt="QR code"></div>
+        <p style="color:var(--suave);font-size:13px">
+          WhatsApp → Aparelhos conectados → Conectar aparelho. O código expira em ~40s;
+          clique de novo para gerar outro.</p>`;
+    } else {
+      $('#wa-qr').innerHTML = `<div class="aviso info">Sem QR na resposta —
+        provavelmente já está conectado.</div><pre class="saida">${esc(JSON.stringify(r.bruto, null, 2))}</pre>`;
+    }
+  } catch (err) { $('#wa-qr').innerHTML = `<div class="aviso erro">${esc(err.message)}</div>`; }
+});
+
+function saidaWebhook(dado) {
+  const el = $('#wh-saida');
+  el.style.display = 'block';
+  el.textContent = JSON.stringify(dado, null, 2);
+}
+
+$('#btn-wh-listar').addEventListener('click', async () => {
+  try { saidaWebhook(await api('/evo/webhooks')); }
+  catch (err) { toast(err.message, 'erro'); }
+});
+
+$('#btn-wh-registrar').addEventListener('click', async () => {
+  try {
+    const r = await api('/evo/webhooks', { corpo: {} });
+    saidaWebhook(r);
+    toast(`${r.criados.length} webhook(s) registrados.`, 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
+});
+
+$('#btn-evo-sync').addEventListener('click', async () => {
+  try {
+    const r = await api('/evo/sincronizar', { corpo: {} });
+    saidaWebhook(r);
+    toast(`Sincronizado: ${r.lidos} lidos, ${r.convertidos} convertidos.`, 'ok');
+    carregarFunil(); carregarMetricas();
+  } catch (err) { toast(err.message, 'erro'); }
+});
+
+async function carregarUsuarios() {
+  const lista = await api('/usuarios');
+  estado.usuarios = lista;
+
+  $('#lista-usuarios').innerHTML = lista.map(u => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #24324a">
+      <span>${esc(u.name)}<br><small style="color:var(--suave)">${esc(u.email)} · ${esc(u.role)}${u.active ? '' : ' · inativo'}</small></span>
+    </div>`).join('');
+
+  const sel = $('#f-dono');
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">Todos os consultores</option><option value="sem_dono">Sem dono</option>'
+    + lista.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  sel.value = atual;
+}
+
+$('#btn-criar-usuario').addEventListener('click', async () => {
+  try {
+    await api('/usuarios', {
+      corpo: {
+        nome: $('#u-nome').value, email: $('#u-email').value,
+        senha: $('#u-senha').value, papel: $('#u-papel').value,
+      },
+    });
+    toast('Consultor criado.', 'ok');
+    $('#u-nome').value = $('#u-email').value = $('#u-senha').value = '';
+    carregarUsuarios();
+  } catch (err) { toast(err.message, 'erro'); }
+});
+
+// ══════════════════════════════════════════════════════
+// Boot
+// ══════════════════════════════════════════════════════
+
+async function iniciar() {
+  const eu = await api('/eu');
+  estado.usuario = eu.usuario;
+
+  $('#quem-nome').textContent = eu.usuario.nome;
+  $('#quem-papel').textContent = eu.usuario.papel;
+  if (eu.dryRun) $('#fita-dryrun').style.display = 'block';
+
+  mostrarApp();
+
+  // A ordem importa: o funil devolve etapas e rótulos que as métricas usam.
+  await carregarFunil();
+  montarChips();
+  await carregarMetricas();
+  await carregarUsuarios();
+}
+
+// Sessão viva? Entra direto. Senão, tela de login.
+fetch('/crm/api/eu')
+  .then(r => r.ok ? iniciar() : mostrarLogin())
+  .catch(mostrarLogin);
+</script>
+</body>
+</html>

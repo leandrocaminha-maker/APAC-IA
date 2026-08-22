@@ -10,7 +10,8 @@
     "grade": "node scripts/gerar-grade-horaria.js",
     "conversas": "node scripts/exportar-conversas.js",
     "prompt": "node scripts/publicar-prompt.js",
-    "test": "node --test src/**/*.test.js"
+    "test": "node --test src/**/*.test.js",
+    "consultor": "node scripts/criar-consultor.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

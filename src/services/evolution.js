@@ -44,9 +44,56 @@ export async function getConnectionStatus() {
   return evoFetch(`/instance/connectionState/${instance}`);
 }
 
-/** Obtém o QR code para conectar a instância. */
+/**
+ * Obtém o QR code para conectar a instância.
+ *
+ * A resposta traz o QR em `base64` no próprio corpo, além de um link
+ * montado a partir de SERVER_URL. O painel usa o **base64**, e é isso que
+ * permite manter a porta 8080 da Evolution fechada: não é preciso que o
+ * navegador do consultor alcance a Evolution, só o backend precisa.
+ */
 export async function getQrCode() {
   return evoFetch(`/instance/connect/${instance}`);
+}
+
+/** Lista as instâncias existentes na Evolution. */
+export async function listarInstancias() {
+  const lista = await evoFetch('/instance/fetchInstances');
+  return Array.isArray(lista) ? lista : [];
+}
+
+/**
+ * Cria a instância se ela ainda não existir.
+ *
+ * O nome tem de ser exatamente `EVOLUTION_INSTANCE` — é o que todo o resto
+ * do código procura. Criar com outro nome faz o backend responder
+ * "instance does not exist" para uma instância que está lá, pareada.
+ */
+export async function criarInstancia() {
+  const existentes = await listarInstancias().catch(() => []);
+  const jaExiste = existentes.some(i => (i?.name || i?.instance?.instanceName) === instance);
+
+  if (jaExiste) {
+    logger.info(`[evolution] Instância "${instance}" já existe`);
+    return { criada: false, instancia: instance };
+  }
+
+  logger.info(`[evolution] Criando instância "${instance}"`);
+  const resultado = await evoFetch('/instance/create', {
+    method: 'POST',
+    body: JSON.stringify({
+      instanceName: instance,
+      qrcode: true,
+      integration: 'WHATSAPP-BAILEYS',
+    }),
+  });
+
+  return { criada: true, instancia: instance, resultado };
+}
+
+/** Desconecta o número sem apagar a instância. */
+export async function desconectarInstancia() {
+  return evoFetch(`/instance/logout/${instance}`, { method: 'DELETE' });
 }
 
 /** Reinicia a instância. */
@@ -155,6 +202,9 @@ export async function sendList(phone, title, description, buttonText, sections) 
 export const evolution = {
   getConnectionStatus,
   getQrCode,
+  listarInstancias,
+  criarInstancia,
+  desconectarInstancia,
   restartInstance,
   sendText,
   sendMedia,
