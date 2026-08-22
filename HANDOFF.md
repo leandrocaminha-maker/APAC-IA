@@ -1,58 +1,67 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 20/08/2026, fim do dia.** Documento de continuidade: descreve
+> **Snapshot de 22/08/2026, fim do dia.** Documento de continuidade: descreve
 > onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
-## Comece por aqui — 21/08/2026
+## Comece por aqui — 23/08/2026
 
-**O dia 20/08 foi longo.** O prompt saiu de 18,5 mil para ~42 mil caracteres, a
-base ganhou um arquivo, o serviço saiu do IP nu para HTTPS em domínio próprio, e
-as transcrições foram lidas duas vezes. Onze commits.
+**O dia 22/08 construiu o CRM.** O painel do consultor saiu do papel: funil de
+vendas, histórico de conversas, simulador da Leia e ajustes, com login por
+pessoa. O EVO deixou de ser só leitura — cadastro de prospect, agendamento de
+experimental, venda e follow-up agora têm caminho. Um commit, no branch
+`crm-painel`.
 
-**Três coisas para saber antes de tocar em qualquer coisa:**
+**Quatro coisas para saber antes de tocar em qualquer coisa:**
 
-1. **A URL mudou.** A página de teste agora é
-   **`https://leia.apacademia.com.br/teste`**. O acesso por
-   `http://108.174.151.51:3100` foi fechado de propósito — a porta só escuta no
-   loopback e o nginx é a única entrada. **Avise o time**, o link antigo morreu.
-2. **Está tudo publicado e no ar.** Prompt no banco, knowledge files e código na
-   VPS. Nada pendente de `npm run prompt` nem de deploy.
-3. **Nada do que mudou hoje foi testado em volume.** As 13 conversas com o
-   prompt novo são um começo, não uma amostra.
+1. **A URL mudou de novo.** O painel é
+   **`https://crm.apacademia.com.br`**. O subdomínio `leia` foi descartado: o
+   DNS já não existia no começo do dia, e o vhost e o certificado foram
+   removidos da VPS (backup do conf em `/root/leia.conf.removido-2026-08-22`).
+   **O link antigo morreu** — a `/teste` agora vive dentro do painel, na aba
+   Simulador.
+2. **⚠️ A migration 002 ainda NÃO foi rodada.** As tabelas do CRM não existem.
+   Sem elas o login do painel falha dizendo "e-mail ou senha incorretos", que é
+   sintoma enganoso — o boot avisa no log com a mensagem certa. Rode
+   `supabase/migrations/002_crm_schema.sql` no SQL Editor do Supabase e depois
+   `node scripts/criar-consultor.js --nome "Seu Nome" --email voce@ap.com --admin`.
+3. **⚠️ O código do CRM ainda NÃO está na VPS.** O `git push` do branch
+   `crm-painel` ficou pendente de autorização. A infra está pronta e esperando:
+   domínio, TLS, nginx e `.env` da VPS já configurados. Falta `git push`, e na
+   VPS `git fetch && git checkout crm-painel && docker compose up -d --build backend`.
+4. **⚠️ O EVO está em modo ensaio.** `EVO_DRY_RUN=true` no `.env` da VPS:
+   cadastro, agendamento e venda **não chegam ao EVO** — são registrados no log
+   e o funil anda normalmente. Foi decisão de primeira subida, porque não existe
+   filial de testes na conta e uma venda criada por engano é registro
+   financeiro. O painel mostra uma fita âmbar quando está assim. Para valer de
+   verdade: `EVO_DRY_RUN=false` no `.env` e recriar o container.
 
-### A decisão que ficou aberta
+### O que foi resolvido em 22/08
 
-**A porta 8080 da Evolution continua exposta na internet**, em HTTP puro,
-protegida só pela `AUTHENTICATION_API_KEY`. Quem tiver essa chave controla o
-WhatsApp da academia — é exposição maior do que a da 3100 que acabamos de fechar.
+**A porta 8080 da Evolution está fechada.** Era a pendência de segurança aberta
+em 20/08 — HTTP puro na internet, protegida só pela `AUTHENTICATION_API_KEY`,
+com quem tivesse a chave controlando o WhatsApp da academia.
 
-Não foi fechada para não bloquear a conexão do número, que é iminente. As opções,
-na ordem em que eu recomendaria:
+O que destravou fechá-la: **o QR de pareamento agora sai pelo painel**. A
+Evolution devolve o QR em `base64` no próprio corpo da resposta de
+`/instance/connect`, então quem precisa alcançá-la é o backend, pela
+`apac-network` — o navegador do consultor recebe a imagem já pronta. Não é mais
+preciso expor a Evolution para parear o número.
 
-1. Fechar no loopback e pegar o QR por `/admin/whatsapp/qrcode`, que já existe e
-   agora sai por HTTPS. Precisando do manager da Evolution, túnel SSH.
-2. Publicar atrás do nginx, com TLS, em caminho ou subdomínio próprio.
-3. Deixar como está até conectar o WhatsApp, e fechar logo depois.
+Precisando do manager da Evolution, use túnel SSH:
 
-### O que vinha a seguir
+```bash
+ssh -p 22022 -i ~/.ssh/aquap_vps -L 8080:localhost:8080 root@108.174.151.51
+```
 
-O objetivo que motivou o domínio e o TLS: **um painel para o consultor**. Fila de
-handoffs → abrir e ler a conversa → responder, agendar follow-up, devolver para a
-Leia. O raciocínio inteiro e o que já existe pronto estão no **bloco 11** da
-revisão.
+### O WhatsApp ainda não está pareado
 
-Resumo do porquê: a Leia não pode agendar o follow-up no momento do handoff,
-porque ali ela só tem a **intenção** ("quer experimental amanhã 9h20"). Quem cria
-o **fato** é o consultor, depois, no FITI — e pode ser outro horário, ou plano
-fechado sem experimental nenhuma. Então quem enfileira tem que ser ele.
-
-Falta para o painel: um endpoint que devolva mensagens **por id de conversa** (só
-existe por telefone, na API de integração), um para responder pelo painel, e a
-página. O login por cookie assinado já existe e funciona na `/teste`; a fila de
-handoffs, a reativação do bot e o enfileiramento com `scheduled_for` também.
+A instância `apacademia` continua sem existir na Evolution. O caminho agora é
+pelo painel, em **Ajustes → WhatsApp**: *Criar instância* e depois *Gerar QR
+code*. O QR expira em ~40 segundos; é só clicar de novo. Precisa de alguém com o
+aparelho da academia na mão — não dá para fazer sozinho.
 
 ## Onde estamos
 
@@ -118,7 +127,7 @@ bloco 8b da migration.
 | Host | `root@108.174.151.51`, porta **22022** |
 | Chave | `~/.ssh/aquap_vps` — **é esta**; as `id_ed25519_vps` e `id_rsa_vps` não estão autorizadas neste servidor |
 | Projeto | `/var/www/apac-ia-sales` |
-| Domínio | **`leia.apacademia.com.br`** — Cloudflare na frente, nginx terminando TLS na VPS |
+| Domínio | **`crm.apacademia.com.br`** — DNS direto para a VPS (sem Cloudflare), nginx terminando TLS |
 
 ```bash
 ssh -p 22022 -i ~/.ssh/aquap_vps root@108.174.151.51
@@ -127,17 +136,23 @@ ssh -p 22022 -i ~/.ssh/aquap_vps root@108.174.151.51
 ### nginx e TLS — montado em 20/08/2026
 
 A VPS já servia `apacademia`, `aqua` e `pagtos` pelo nginx, com um `.conf` por
-subdomínio em `/etc/nginx/conf.d/` e certbot. O `leia.conf` seguiu esse padrão e
+subdomínio em `/etc/nginx/conf.d/` e certbot. O `crm.conf` seguiu esse padrão e
 faz `proxy_pass` para `localhost:3100`.
+
+O `leia.conf` foi **removido em 22/08/2026**, junto com o certificado dele —
+o DNS do subdomínio já não existia, e certificado sem DNS falha a renovação a
+cada 12h para sempre. Backup do conf em `/root/leia.conf.removido-2026-08-22`.
 
 | | |
 |---|---|
-| Certificado | Let's Encrypt, expira **19/11/2026**, já no `certbot-renew.timer` |
+| Certificado | Let's Encrypt para `crm`, expira **20/11/2026**, já no `certbot-renew.timer` |
 | Porta 3100 | **só no loopback** (`127.0.0.1:3100:3100` no compose) — nginx é a única entrada |
-| Porta 8080 | **ainda aberta em `0.0.0.0`** — ver "A decisão que ficou aberta", no topo |
+| Porta 8080 | **fechada no loopback desde 22/08/2026** — o QR sai pelo painel |
 
-⚠️ **Se algum dia precisar emitir certificado para um subdomínio novo:** a
-Cloudflare está em **Full (strict)** e fala HTTPS com o origin. Domínio sem
+⚠️ **Se algum dia precisar emitir certificado para um subdomínio novo que esteja
+atrás da Cloudflare:** ela está em **Full (strict)** e fala HTTPS com o origin.
+(Não foi o caso do `crm`, cujo registro aponta direto para a VPS — a emissão
+funcionou de primeira, com o proxy desligado.) Domínio sem
 certificado ainda no origin faz ela devolver **526**, e o desafio HTTP-01 do
 certbot nunca chega ao nginx. A saída é passar o registro para **DNS only**
 (nuvem cinza) na Cloudflare, emitir, e religar o proxy. Vale só para a primeira
@@ -156,7 +171,10 @@ partir do `.env.example`:
 
 - ✅ `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — configuradas
   e verificadas em 19/08/2026: o agente respondeu pela VPS na página de teste
-- ⚠️ `EVOLUTION_SERVER_URL` — ainda em `localhost:8080`; precisa do IP público
+- ✅ `EVOLUTION_SERVER_URL` — **deixou de importar para o QR** em 22/08/2026. O
+  painel usa o `base64` do corpo da resposta, não o link montado com essa
+  variável. O padrão do compose passou a ser `http://evolution-api:8080`, que é
+  o que resolve dentro da `apac-network` para download de mídia.
 - ⚠️ `ADMIN_API_KEY` — confira se está preenchida; sem ela `/admin` responde 503
 
 **Armadilha do `env_file`:** uma linha que não seja comentário, vazia ou
@@ -168,6 +186,144 @@ separação sem `#`. Para conferir antes de subir (silêncio = válido):
 ```bash
 grep -vnE '^\s*(#|$)|^[A-Za-z_][A-Za-z0-9_]*=' .env
 ```
+
+## O painel CRM — `crm.apacademia.com.br`
+
+Construído em 22/08/2026. Quatro superfícies, uma autenticação.
+
+| Aba | O que faz |
+|---|---|
+| **Funil** | A tabela de gestão de leads. Métricas, filtros por etapa/dono/origem, ordenação, e a ficha do lead numa gaveta com as ações que escrevem no EVO |
+| **Conversas** | Histórico de **todas** as conversas, por id. Abre a thread, responde pelo WhatsApp e devolve para a Leia |
+| **Simulador** | Conversar com a Leia sem WhatsApp. Herdeiro da `/teste`, agora amarrado ao consultor logado |
+| **Ajustes** | Pareamento do WhatsApp (QR), webhooks do EVO, sincronização e cadastro de consultores |
+
+### Login
+
+**Por consultor, não senha única.** A `/teste` tem senha compartilhada porque é
+sala de teste; o painel escreve venda em produção no EVO, e sem autor a tabela do
+funil não sabe dizer quem agendou, quem vendeu nem de quem é o lead.
+
+Senha em **scrypt do `node:crypto`** (`src/lib/senha.js`), sem dependência nova —
+bcrypt traria compilação de binário ao build do container. Sessão em cookie
+assinado, o mesmo mecanismo já validado na `/teste`.
+
+```bash
+node scripts/criar-consultor.js --nome "Nome" --email pessoa@ap.com --admin
+node scripts/criar-consultor.js --email pessoa@ap.com --senha NovaSenha123  # reset
+node scripts/criar-consultor.js --listar
+```
+
+Sem `--senha`, uma é sorteada e impressa **uma única vez**. Depois do primeiro
+admin, os demais saem por Ajustes → Consultores.
+
+### As etapas do funil
+
+```
+novo → em_conversa → aguardando_consultor → com_consultor
+     → experimental_agendada → experimental_realizada → ganho | perdido
+```
+
+**Etapa é consequência, não campo.** Ninguém marca "em conversa" — o lead está
+lá porque chegou mensagem. Ninguém marca experimental agendada — ela está porque
+o EVO aceitou o agendamento. Cada avanço grava um evento em `crm_lead_events`
+dizendo quem causou e por quê.
+
+Isso não foi preferência de desenho: **nos 50 prospects mais recentes do EVO,
+`currentStep` está null em 100% e `temperature` vazio em 100%.** Espelhar o EVO
+teria espelhado campo em branco. O funil que depende de alguém arrastar cartão é
+exatamente o que já não funciona nesta academia.
+
+Os gatilhos automáticos (`funil.aoReceberMensagem`, `aoAbrirHandoff`,
+`aoConsultorAssumir`) usam `somenteAvanco: true` — nunca retrocedem nem reabrem
+lead fechado. Só o consultor, pelo painel, pode puxar para trás: é ele quem sabe
+que a pessoa desistiu depois de agendar.
+
+⚠️ **Todas as chamadas de funil no fluxo do WhatsApp passam por `moverFunil()`,
+que engole exceção.** O funil é observação, não caminho crítico: se o Supabase
+engasgar na hora de gravar a etapa, a mensagem do cliente ainda tem que ser
+respondida.
+
+### Tabelas novas (migration 002)
+
+| Tabela | Papel |
+|---|---|
+| `crm_users` | Consultores, com hash de senha |
+| `crm_leads` | A linha do funil. **Desnormalizada de propósito**: experimental, venda e última atividade em colunas próprias, para a tela mais aberta do painel responder com um SELECT só |
+| `crm_lead_events` | O razão: toda mudança de etapa, escrita no EVO e ação de consultor |
+| `crm_evo_webhook_events` | Envelope cru do EVO, guardado antes de interpretar, para reprocessar sem depender de reentrega |
+| `crm_evo_poll_state` | Estado do poller |
+
+Duas UNIQUE parciais que valem conhecer: um contato do WhatsApp tem no máximo
+**um** lead aberto (fechados podem se acumular — quem cancelou ano passado e
+voltou é lead novo), e um `evo_id_prospect` não se repete.
+
+⚠️ **Auto-expose de tabelas está desligado neste projeto.** O bloco 9 da migration
+(GRANTs para `service_role`) não é opcional — sem ele a API responde `PGRST205`,
+que parece migration não aplicada e não é.
+
+## A integração com o EVO
+
+### O client foi reescrito
+
+`src/services/evo-client.js` foi refeito contra o [swagger
+oficial](https://evo-integracao-api.w12app.com.br/swagger/v1/swagger.json),
+conferido em 22/08/2026. **Três caminhos estavam errados** e só falhavam em
+runtime:
+
+| Estava | É |
+|---|---|
+| `/api/v1/services` | `/api/v1/service` — singular. O plural é 404 |
+| `/api/v1/members` | `/api/v2/members` |
+| `POST /api/v1/members` para criar prospect | `POST /api/v1/prospects`. O antigo criava **membro** |
+
+O terceiro era o motivo de `cadastrar_prospect` estar em `PAUSED_TOOLS`.
+
+⚠️ **`POST /api/v1/activities/schedule/experimental-class` recebe tudo por QUERY
+STRING.** Não tem corpo. Mandar JSON no body devolve 400 sem dizer por quê.
+
+⚠️ **O campo de atividade inativa é `inactive`, não `isActive`.** Filtrar por
+`isActive !== false` deixa passar tudo, porque o campo não existe — e aí plano
+desativado é oferecido ao cliente.
+
+### O que os webhooks do EVO cobrem — e o que não cobrem
+
+Eventos assinados: `NewSale`, `RecurrentSale`, `CreateMember`,
+`CreateMembership`, `ActivityEnroll`, `TransferProspect`.
+
+⚠️ **Não existe evento de mudança de etapa ou status de prospect no EVO.** A lista
+completa da doc é de criação e alteração de membro, contrato, produto, serviço,
+venda, matrícula em atividade e transferência — nada sobre a evolução da
+oportunidade. Por isso o funil também depende do **poller**
+(`evoSync.sincronizarProspects`), que é o que enxerga o que o consultor faz
+dentro do EVO. Hoje ele roda sob demanda, por Ajustes → Sincronizar prospects;
+**ainda não está agendado**.
+
+O envelope que o EVO manda é enxuto — `{ IdW12, IdBranch, IdRecord, EventType,
+ApiCallback }`. O dado real está atrás do `ApiCallback`, que é outra chamada
+HTTP. Por isso `/webhook/evo` responde na hora e processa depois: fazer a segunda
+chamada dentro da requisição faria o EVO esperar por nós e reentregar por timeout.
+
+⚠️ **O `ApiCallback` é validado contra o host do EVO antes de ser seguido.**
+Seguir URL arbitrária vinda de webhook é SSRF, e este processo alcança a rede
+interna do Docker.
+
+Registrar os webhooks: Ajustes → Webhooks do EVO → **Registrar**. É idempotente.
+Depende de `EVO_WEBHOOK_SECRET` estar no `.env` — sem ele `/webhook/evo` responde
+503 (fail-closed, porque o endpoint escreve no funil).
+
+### O modo ensaio
+
+`EVO_DRY_RUN=true` faz cadastro de prospect, agendamento e venda **não saírem**
+para o EVO: são registrados no log e devolvem `{ dryRun: true }`, e o funil anda
+igual. Leitura continua real nos dois modos.
+
+Existe porque **não há filial de testes na conta** — toda escrita é produção. O
+painel mostra uma fita âmbar no topo quando está ligado, para ninguém achar que
+vendeu e a venda não existir.
+
+**A VPS está com `EVO_DRY_RUN=true`.** Para valer de verdade, troque no `.env` e
+recrie o container.
 
 ## Prompt: arquivo × banco
 
@@ -198,7 +354,7 @@ ajustar prompt e base.
 
 | Item | Valor |
 |---|---|
-| URL | **`https://leia.apacademia.com.br/teste`** — o acesso por IP na 3100 foi fechado em 20/08 |
+| URL | **substituída pela aba Simulador do painel**, em `https://crm.apacademia.com.br`. A rota `/teste` continua no código, mas sem domínio próprio |
 | Senha | `Leia` (única, sem usuário) — troque em `TESTE_SENHA` |
 | Canal no banco | `wa_conversations.channel = 'web-test'` |
 | Desligar | `TESTE_HABILITADO=false` + restart |
@@ -211,7 +367,7 @@ git pull
 docker compose up -d --build backend
 ```
 
-Confira em `https://leia.apacademia.com.br/health` antes de mandar o link para o
+Confira em `https://crm.apacademia.com.br/health` antes de mandar o link para o
 time. Não abra a 3100 no firewall: ela escuta só no loopback de propósito.
 
 ### Como os testes ficam gravados
@@ -249,7 +405,7 @@ Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
 ### Limites e riscos aceitos
 
 - ~~**É HTTP puro, sem TLS.**~~ **Resolvido em 20/08/2026:** a página só é
-  servida por `https://leia.apacademia.com.br`. Continua valendo a ressalva da
+  servida por HTTPS, hoje em `https://crm.apacademia.com.br`. Continua valendo a ressalva da
   **senha padrão `Leia`**, única e compartilhada — troque em `TESTE_SENHA`, ou
   desligue com `TESTE_HABILITADO=false` quando a rodada acabar. O backend avisa
   isso no log a cada restart.
@@ -386,38 +542,76 @@ reativar, remova o nome de `PAUSED_TOOLS`.
 | Tool | Por que está pausada |
 |---|---|
 | `emitir_voucher` | gera código que **não é persistido** — o cliente receberia voucher irresgatável. Precisa de tabela de vouchers antes. |
-| `cadastrar_prospect` | usa `POST /api/v1/members`, que cria **membro**, não prospect. O correto é `POST /api/v1/prospects` (confirmado existente). |
-| `agendar_aula_experimental` | depende do endpoint acima e nunca foi validado contra o EVO — é escrita em produção. |
+| `cadastrar_prospect` | o handler ainda aponta para o caminho antigo. **O bug de fundo foi corrigido em 22/08** — `evoClient.criarProspect` agora usa `POST /api/v1/prospects` — mas a tool continua pausada por decisão, não por defeito. |
+| `agendar_aula_experimental` | idem: o caminho existe e funciona (`evoSync.agendarExperimental`), mas quem dispara é o consultor, pelo painel. |
 
 Bloqueio duplo: além de não serem declaradas, `executeTool` recusa executá-las
 caso o modelo alucine a chamada. **Tool ativa: apenas `transferir_para_humano`.**
 
+### O que mudou em 22/08 e por que elas continuam pausadas
+
+As três ações agora **existem e funcionam** — só que pelo painel, não pela Leia:
+`evoSync.cadastrarProspect`, `agendarExperimental` e `registrarVenda`, com autor
+registrado e etapa do funil movida.
+
+Reativar a Leia para escrever no EVO é decisão de operação em aberto, e o
+raciocínio do bloco 11 da revisão continua valendo: **no momento do handoff a
+Leia só tem a intenção** ("quer experimental amanhã 9h20"). Quem cria o fato é o
+consultor, depois, e pode ser outro horário — ou plano fechado sem experimental
+nenhuma. Cadastrar prospect é o candidato de menor risco a ser reativado
+primeiro; venda é o de maior.
+
+Reativar exige, além de remover o nome de `PAUSED_TOOLS`, **reescrever os
+handlers em `ai-tools.js` para chamarem `evo-sync.js`** em vez do client direto —
+senão a escrita acontece no EVO sem passar pelo funil, e o lead fica com o dado
+faltando.
+
 ## Próxima sessão
 
-### Onde retomar
+### Onde retomar — nesta ordem
 
-**Está tudo publicado e no ar** — prompt no banco, base e código na VPS. Nada
-esperando `npm run prompt` nem deploy. Confira com:
+O prompt continua sincronizado (`npm run prompt -- --dry` deve dizer que o banco
+já está igual ao arquivo). O que está pendente é a subida do CRM:
+
+**1. Rodar a migration 002.** `supabase/migrations/002_crm_schema.sql` no SQL
+Editor do Supabase. Confira que o bloco 9 (GRANTs) rodou — sem ele o sintoma é
+`PGRST205`, que engana.
+
+**2. Subir o código.** O `git push` do branch `crm-painel` ficou pendente de
+autorização. Depois dele, na VPS:
 
 ```bash
-npm run prompt -- --dry   # deve dizer "O banco já está igual ao arquivo"
+cd /var/www/apac-ia-sales
+git fetch && git checkout crm-painel
+docker compose up -d --build backend
 ```
 
-Duas frentes, e a segunda depende de gente:
+⚠️ **Este deploy recria o container da Evolution** (a 8080 mudou de bind).
+Não há instância pareada, então não há o que perder — mas depois do pareamento
+isso deixa de ser verdade.
 
-**1. O painel do consultor.** É o que motivou o domínio e o TLS de 20/08, e o
-raciocínio inteiro está no bloco 11 da revisão. Eu começaria por aqui.
+**3. Criar o primeiro consultor** e entrar em `https://crm.apacademia.com.br`.
 
-**2. Uma bateria de testes com foco no que mudou.** Não dá para pedir ao time
-enquanto o painel não existir, mas é o que valida o dia 20/08. Roteiros a
-exercitar de propósito, porque nenhum foi: pedir desconto, reclamar de preço,
-pedir cancelamento com um motivo raso, esquecer um objeto, não conseguir agendar
-no FITI, perguntar sobre atendimento a PCD.
+**4. Percorrer o fluxo em modo ensaio**, que é como a VPS está: criar lead,
+cadastrar no EVO, agendar experimental, registrar venda. Tudo simulado. Depois
+`EVO_DRY_RUN=false` e repetir **uma vez** com um lead de verdade, conferindo no
+EVO que o prospect apareceu.
+
+**5. Parear o WhatsApp** — Ajustes → WhatsApp. Precisa do aparelho da academia.
+
+**6. Registrar os webhooks do EVO** — Ajustes → Webhooks do EVO → Registrar.
+Só funciona depois que `crm.apacademia.com.br` estiver servindo o código novo,
+porque o EVO valida a URL de callback.
+
+**7. A bateria de testes de prompt que ficou de 20/08.** Agora dá para pedir ao
+time, porque o simulador está dentro do painel. Roteiros nunca exercitados:
+pedir desconto, reclamar de preço, pedir cancelamento com motivo raso, esquecer
+um objeto, não conseguir agendar no FITI, perguntar sobre atendimento a PCD.
 
 ### O que ainda mexe no resultado e continua pendente
 
-0. **Fechar a 8080 da Evolution**, ou decidir conscientemente não fechar — ver
-   "A decisão que ficou aberta", no topo. É o item de segurança em aberto.
+0. ~~**Fechar a 8080 da Evolution**~~ — **resolvido em 22/08/2026.** Fechada no
+   loopback; o QR de pareamento passou a sair pelo painel.
 1. **Não existe sinal de lead vs aluno** (bloco 9 da revisão) — `is_prospect`
    nasce `true` e nada o põe em `false`; `evo_member_id` existe no schema e
    ninguém preenche (0 de 11 contatos). A abertura foi reescrita para não
@@ -509,24 +703,33 @@ instância. A Evolution subiu, roda as migrações e responde 200 em `:8080`.
 e prova que backend → Evolution conversa. Falta parear, e aí valem dois
 detalhes:
 
-- `EVOLUTION_SERVER_URL` **não está definida** no `.env` da VPS, então vale o
-  `localhost:8080` do compose. A Evolution usa essa variável para montar os
-  links de QR code e mídia — com `localhost`, o QR não abre de fora. Precisa
-  virar `http://108.174.151.51:8080`, e a porta 8080 precisa estar liberada.
+- ~~`EVOLUTION_SERVER_URL` precisa virar o IP público~~ — **não é mais
+  necessário.** Desde 22/08/2026 o QR sai pelo painel a partir do `base64` da
+  resposta, e a 8080 está fechada de propósito. Parear é em **Ajustes →
+  WhatsApp**, no CRM.
 - A instância criada tem que se chamar **`apacademia`**, que é o valor de
   `EVOLUTION_INSTANCE` procurado pelo backend.
 
 ## Backlog conhecido (não tratado)
 
-- **Handoff não notifica ninguém** — só grava linha em `wa_human_handoffs` e para
-  de responder. Se ninguém abrir `/admin/handoffs`, o cliente fica no vácuo.
-  É a lacuna mais relevante para uso real.
+- **Handoff não notifica ninguém** — *melhorou, não fechou.* Desde 22/08 ele vira
+  a etapa `aguardando_consultor` no funil, com o tempo parado visível na tabela e
+  no cartão "Parados". Mas continua sendo **pull, não push**: alguém tem que
+  abrir o painel. Falta o aviso ativo (WhatsApp para o consultor, e-mail, ou som
+  na aba aberta).
 - **Fila pode travar em `processing`** — se o processo cair após marcar o status,
   a linha nunca volta para `pending` e a query só busca `pending`.
+- **O poller do EVO não está agendado** — `evoSync.sincronizarProspects` só roda
+  quando alguém clica em Ajustes → Sincronizar prospects. Como é ele que cobre a
+  ausência de webhook de mudança de prospect, enquanto não for periódico o funil
+  não enxerga o que o consultor faz dentro do EVO.
+- **Webhook do EVO sem reprocesso automático** — `evoSync.reprocessarPendentes`
+  existe e não é chamado por ninguém. Evento que falhou fica parado.
 - **Zero testes commitados** — `npm test` aponta para `src/**/*.test.js`, que não
-  existe. As validações desta sessão foram scripts descartáveis.
-- **Evolution na 8080 poderia ser fechada** — o backend fala com ela por dentro
-  da `apac-network` e o QR sai por `/admin/whatsapp/qrcode`.
+  existe. Continua valendo, e o CRM aumentou a superfície: o funil tem regras de
+  transição (`somenteAvanco`, etapas finais) que são exatamente o tipo de coisa
+  que teste unitário pega barato.
+- ~~**Evolution na 8080 poderia ser fechada**~~ — **fechada em 22/08/2026.**
 - **`ai_enabled` é gravado mas nunca lido** — só `status === 'human'` é checado.
 - ~~**Nenhuma data ou hora entra no system prompt**~~ e ~~**o bloco de contato
   desaparece sem nome**~~ — **resolvidos em 20/08/2026.** `buildDynamicContext`
@@ -535,7 +738,8 @@ detalhes:
   do `cache_control`: antes do breakpoint a hora invalidaria o cache a cada
   minuto.
 - **Telefone não é normalizado** antes das buscas no EVO.
-- **CORS só lista `localhost`** em `server.js`; faltam os domínios de produção.
+- ~~**CORS só lista `localhost`**~~ — `crm.apacademia.com.br` e o curinga
+  `*.apacademia.com.br` entraram em `server.js`.
 
 ### Fora deste repositório
 
@@ -544,8 +748,12 @@ puro e commitado. Vale rotacionar.
 
 ## Referência: endpoints do EVO
 
-Levantado por teste direto (`GET` apenas — nada foi escrito em produção). Útil se
-as tools de ação forem retomadas.
+⚠️ **Desatualizado desde 22/08/2026.** A referência viva agora é
+`src/services/evo-client.js`, escrito contra o swagger oficial
+(`https://evo-integracao-api.w12app.com.br/swagger/v1/swagger.json`, 124
+endpoints). A tabela abaixo fica pelo histórico dos erros que ela ajudou a achar.
+
+Levantado por teste direto (`GET` apenas — nada foi escrito em produção).
 
 | Endpoint | Status | Observação |
 |---|---|---|
