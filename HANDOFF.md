@@ -11,8 +11,8 @@
 **O dia 22/08 construiu o CRM.** O painel do consultor saiu do papel: funil de
 vendas, histórico de conversas, simulador da Leia e ajustes, com login por
 pessoa. O EVO deixou de ser só leitura — cadastro de prospect, agendamento de
-experimental, venda e follow-up agora têm caminho. Um commit, no branch
-`crm-painel`.
+experimental, venda e follow-up agora têm caminho. Cinco commits, no branch
+`crm-painel`, tudo no ar e testado contra produção.
 
 **Quatro coisas para saber antes de tocar em qualquer coisa:**
 
@@ -22,15 +22,13 @@ experimental, venda e follow-up agora têm caminho. Um commit, no branch
    removidos da VPS (backup do conf em `/root/leia.conf.removido-2026-08-22`).
    **O link antigo morreu** — a `/teste` agora vive dentro do painel, na aba
    Simulador.
-2. **⚠️ A migration 002 ainda NÃO foi rodada.** As tabelas do CRM não existem.
-   Sem elas o login do painel falha dizendo "e-mail ou senha incorretos", que é
-   sintoma enganoso — o boot avisa no log com a mensagem certa. Rode
-   `supabase/migrations/002_crm_schema.sql` no SQL Editor do Supabase e depois
-   `node scripts/criar-consultor.js --nome "Seu Nome" --email voce@ap.com --admin`.
-3. **⚠️ O código do CRM ainda NÃO está na VPS.** O `git push` do branch
-   `crm-painel` ficou pendente de autorização. A infra está pronta e esperando:
-   domínio, TLS, nginx e `.env` da VPS já configurados. Falta `git push`, e na
-   VPS `git fetch && git checkout crm-painel && docker compose up -d --build backend`.
+2. **✅ A migration 002 foi aplicada** e o primeiro admin criado
+   (`leandro.caminha@gmail.com`). Se o login algum dia responder "e-mail ou senha
+   incorretos" para uma senha que você tem certeza que está certa, olhe o log do
+   boot: tabela do CRM inacessível produz exatamente esse sintoma.
+3. **✅ Está no ar.** A VPS roda o branch `crm-painel`. Painel, funil,
+   conversas, simulador e o catálogo do EVO foram testados contra produção. O que **não** está resolvido
+   são as permissões do token do EVO — ver o bloco próprio mais abaixo.
 4. **⚠️ O EVO está em modo ensaio.** `EVO_DRY_RUN=true` no `.env` da VPS:
    cadastro, agendamento e venda **não chegam ao EVO** — são registrados no log
    e o funil anda normalmente. Foi decisão de primeira subida, porque não existe
@@ -312,6 +310,52 @@ Registrar os webhooks: Ajustes → Webhooks do EVO → **Registrar**. É idempot
 Depende de `EVO_WEBHOOK_SECRET` estar no `.env` — sem ele `/webhook/evo` responde
 503 (fail-closed, porque o endpoint escreve no funil).
 
+### ⚠️ Permissões do token do EVO — três escritas estão bloqueadas
+
+Levantado em 22/08/2026 por sondagem com dados inválidos de propósito
+(403 = sem permissão; 400 = tem permissão e o EVO só recusou o dado —
+nada foi criado).
+
+| Endpoint | Situação |
+|---|---|
+| `POST /api/v1/webhook` | ❌ **403** — sem permissão |
+| `POST /api/v2/sales` | ❌ **403** — sem permissão |
+| `POST /api/v1/notifications/prospect` (follow-up) | ❌ **403** — sem permissão |
+| `PATCH /api/v1/prospects` | ✅ permitido |
+| `POST /api/v1/prospects/convert` | ✅ permitido |
+| `POST /api/v1/activities/schedule/experimental-class` | ✅ permitido |
+| Todos os `GET` usados pelo painel | ✅ permitidos |
+
+⚠️ **`POST /api/v1/prospects` (criar prospect) não foi sondado**, porque a
+única forma seria criar um prospect de verdade — não há DELETE. O `PATCH` da
+mesma família está liberado, o que é um bom sinal, mas **não é prova**: a
+permissão do EVO é por endpoint, não por família.
+
+**Não é chamado com a W12 — é auto-serviço.** No EVO, em **Configurações →
+Integrações**, expanda a chave de integração e marque os endpoints. A doc de
+permissões diz que todo endpoint da API Reference pode ser habilitado ali.
+
+Enquanto essas três não forem liberadas:
+
+- **Webhooks não podem ser registrados** — o funil não recebe venda nem
+  conversão por push. O poller cobre parte disso, mas só a parte de prospect.
+- **Registrar venda pelo painel falha** com 403.
+- **Follow-up no EVO falha** com 403.
+
+O agendamento de experimental e o cadastro de prospect (provavelmente)
+funcionam.
+
+### O que o `EVO_API_TOKEN` da VPS era
+
+Até 22/08/2026 o `.env` da VPS tinha o **placeholder** `cole-aqui-o-token-evo`
+no lugar do token. Nunca funcionou de lá — passou despercebido porque as tools
+do EVO estavam pausadas e nada na VPS chamava a API. Corrigido no mesmo dia,
+com backup em `.env.bak-token-2026-08-22`.
+
+Vale como alerta geral: **o `setup-vps.sh` copia o `.env.example`**, e valor de
+exemplo que não é substituído fica esperando o dia em que alguém finalmente usa
+aquela integração.
+
 ### O modo ensaio
 
 `EVO_DRY_RUN=true` faz cadastro de prospect, agendamento e venda **não saírem**
@@ -573,24 +617,19 @@ faltando.
 O prompt continua sincronizado (`npm run prompt -- --dry` deve dizer que o banco
 já está igual ao arquivo). O que está pendente é a subida do CRM:
 
-**1. Rodar a migration 002.** `supabase/migrations/002_crm_schema.sql` no SQL
-Editor do Supabase. Confira que o bloco 9 (GRANTs) rodou — sem ele o sintoma é
-`PGRST205`, que engana.
+**1. ~~Rodar a migration 002~~ — feita.** As tabelas do CRM respondem; o boot
+confirma com `[crm] Tabelas do CRM acessíveis`.
 
-**2. Subir o código.** O `git push` do branch `crm-painel` ficou pendente de
-autorização. Depois dele, na VPS:
+**2. ~~Subir o código~~ — feito.** A VPS está no branch `crm-painel`. Para
+atualizar daqui em diante: `git pull && docker compose up -d --build backend`.
 
-```bash
-cd /var/www/apac-ia-sales
-git fetch && git checkout crm-painel
-docker compose up -d --build backend
-```
+⚠️ **Um deploy com `docker compose up -d` (sem `backend`) recria o container da
+Evolution.** Enquanto não houver número pareado não há o que perder; depois do
+pareamento, passa a haver.
 
-⚠️ **Este deploy recria o container da Evolution** (a 8080 mudou de bind).
-Não há instância pareada, então não há o que perder — mas depois do pareamento
-isso deixa de ser verdade.
-
-**3. Criar o primeiro consultor** e entrar em `https://crm.apacademia.com.br`.
+**3. ~~Criar o primeiro consultor~~ — feito.** `leandro.caminha@gmail.com`, como
+admin. Troque a senha em Ajustes → Consultores, ou por
+`node scripts/criar-consultor.js --email ... --senha ...`.
 
 **4. Percorrer o fluxo em modo ensaio**, que é como a VPS está: criar lead,
 cadastrar no EVO, agendar experimental, registrar venda. Tudo simulado. Depois
@@ -599,9 +638,11 @@ EVO que o prospect apareceu.
 
 **5. Parear o WhatsApp** — Ajustes → WhatsApp. Precisa do aparelho da academia.
 
-**6. Registrar os webhooks do EVO** — Ajustes → Webhooks do EVO → Registrar.
-Só funciona depois que `crm.apacademia.com.br` estiver servindo o código novo,
-porque o EVO valida a URL de callback.
+**6. Liberar as permissões do token do EVO** — no EVO, Configurações →
+Integrações: marcar `POST /api/v1/webhook`, `POST /api/v2/sales` e
+`POST /api/v1/notifications/prospect`, que hoje dão 403. Conferir também
+`POST /api/v1/prospects`. Só depois disso os webhooks podem ser registrados,
+em Ajustes → Webhooks do EVO → Registrar.
 
 **7. A bateria de testes de prompt que ficou de 20/08.** Agora dá para pedir ao
 time, porque o simulador está dentro do painel. Roteiros nunca exercitados:

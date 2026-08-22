@@ -702,10 +702,12 @@ export async function registrarWebhooks({ urlBase = config.crm.urlPublica } = {}
       // família funciona, o que torna o diagnóstico ainda menos óbvio.
       if (err?.status === 403) {
         throw new Error(
-          'O EVO recusou o cadastro do webhook com 403 (sem permissão). ' +
-          'A leitura funciona, então não é a credencial que está errada: é a ' +
-          'permissão de webhook que falta no token. Peça à W12/EVO para liberar ' +
-          'escrita de webhook para esta chave de integração. ' +
+          'O EVO recusou o cadastro do webhook com 403: o token não tem permissão ' +
+          'de POST em /api/v1/webhook. Não é a credencial — a leitura funciona. ' +
+          'A permissão é por endpoint e você mesmo habilita, no EVO em ' +
+          'Configurações → Integrações: expanda a chave e marque POST /api/v1/webhook. ' +
+          'Aproveite e marque também POST /api/v2/sales e ' +
+          'POST /api/v1/notifications/prospect, que estão bloqueados pelo mesmo motivo. ' +
           `Nenhum evento foi registrado${criados.length ? ` além de: ${criados.join(', ')}` : ''}.`
         );
       }
