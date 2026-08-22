@@ -53,7 +53,16 @@ export class EvoApiError extends Error {
  */
 async function evoFetch(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
-  const escrita = method !== 'GET';
+
+  // `configuracao: true` marca escritas que são de INFRAESTRUTURA, não de
+  // dado de cliente — hoje só o cadastro de webhooks. Elas passam pelo
+  // dry-run de propósito.
+  //
+  // O dry-run existe para não criar prospect, aula e venda de mentira no
+  // sistema da academia. Suprimir também o registro de webhook não protege
+  // ninguém e produz o pior resultado possível: o painel dizia "6 webhooks
+  // criados" e o EVO continuava com zero.
+  const escrita = method !== 'GET' && !options.configuracao;
 
   if (escrita && config.evo.dryRun) {
     logger.warn(`[evo-w12] DRY-RUN: ${method} ${path} não foi enviado`);
@@ -70,7 +79,8 @@ async function evoFetch(path, options = {}) {
   if (escrita) logger.info(`[evo-w12] ${method} ${path}`);
   else logger.debug(`[evo-w12] ${method} ${path}`);
 
-  const res = await fetch(fullUrl, { ...options, headers });
+  const { configuracao: _ignorado, ...opcoesFetch } = options;
+  const res = await fetch(fullUrl, { ...opcoesFetch, headers });
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -499,6 +509,7 @@ export async function listarWebhooks() {
 export async function criarWebhook(eventType, urlCallback, headers = []) {
   return evoFetch('/api/v1/webhook', {
     method: 'POST',
+    configuracao: true,
     body: JSON.stringify({
       idBranch: ID_BRANCH_PADRAO,
       eventType,
@@ -511,7 +522,10 @@ export async function criarWebhook(eventType, urlCallback, headers = []) {
 
 /** Remove um webhook pelo id. */
 export async function removerWebhook(idWebhook) {
-  return evoFetch(`/api/v1/webhook${qs({ IdWebhook: idWebhook })}`, { method: 'DELETE' });
+  return evoFetch(`/api/v1/webhook${qs({ IdWebhook: idWebhook })}`, {
+    method: 'DELETE',
+    configuracao: true,
+  });
 }
 
 /**

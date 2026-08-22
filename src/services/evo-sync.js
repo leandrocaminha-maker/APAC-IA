@@ -692,8 +692,25 @@ export async function registrarWebhooks({ urlBase = config.crm.urlPublica } = {}
 
   for (const evento of evoClient.EVENTOS_WEBHOOK) {
     if (jaTem.has(evento)) { pulados.push(evento); continue; }
-    await evoClient.criarWebhook(evento, url, headers);
-    criados.push(evento);
+    try {
+      await evoClient.criarWebhook(evento, url, headers);
+      criados.push(evento);
+    } catch (err) {
+      // 403 aqui não é dado inválido: é o token do EVO sem permissão de
+      // escrita em webhook. Vale traduzir, porque "EVO API 403" manda o
+      // consultor procurar o erro no lugar errado — e o GET da mesma
+      // família funciona, o que torna o diagnóstico ainda menos óbvio.
+      if (err?.status === 403) {
+        throw new Error(
+          'O EVO recusou o cadastro do webhook com 403 (sem permissão). ' +
+          'A leitura funciona, então não é a credencial que está errada: é a ' +
+          'permissão de webhook que falta no token. Peça à W12/EVO para liberar ' +
+          'escrita de webhook para esta chave de integração. ' +
+          `Nenhum evento foi registrado${criados.length ? ` além de: ${criados.join(', ')}` : ''}.`
+        );
+      }
+      throw err;
+    }
   }
 
   logger.info(`[evo-sync] Webhooks: ${criados.length} criados, ${pulados.length} já existiam`);
