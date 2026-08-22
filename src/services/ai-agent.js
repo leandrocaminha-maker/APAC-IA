@@ -381,7 +381,16 @@ export async function processMessage({
     for (const toolUse of toolUses) {
       logger.info(`[ai-agent] Tool call: ${toolUse.name}`);
 
-      const result = await executeTool(toolUse.name, toolUse.input || {});
+      // O contexto da conversa vai junto: as tools de cadastro e agendamento
+      // precisam saber de quem é a conversa para ligar o prospect criado no
+      // EVO ao lead do funil. Sem ele, o painel mostraria "não cadastrado"
+      // para alguém que acabou de ser cadastrado.
+      const result = await executeTool(toolUse.name, toolUse.input || {}, {
+        contactId: contactInfo.id ?? null,
+        conversationId,
+        phone: contactInfo.phone ?? null,
+        tags: contactInfo.tags ?? [],
+      });
       toolResults.push({ tool: toolUse.name, args: toolUse.input, result });
 
       // Handoff encerra o turno: o bot para e um humano assume.

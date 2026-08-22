@@ -576,6 +576,7 @@ router.post('/api/simulador/mensagem', rota(async (req, res) => {
     conversationId: conversa.id,
     excludeMessageId: salva?.id,
     contactInfo: {
+      id: contato.id,
       name: contato.name,
       phone: 'simulador (painel)',
       is_prospect: contato.is_prospect,

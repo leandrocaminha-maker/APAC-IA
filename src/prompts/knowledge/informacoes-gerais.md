@@ -73,13 +73,17 @@ _estúdio de Pilates
 
 - Existe? Sim e é desejavel que o cliente agende para firmar compromisso de ir até a academia e experimente a aula antes de fechar plano.
 - É gratuita? Sim
-- Como agenda? pelo consultor humano, mas pode ajudar a encontrar uma atividade que se encaixe na agenda do cliente.
+- Como agenda? **A própria Leia agenda**, na conversa, seguindo o protocolo "Agendamento de aula experimental" do prompt. Desde 22/08/2026 não depende mais de consultor.
 - O que a pessoa precisa levar? roupa de ginástica, tênis e equipamento da modalidade. Regras de vestuário (proibido jeans, saia, chinelo, salto; touca e maiô/sunga obrigatórios na piscina) em `contrato-resumo.md`.
 
-> O dado existe: o agente **pode** explicar que a aula experimental existe e é
-> gratuita, e ajudar a achar o horário. O agendamento em si é o consultor que
-> faz — aí sim vale `transferir_para_humano`, já com a atividade e o horário
-> combinados.
+> O agente explica que a aula experimental existe e é gratuita, ajuda a achar o
+> horário na grade **e conclui o agendamento**, com as tools `buscar_cadastro`,
+> `cadastrar_prospect` e `agendar_aula_experimental`.
+>
+> `transferir_para_humano` aqui virou exceção, não regra: só quando o
+> agendamento não for possível (turma cheia, horário fora da grade que a pessoa
+> não aceita trocar, sistema recusando) ou quando quem pede **já é aluno** — a
+> aula experimental é do fluxo de oportunidade, não de matriculado.
 
 ## Matrícula
 

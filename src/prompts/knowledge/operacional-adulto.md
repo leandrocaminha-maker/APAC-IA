@@ -14,14 +14,12 @@
   início e limite de alunos, então a sala não lota e a relação aluno/professor
   fica confortável. É isso que viabiliza o acompanhamento técnico incluso.
 - A agenda **abre 48h antes** do início da sessão.
-- **Sem limite de sessões por dia.** O aluno mantém até **3 agendamentos
-  simultâneos**, e **no máximo 1 por modalidade** — não dá para deixar duas
-  sessões de musculação, ou duas de natação, pendentes ao mesmo tempo. Realizada
-  a sessão, a vaga libera e ele agenda outra. É esta segunda regra que produz a
-  mensagem "no máximo 1 atividade" no FITI (`suporte-fiti.md`).
+- **Sem limite de sessões por dia.** O aluno mantém até **4 agendamentos
+  simultâneos**. Realizada e finalizada a sessão, a vaga libera e ele pode agendar outra. É esta segunda regra que produz a
+  mensagem "no máximo 4 atividade" no FITI (`suporte-fiti.md`).
 - **Cancelamento sem consequência até 1h antes** da sessão.
-- **Falta não justificada** (não compareceu e não cancelou): o aluno fica
-  **2 dias sem poder agendar** pelo app.
+- **Falta não justificada** (não compareceu e não cancelou): o aluno pode ficar
+  **2 dias sem poder agendar** pelo app. Atualmente este bloqueio está desativado.
 
 ## Avaliação física e PAR-Q
 
@@ -36,11 +34,20 @@
   as reavaliações periódicas **não são vendidos à parte** — já estão no valor do
   plano (detalhe em `planos-e-valores.md`).
 
+  ### Protocolo de Avaliação Física
+
+  1.
+
+Ao agerndar uma avaliação ou reavaliação, o cliente deverá preencher a anamnese com antecedência.
+O link para preenchimento da anamnese será enviado automaticamente pelo WhatsApp após o agendamento.
+2. Com as respostas do cliente, o profissional de educação física estabelece os testes e medições necessários entre estes: altura, peso, circunferencias corporais, composição corporal por bioimpedância, dobras cutâneas, pressão arterial, força de preensão manual, força máxima isométrica com dinamômetro, repetição máxima ou submáxima nos aparelhos.
+3. O cliente passa em consulta com o Profissional de Educação Física responsável para combinarem o planejamento de atividades e objetivos para o próximo ciclo.
+
 ## Garantia de Adaptação — devolução em até 21 dias
 
 **Exclusiva do Plano Anual.** Não existe no Mensal nem na Assinatura — é
 justamente o que torna o compromisso de 12 meses seguro, e por isso só entra na
-conversa como quebra de objeção a plano longo.
+conversa como quebra de objeção a plano longo. Vale somente para quem não teve contrato ativo nos últimos 2 anos, portanto antes de apresentar a garantia de adaptação pesquise se o cliente já foi nosso aluno e há quanto tempo.
 
 Se o aluno desistir **em até 21 dias**, ele recebe o valor de volta, desde que
 cumpra as duas condições:

@@ -251,6 +251,7 @@ async function handleIncomingMessage(event) {
       conversationId: conversation.id,
       excludeMessageId: savedMessage?.id,
       contactInfo: {
+        id: contact.id,
         name: contact.name,
         phone: contact.phone,
         is_prospect: contact.is_prospect,

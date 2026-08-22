@@ -8,6 +8,7 @@
 ## 1. Escola de Natação Infantil
 
 **Características gerais e metodologia:**
+
 - Metodologia e planejamento com sistema de níveis
 - Atividades especiais e calendário de festivais e torneios
 - Programa de incentivos: conquistas e certificados
@@ -15,6 +16,7 @@
 
 **Frequência de sessões semanais por nível** (a frequência é definida pelo nível
 do aluno, não pelo plano — o valor é o mesmo nos três níveis):
+
 - **Iniciante:** 2 sessões
 - **Intermediário:** 3 sessões
 - **Aperfeiçoamento:** 5 sessões
@@ -24,7 +26,7 @@ está no N3", "ela passou pro Golfinho"), e o plano fala por frequência. Esta �
 tradução entre os dois vocabulários:
 
 | Frequência | Turmas de 3 a 5 anos | Turmas de 6 a 12 anos |
-|---|---|---|
+| --- | --- | --- |
 | **Iniciante** — 2 sessões | Adaptação, Estrelinha N1, Peixinho N2 | N1 Branca, N2 Branca |
 | **Intermediário** — 3 sessões | Golfinho I, Golfinho II, Jubarte | N3 Amarela, N4 Amarela |
 | **Aperfeiçoamento** — 5 sessões | — | N5 Laranja, N6 Laranja, N7 Vermelha, N8 Vermelha, Atleta |
@@ -40,7 +42,7 @@ de 6 a 12 o **N3 Amarela** ganha 1 extra (3) e o **N5 Laranja** ganha 3 extras
 ### Natação Infantil — 3 a 12 anos
 
 | Tipo de plano | Valor | Detalhes |
-|---|---|---|
+| --- | --- | --- |
 | Anual | 12x R$ 227 | — |
 | Assinatura | R$ 259 | Mensal recorrente |
 | Mensalidade | R$ 289 | Sujeito a taxa de adesão |
@@ -48,16 +50,17 @@ de 6 a 12 o **N3 Amarela** ganha 1 extra (3) e o **N5 Laranja** ganha 3 extras
 ### Natação Bebês — de 1 ano até entre 3,5 e 4 anos, 1x por semana
 
 | Tipo de plano | Valor | Detalhes |
-|---|---|---|
+| --- | --- | --- |
 | Anual | 12x R$ 126 | — |
-| Assinatura | R$ 147 | Mensal recorrente |
-| Mensalidade | R$ 179 | Sujeito a taxa de adesão |
+| Assinatura | R$ 147 | Mensal recorrente, com taxa de adesão |
+| Mensalidade | R$ 179 | com taxa de adesão |
 
 > **Turmas de sábado não usam esta tabela.** Elas são 1x na semana e têm plano
 > próprio — ver **Clube Sábado**, mais abaixo.
 
 **Combos e regras (infantil):**
-- **Taxa de adesão:** R$ 105 — aplicável *somente* aos planos mensais
+
+- **Taxa de adesão:** R$ 105 — aplicável *somente* aos planos Mensal e Assinatura
 - **Combo Escola de Natação + 1 Atividade Kids:** adicional de R$ 27 em qualquer
   plano. Opções: Musculação (11 e 12 anos) ou Funcional Kids (6 a 12 anos)
 - **1 Atividade Terrestre Infantil (avulso):** 12x R$ 99, ou R$ 121 na Assinatura
@@ -72,7 +75,7 @@ São **3 planos**, diferenciados pelas atividades incluídas: **Performa**,
 ### Modalidades inclusas por plano
 
 | Modalidade / Serviço | Performa | Estilo Aqua | Estilo de Vida Plus |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Musculação | Sim | Sim | Sim |
 | Ritmos, Boxe, GAP, Treino Funcional* | Sim | Sim | Sim |
 | Mat Pilates, Yoga, Alongamento + Core, Cycling, Power Local* | Sim | Sim | Sim |
@@ -107,7 +110,7 @@ isso já está no plano.
 ### Preços — Planos Adulto
 
 | Tipo de pagamento | Performa | Estilo Aqua | Estilo de Vida Plus |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Anual — melhor custo-benefício** | **12x R$ 199** | **12x R$ 264** | **12x R$ 296** |
 | Assinatura (mensal recorrente) | R$ 239 | R$ 299 | R$ 329 |
 | Mensal | R$ 279 | R$ 338 | R$ 379 |
@@ -123,7 +126,7 @@ Mensal quanto na Assinatura. A ancoragem de preço deve ser feita com a
 **Assinatura**, e em seguida demonstrada a vantagem do Anual.
 
 | Vantagem do Anual | Performa | Estilo Aqua | Estilo de Vida Plus |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Economia mensal vs. Assinatura | R$ 40/mês | R$ 35/mês | R$ 33/mês |
 | Economia mensal vs. Mensal | R$ 80/mês | R$ 74/mês | R$ 83/mês |
 | Economia no ano vs. Assinatura (com a adesão isenta) | R$ 664 | R$ 604 | R$ 580 |
@@ -151,7 +154,7 @@ Turma exclusiva de sábado, uma vez por semana. **Vale tanto para a natação
 infantil quanto para adultos a partir de 13 anos.**
 
 | Tipo de plano | Valor | Detalhes |
-|---|---|---|
+| --- | --- | --- |
 | Anual | 12x R$ 147 | Isento de matrícula |
 | Assinatura | R$ 179 | Mensal recorrente |
 | Mensal | R$ 197 | — |
@@ -179,7 +182,7 @@ Estes são os **únicos descontos que existem**. Valem sobre qualquer plano, e q
 confirma o enquadramento e aplica é o consultor.
 
 | Desconto | Quem tem | Quanto |
-|---|---|---|
+| --- | --- | --- |
 | **65+** | pessoa com **65 anos ou mais** | **10%** sobre qualquer plano |
 | **Família** | núcleo familiar com **3 ou mais integrantes matriculados** | **10%** para cada integrante |
 

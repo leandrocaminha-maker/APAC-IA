@@ -357,6 +357,7 @@ router.post('/mensagem', exigirSessao, async (req, res) => {
       conversationId: conversa.id,
       excludeMessageId: salva?.id,
       contactInfo: {
+        id: contato.id,
         name: contato.name,
         phone: 'teste (página web)',
         is_prospect: contato.is_prospect,
