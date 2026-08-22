@@ -270,13 +270,18 @@ async function handleIncomingMessage(event) {
       await moverFunil(() => funil.aoAbrirHandoff(contact, aiResponse.handoffReason));
     }
 
-    // Envia resposta
+    // Envia resposta. Quando houve handoff, a mensagem leva junto a marca e
+    // o motivo — é o que faz o briefing aparecer no ponto certo da conversa,
+    // no painel e na transcrição.
     if (aiResponse.text) {
       await sendAndSave(
         phone,
         aiResponse.text,
         conversation.id,
-        contact.id
+        contact.id,
+        aiResponse.action === 'handoff'
+          ? { handoff: true, motivo_handoff: aiResponse.handoffReason }
+          : {}
       );
     }
   } catch (err) {
@@ -367,8 +372,15 @@ async function registrarMensagemDeSaida({ phone, content, contentType, evolution
 
 /**
  * Envia texto e salva no histórico.
+ *
+ * `metadata` existe para a mensagem de despedida do handoff poder carregar
+ * a marca `handoff` e o motivo. Sem isso o WhatsApp ficava sem o rastro que
+ * a página de teste sempre teve, e a diferença aparecia em dois lugares: o
+ * painel não mostrava o briefing na conversa, e a transcrição do
+ * `exportar-conversas.js` contava o handoff no cabeçalho sem marcar em que
+ * ponto da conversa ele aconteceu.
  */
-async function sendAndSave(phone, text, conversationId, contactId) {
+async function sendAndSave(phone, text, conversationId, contactId, metadata = {}) {
   const result = await sendText(phone, text);
 
   await saveMessage({
@@ -380,6 +392,7 @@ async function sendAndSave(phone, text, conversationId, contactId) {
     sentBy: 'bot',
     evolutionMsgId: result?.key?.id || null,
     status: 'sent',
+    metadata,
   });
 }
 

@@ -324,6 +324,18 @@ router.get('/api/conversas/:id/mensagens', rota(async (req, res) => {
     .order('created_at', { ascending: true })
     .limit(limite);
 
+  // Os handoffs vêm da própria tabela, não do metadata das mensagens.
+  //
+  // É o que faz o briefing aparecer também nas conversas anteriores a esta
+  // correção — a marca na mensagem só existe daqui para a frente, mas o
+  // `wa_human_handoffs` sempre teve o texto. E é a fonte certa de qualquer
+  // forma: ali está o estado de resolvido, que a mensagem não carrega.
+  const { data: handoffs } = await supabase
+    .from('wa_human_handoffs')
+    .select('id, reason, resolved, assigned_to, created_at')
+    .eq('conversation_id', id)
+    .order('created_at', { ascending: true });
+
   // O lead correspondente, para o painel abrir a ficha a partir da conversa.
   let lead = null;
   if (conversa.contato?.id) {
@@ -340,6 +352,13 @@ router.get('/api/conversas/:id/mensagens', rota(async (req, res) => {
   res.json({
     conversa,
     lead,
+    handoffs: (handoffs || []).map(h => ({
+      id: h.id,
+      motivo: h.reason,
+      resolvido: h.resolved,
+      atribuido: h.assigned_to,
+      em: h.created_at,
+    })),
     mensagens: (mensagens || []).map(m => ({
       id: m.id,
       de: m.direction === 'inbound' ? 'cliente'
@@ -350,6 +369,7 @@ router.get('/api/conversas/:id/mensagens', rota(async (req, res) => {
       tipo: m.content_type,
       midia: m.media_url,
       handoff: m.metadata?.handoff || false,
+      motivoHandoff: m.metadata?.motivo_handoff || null,
       status: m.status,
       em: m.created_at,
     })),
