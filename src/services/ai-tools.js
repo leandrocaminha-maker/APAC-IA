@@ -487,11 +487,21 @@ const handlers = {
     } catch (err) {
       logger.error('[ai-tools] agendar_aula_experimental:', err.message);
 
-      // O EVO recusa horário que não existe na grade, sessão lotada e
-      // atividade com nome que não bate. A pessoa não pode ler "erro 400".
+      // Horário fora da grade é recusado antes de qualquer escrita, com a
+      // mensagem já pronta para a conversa. Vale repassá-la como está — é
+      // mais útil do que o texto genérico.
+      if (/^Não há /.test(err.message)) {
+        return {
+          success: false,
+          mensagem: `${err.message} Ofereça à pessoa os horários que realmente existem na grade para essa atividade.`,
+        };
+      }
+
+      // O resto (turma lotada, recusa do EVO) a pessoa não pode ler como
+      // "erro 400".
       return {
         success: false,
-        mensagem: 'O sistema não aceitou esse horário. Pode ser turma cheia ou horário que não existe na grade. ' +
+        mensagem: 'O sistema não aceitou esse agendamento — pode ser turma cheia. ' +
           'Ofereça outro horário da grade; se insistir em não dar certo, use `transferir_para_humano` ' +
           `com o horário desejado no motivo. Detalhe técnico: ${err.message.slice(0, 160)}`,
       };

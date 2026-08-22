@@ -185,6 +185,39 @@ async function servicoExperimental() {
 }
 
 /**
+ * Acha na grade a sessão que corresponde à data/hora (e ao nome, se dado).
+ *
+ * Devolve `null` quando não existe — e é esse `null` que evita criar
+ * sessão fantasma. A comparação de horário é exata: a grade da academia é
+ * de meia em meia hora, e "por volta das 9h" tem de virar um horário da
+ * grade antes de chegar aqui.
+ */
+async function encontrarSessaoNaGrade(dataHora, atividade) {
+  const [data, hora] = String(dataHora).trim().split(/[ T]/);
+  if (!data || !hora) return null;
+
+  const grade = await evoClient.buscarGrade({ date: data });
+  const alvo = hora.slice(0, 5);
+
+  const candidatas = grade.filter(s => String(s.startTime || '').slice(0, 5) === alvo);
+  if (!candidatas.length) return null;
+
+  if (!atividade) return candidatas[0];
+
+  // Comparação frouxa de propósito: a Leia escreve "Musculação" e a grade
+  // pode ter "Musculação Livre". Acento e caixa não podem separar as duas.
+  const normalizar = t => String(t || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().trim();
+  const busca = normalizar(atividade);
+
+  return candidatas.find(s => {
+    const nome = normalizar(s.name);
+    return nome === busca || nome.includes(busca) || busca.includes(nome);
+  }) || null;
+}
+
+/**
  * Agenda a aula experimental no EVO e move o lead de etapa.
  *
  * Cadastra o prospect antes se ainda não existir: o endpoint do EVO exige
@@ -202,30 +235,45 @@ export async function agendarExperimental(lead, dados, { usuario = null } = {}) 
   const { idProspect, lead: leadAtual } = await cadastrarProspect(lead, { usuario });
   const base = leadAtual || lead;
 
-  // O endpoint do EVO exige um serviço que autorize a experimental. Em vez
-  // de pedir isso ao consultor — que não tem por que saber id de serviço —
-  // achamos sozinhos o que está marcado com `experimentalClass: true`
-  // (hoje "AULA EXPERIMENTAL", R$ 0). Se o EVO não tiver nenhum, seguimos
-  // sem: o erro que ele devolver é mais informativo do que um nosso.
+  // ⚠️ O serviço é OBRIGATÓRIO. Sem ele o EVO responde "Serviço não
+  // encontrado" — testado em 22/08/2026. Não adianta omitir para evitar
+  // vender duas vezes a quem já comprou: o endpoint recusa.
   let idService = dados.idService;
   if (!idService && !dados.servico) {
-    try {
-      const servico = await servicoExperimental();
-      if (servico) idService = servico.idService;
-    } catch (err) {
-      logger.warn(`[evo-sync] Não consegui achar o serviço de experimental: ${err.message}`);
-    }
+    const servico = await servicoExperimental();
+    if (servico) idService = servico.idService;
+  }
+
+  // ⚠️ Achar a sessão na grade ANTES de escrever é o que impede o efeito
+  // mais caro deste endpoint.
+  //
+  // Chamado com o nome da atividade, ou com `idActivity` sem
+  // `activityExist`, o EVO **cria uma sessão nova e paralela** em vez de
+  // colocar a pessoa na aula que já existe. Medido: três chamadas geraram
+  // as sessões 199608, 199609 e 199610, invisíveis na grade e impossíveis
+  // de abrir depois. Só `idActivity` + `activityExist=true` reaproveitou a
+  // sessão real.
+  //
+  // De quebra, resolver pela grade valida o horário antes de gravar
+  // qualquer coisa — em vez de descobrir que não existe depois de já ter
+  // criado prospect e venda.
+  const sessao = await encontrarSessaoNaGrade(dados.dataHora, dados.atividade);
+
+  if (!sessao) {
+    throw new Error(
+      `Não há ${dados.atividade || 'essa atividade'} em ${dados.dataHora} na grade. ` +
+      'Escolha um horário que exista.'
+    );
   }
 
   try {
     const raw = await evoClient.agendarAulaExperimental({
       idProspect,
       dataHora: dados.dataHora,
-      atividade: dados.atividade,
-      servico: dados.servico,
-      idActivity: dados.idActivity,
+      idActivity: sessao.idActivity,
       idService,
-      atividadeExiste: dados.atividadeExiste,
+      // Sempre true: a pessoa entra numa aula que já está na grade.
+      atividadeExiste: true,
     });
 
     const dryRun = raw?.dryRun === true;

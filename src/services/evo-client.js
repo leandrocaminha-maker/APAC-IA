@@ -455,6 +455,23 @@ export async function listarPlanos(params = {}) {
  * EXPERIMENTAL", R$ 0). Procurar pela flag em vez de fixar o número
  * sobrevive a alguém recriar o serviço no EVO.
  */
+export async function servicosDoMembro(idMember) {
+  const lista = await evoFetch(`/api/v1/members/services${qs({ idMember })}`);
+  return Array.isArray(lista) ? lista : [];
+}
+
+/**
+ * O membro já comprou a aula experimental?
+ *
+ * Importa para ex-aluno reativado: o serviço pode já ter sido vendido no
+ * cadastro de cliente (pelo painel ou pelo consultor). Agendar passando o
+ * serviço de novo criaria uma segunda venda do mesmo item.
+ */
+export async function membroJaTemExperimental(idMember) {
+  const servicos = await servicosDoMembro(idMember).catch(() => []);
+  return servicos.some(s => s?.experimentalClass === true || /experimental/i.test(s?.nameService || ''));
+}
+
 export async function buscarServicoExperimental() {
   const servicos = await listarServicos();
   return servicos.find(s => s?.experimentalClass === true) || null;
@@ -621,6 +638,8 @@ export const evoClient = {
   listarServicos,
   listarPlanos,
   buscarServicoExperimental,
+  servicosDoMembro,
+  membroJaTemExperimental,
   // vendas
   criarVenda,
   buscarVendas,
