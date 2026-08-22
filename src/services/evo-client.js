@@ -196,13 +196,30 @@ export async function criarProspect(dados) {
 
   const raw = await evoFetch('/api/v1/prospects', { method: 'POST', body: JSON.stringify(body) });
 
+  if (raw?.dryRun === true) {
+    return { idProspect: null, dryRun: true, raw };
+  }
+
   // O EVO responde de formas diferentes conforme a versão: às vezes o id
   // puro, às vezes um objeto. Normalizamos para quem chama não precisar saber.
   const idProspect = typeof raw === 'number'
     ? raw
     : (raw?.idProspect ?? raw?.IdProspect ?? null);
 
-  return { idProspect, dryRun: raw?.dryRun === true, raw };
+  // Sem id não dá para seguir em frente, e o silêncio aqui é caro: quem
+  // chama guardaria `null`, o lead continuaria "não cadastrado", e a
+  // próxima ação do consultor tentaria criar o prospect **de novo** —
+  // duplicando a oportunidade no EVO a cada clique. Melhor falhar alto e
+  // com a resposta crua à vista, que é o que permite descobrir o formato
+  // novo se o EVO mudar.
+  if (idProspect == null) {
+    throw new Error(
+      'O EVO aceitou o cadastro mas não devolveu idProspect. ' +
+      `Resposta crua: ${JSON.stringify(raw).slice(0, 300)}`
+    );
+  }
+
+  return { idProspect, dryRun: false, raw };
 }
 
 /** Atualização parcial do prospect (só os campos enviados mudam). */

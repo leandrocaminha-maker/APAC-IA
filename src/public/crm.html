@@ -518,12 +518,26 @@ function telefoneBonito(p) {
 
 const dinheiro = v => v == null ? '' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+/**
+ * Id de prospect, com o caso do ensaio à vista.
+ *
+ * Um cadastro feito em EVO_DRY_RUN guarda um id NEGATIVO — os ids reais do
+ * EVO são positivos. Mostrar "#-3" seria confuso; mostrar "#3" seria mentira,
+ * porque não existe prospect nenhum lá.
+ */
+function rotuloProspect(id) {
+  if (id == null) return '<span class="vazio">não cadastrado</span>';
+  if (id < 0) return '<span style="color:var(--alerta)">ensaio</span>';
+  return `#${id}`;
+}
+
 // ══════════════════════════════════════════════════════
 // Estado
 // ══════════════════════════════════════════════════════
 
 const estado = {
   usuario: null,
+  dryRun: false,
   rotulos: {},
   etapas: [],
   filtroEtapas: new Set(),
@@ -677,8 +691,7 @@ async function carregarFunil() {
     const evo = l.evo_sync === 'erro'
       ? '<span class="parado-ruim" title="' + esc(l.evo_sync_error || '') + '">erro</span>'
       : l.evo_id_member ? `aluno ${l.evo_id_member}`
-      : l.evo_id_prospect ? `#${l.evo_id_prospect}`
-      : '<span class="vazio">não cadastrado</span>';
+      : rotuloProspect(l.evo_id_prospect);
 
     return `<tr data-id="${l.id}">
       <td class="nome-lead">${esc(l.full_name || 'Sem nome')}
@@ -764,7 +777,9 @@ async function abrirFicha(id) {
         ['Nascimento', l.birth_date ? soData(l.birth_date) : ''],
         ['Interesse', l.interest],
         ['Origem', l.source],
-        ['Prospect no EVO', l.evo_id_prospect ? '#' + l.evo_id_prospect : 'não cadastrado'],
+        ['Prospect no EVO', l.evo_id_prospect == null ? 'não cadastrado'
+          : l.evo_id_prospect < 0 ? 'só em ensaio (nada foi criado no EVO)'
+          : '#' + l.evo_id_prospect],
         ['Aluno no EVO', l.evo_id_member ? '#' + l.evo_id_member : '—'],
         ['Sincronização', l.evo_sync + (l.evo_sync_error ? ' — ' + l.evo_sync_error : '')],
         ['Experimental', l.experimental_at ? dataHora(l.experimental_at) + ' · ' + (l.experimental_status || '') : '—'],
@@ -833,6 +848,12 @@ async function abrirFicha(id) {
 }
 
 function montarAcoes(l) {
+  // Id negativo = cadastro feito em modo ensaio; não existe prospect no EVO.
+  // Precisa continuar oferecendo o botão, senão desligar o dry-run deixaria
+  // o lead preso: marcado como cadastrado sem nunca ter sido.
+  const soEnsaio = l.evo_id_prospect != null && l.evo_id_prospect < 0;
+  const cadastroReal = l.evo_id_prospect != null && l.evo_id_prospect > 0;
+
   $('#aba-acoes').innerHTML = `
     <div class="bloco">
       <h3>Etapa</h3>
@@ -848,12 +869,19 @@ function montarAcoes(l) {
     <div class="bloco">
       <h3>1 · Cadastro no EVO</h3>
       <p style="color:var(--suave);font-size:13px;margin-top:0">
-        ${l.evo_id_prospect
+        ${cadastroReal
           ? `Já cadastrado como prospect <b>#${l.evo_id_prospect}</b>.`
-          : 'O EVO precisa de <b>nome e sobrenome</b>. Nada mais é obrigatório.'}
+          : soEnsaio
+            ? 'Cadastrado <b>só em ensaio</b> — não existe prospect no EVO. '
+              + (estado.dryRun
+                  ? 'Desligue o EVO_DRY_RUN para criar de verdade.'
+                  : 'O ensaio acabou: clique para criar agora.')
+            : 'O EVO precisa de <b>nome e sobrenome</b>. Nada mais é obrigatório.'}
       </p>
-      <button class="btn ${l.evo_id_prospect ? '' : 'primario'}" id="btn-cadastrar-evo"
-        ${l.evo_id_prospect ? 'disabled' : ''}>Cadastrar prospect no EVO</button>
+      <button class="btn ${cadastroReal ? '' : 'primario'}" id="btn-cadastrar-evo"
+        ${cadastroReal || (soEnsaio && estado.dryRun) ? 'disabled' : ''}>
+        ${soEnsaio && !estado.dryRun ? 'Cadastrar de verdade no EVO' : 'Cadastrar prospect no EVO'}
+      </button>
     </div>
 
     <div class="bloco">
@@ -1259,6 +1287,8 @@ $('#btn-criar-usuario').addEventListener('click', async () => {
 async function iniciar() {
   const eu = await api('/eu');
   estado.usuario = eu.usuario;
+
+  estado.dryRun = eu.dryRun;
 
   $('#quem-nome').textContent = eu.usuario.nome;
   $('#quem-papel').textContent = eu.usuario.papel;

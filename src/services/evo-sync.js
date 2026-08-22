@@ -56,7 +56,12 @@ async function marcarSync(leadId, campos) {
  * @returns {Promise<{idProspect:number, criado:boolean, dryRun?:boolean}>}
  */
 export async function cadastrarProspect(lead, { usuario = null, dados = {} } = {}) {
-  if (lead.evo_id_prospect) {
+  // Vínculo de ensaio (id negativo, ver mais abaixo) não vale como cadastro
+  // quando o dry-run é desligado: aí o prospect precisa ser criado de
+  // verdade, e o id falso é substituído pelo real.
+  const vinculoDeEnsaio = lead.evo_id_prospect != null && lead.evo_id_prospect < 0;
+
+  if (lead.evo_id_prospect && !(vinculoDeEnsaio && !config.evo.dryRun)) {
     return { idProspect: lead.evo_id_prospect, criado: false, lead };
   }
 
@@ -107,8 +112,20 @@ export async function cadastrarProspect(lead, { usuario = null, dados = {} } = {
       interesses: dados.interesses || lead.evo_interests || [],
     });
 
+    // Em ensaio o EVO não devolve id nenhum. Guardar `null` faria o lead
+    // continuar "não cadastrado", e cada ação seguinte do consultor
+    // tentaria criar o prospect de novo — o ensaio encheria o razão de
+    // cadastros repetidos e o agendamento sairia sem `idProspect`, que é
+    // justamente o campo que se queria conferir.
+    //
+    // Então o ensaio guarda um id NEGATIVO, derivado do próprio lead. Os
+    // ids do EVO são positivos, então um negativo nunca se confunde com
+    // um real, e `cadastrarProspect` o trata como ausente assim que o
+    // dry-run é desligado.
+    const idGuardado = dryRun ? -lead.id : idProspect;
+
     const atualizado = await marcarSync(lead.id, {
-      evo_id_prospect: idProspect,
+      evo_id_prospect: idGuardado,
       evo_sync: dryRun ? 'pendente' : 'sincronizado',
       evo_sync_error: null,
       evo_synced_at: dryRun ? null : new Date().toISOString(),
@@ -122,13 +139,13 @@ export async function cadastrarProspect(lead, { usuario = null, dados = {} } = {
       type: 'evo_prospect_criado',
       ...autor(usuario),
       summary: dryRun
-        ? 'DRY-RUN: cadastro de prospect simulado (nada foi enviado ao EVO)'
+        ? `DRY-RUN: cadastro de prospect simulado (id de ensaio ${idGuardado}, nada foi enviado ao EVO)`
         : `Prospect ${idProspect} criado no EVO`,
-      payload: { idProspect, dryRun: !!dryRun, raw },
+      payload: { idProspect: idGuardado, dryRun: !!dryRun, raw },
     });
 
-    logger.info(`[evo-sync] Lead ${lead.id} → prospect ${idProspect}${dryRun ? ' (dry-run)' : ''}`);
-    return { idProspect, criado: true, dryRun, lead: atualizado || lead };
+    logger.info(`[evo-sync] Lead ${lead.id} → prospect ${idGuardado}${dryRun ? ' (dry-run)' : ''}`);
+    return { idProspect: idGuardado, criado: true, dryRun, lead: atualizado || lead };
   } catch (err) {
     await marcarSync(lead.id, { evo_sync: 'erro', evo_sync_error: err.message.slice(0, 500) });
     await registrarEvento(lead.id, {
