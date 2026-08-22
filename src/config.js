@@ -55,6 +55,12 @@ export const config = {
     // { dryRun: true }. Serve para percorrer o fluxo do painel inteiro sem
     // sujar o sistema de produção da academia. Leitura continua real.
     dryRun: env('EVO_DRY_RUN', 'false') === 'true',
+
+    // Intervalo do worker que reconcilia o funil com o EVO. Existe porque
+    // o EVO não emite evento de mudança de prospect: sem esta varredura,
+    // o que o consultor faz dentro do EVO não chega ao painel.
+    // 0 desliga.
+    syncMinutos: parseInt(env('EVO_SYNC_MINUTOS', '15'), 10),
   },
 
   // Painel CRM (crm.apacademia.com.br) — login por consultor.

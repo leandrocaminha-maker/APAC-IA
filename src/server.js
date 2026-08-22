@@ -18,6 +18,7 @@ import adminRouter from './routes/admin.js';
 import testeRouter from './routes/teste.js';
 import crmRouter from './routes/crm.js';
 import { startQueueProcessor } from './workers/queue-processor.js';
+import { startEvoSyncWorker } from './workers/evo-sync-worker.js';
 
 const app = express();
 
@@ -135,6 +136,9 @@ app.listen(config.port, () => {
 
   // Inicia worker de fila
   startQueueProcessor();
+
+  // Reconcilia o funil com o EVO — cobre o que o webhook do EVO não emite
+  startEvoSyncWorker();
 });
 
 /**
