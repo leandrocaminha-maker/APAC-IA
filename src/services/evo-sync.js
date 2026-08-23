@@ -185,6 +185,17 @@ async function servicoExperimental() {
 }
 
 /**
+ * 'AAAA-MM-DD HH:mm' (horário da academia) → ISO em UTC.
+ *
+ * O offset vai fixo em -03:00 porque o Brasil aboliu o horário de verão em
+ * 2019. Deixar implícito faria o resultado depender do fuso do processo — e
+ * o container roda em UTC, o que já gravou aula das 15h15 como 12h15.
+ */
+function paraISO(dataHora) {
+  return new Date(`${String(dataHora).trim().replace(' ', 'T')}:00-03:00`).toISOString();
+}
+
+/**
  * Acha na grade a sessão que corresponde à data/hora (e ao nome, se dado).
  *
  * Devolve `null` quando não existe — e é esse `null` que evita criar
@@ -321,7 +332,11 @@ export async function agendarExperimental(lead, dados, { usuario = null } = {}) 
     }
 
     const dryRun = raw?.dryRun === true;
-    const quando = new Date(String(dados.dataHora).replace(' ', 'T')).toISOString();
+    // ⚠️ O fuso PRECISA ser explícito. `new Date('2026-08-25T15:15')` sem
+    // offset é lido como hora local do processo — e o container roda em UTC,
+    // então a aula das 15h15 virava 12h15 em São Paulo. O painel mostrava a
+    // hora errada ao consultor, e o cliente seria avisado do horário errado.
+    const quando = paraISO(dados.dataHora);
 
     const atualizado = await mudarEtapa(base, 'experimental_agendada', {
       ...autor(usuario),
@@ -366,7 +381,7 @@ export async function agendarExperimental(lead, dados, { usuario = null } = {}) 
         somenteAvanco: true,
         motivo: `Experimental já constava agendada para ${dados.dataHora}`,
         campos: {
-          experimental_at: new Date(String(dados.dataHora).replace(' ', 'T')).toISOString(),
+          experimental_at: paraISO(dados.dataHora),
           experimental_status: 'agendada',
           experimental_activity: dados.atividade || null,
         },
