@@ -266,6 +266,30 @@ export async function agendarExperimental(lead, dados, { usuario = null } = {}) 
     );
   }
 
+  // Já tem aula reservada nesse dia? Então não reserve outra.
+  //
+  // Esta checagem é a defesa principal contra o efeito de 22/08/2026: a
+  // Leia reconfirmou um agendamento, leu o 400 do EVO como recusa e foi
+  // oferecendo horários seguintes — o cliente terminou com três aulas na
+  // mesma terça. Perguntar antes é mais barato do que desfazer depois,
+  // porque o EVO não tem rota de exclusão de reserva.
+  const dia = String(dados.dataHora).slice(0, 10);
+  const jaReservadas = await evoClient
+    .sessoesDoProspect(idProspect, { de: dia, ate: dia })
+    .catch(() => []);
+
+  if (jaReservadas.length) {
+    const s0 = jaReservadas[0];
+    logger.info(`[evo-sync] Lead ${base.id}: já tem aula em ${dia} às ${s0.startTime} — não reservando de novo`);
+    return {
+      ok: true,
+      jaEstava: true,
+      lead: base,
+      raw: s0,
+      mensagem: `Já existe aula marcada para ${dia} às ${s0.startTime} (${s0.activitieName || 'atividade'}).`,
+    };
+  }
+
   // Quem já comprou a aula experimental não pode comprá-la de novo.
   //
   // É o caso do ex-aluno que fechou o serviço pelo cadastro de cliente: o
@@ -322,6 +346,25 @@ export async function agendarExperimental(lead, dados, { usuario = null } = {}) 
     logger.info(`[evo-sync] Lead ${base.id}: experimental em ${dados.dataHora}${dryRun ? ' (dry-run)' : ''}`);
     return { ok: true, dryRun, lead: atualizado, raw };
   } catch (err) {
+    // "Já está na aula" chega como 400, mas é o estado que queríamos.
+    // Tratar como erro foi o que fez a Leia multiplicar agendamentos.
+    if (evoClient.ehJaAgendado(err)) {
+      logger.info(`[evo-sync] Lead ${base.id}: o EVO diz que já está na aula — considerando agendado`);
+
+      const atualizado = await mudarEtapa(base, 'experimental_agendada', {
+        ...autor(usuario),
+        somenteAvanco: true,
+        motivo: `Experimental já constava agendada para ${dados.dataHora}`,
+        campos: {
+          experimental_at: new Date(String(dados.dataHora).replace(' ', 'T')).toISOString(),
+          experimental_status: 'agendada',
+          experimental_activity: dados.atividade || null,
+        },
+      });
+
+      return { ok: true, jaEstava: true, lead: atualizado || base, raw: { jaEstavaNaAula: true } };
+    }
+
     await registrarEvento(base.id, {
       type: 'evo_erro',
       ...autor(usuario),

@@ -518,6 +518,16 @@ const handlers = {
         atividade: args.atividade,
       });
 
+      if (r.jaEstava) {
+        return {
+          success: true,
+          jaEstava: true,
+          mensagem: `Esta pessoa JÁ TEM aula marcada nesse dia — ${r.mensagem || dataHora}. ` +
+            'NÃO agende outro horário e NÃO ofereça alternativa: está tudo certo. ' +
+            'Apenas confirme com ela o que já está marcado.',
+        };
+      }
+
       return {
         success: true,
         dryRun: r.dryRun,

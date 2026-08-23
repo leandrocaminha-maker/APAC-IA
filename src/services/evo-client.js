@@ -363,6 +363,34 @@ export async function agendarAulaExperimental(dados) {
 }
 
 /**
+ * O EVO está dizendo "já está agendado"?
+ *
+ * ⚠️ Ele sinaliza isso com **HTTP 400**, o que faz sucesso parecer falha.
+ * A chave é `JaEstaNaAula` no experimental-class e "already booked" no
+ * booking.
+ *
+ * Distinguir importa mais do que parece. Em 22/08/2026 a Leia agendou uma
+ * aula, tentou confirmar de novo, leu o 400 como recusa e ofereceu outro
+ * horário — que funcionou, gerou novo 400 na reconfirmação, e assim por
+ * diante. O cliente terminou com três aulas no mesmo dia.
+ *
+ * Tratar como sucesso é o que torna o agendamento idempotente: repetir a
+ * chamada leva ao mesmo estado final em vez de multiplicar reservas.
+ */
+export function ehJaAgendado(erro) {
+  const texto = `${erro?.body ?? ''} ${erro?.message ?? ''}`;
+  return /JaEstaNaAula|already booked|already enrolled|j[áa] est[áa] na aula/i.test(texto);
+}
+
+/** Sessões já reservadas por um prospect numa janela de datas. */
+export async function sessoesDoProspect(idProspect, { de, ate } = {}) {
+  const lista = await evoFetch(`/api/v2/activities/member/sessions${qs({
+    idProspect, dateStart: de, dateEnd: ate, take: 50,
+  })}`);
+  return Array.isArray(lista) ? lista : [];
+}
+
+/**
  * Reserva alguém numa sessão que JÁ EXISTE na grade.
  *
  * Diferença para `agendarAulaExperimental`, e é o motivo de existir: este
@@ -661,6 +689,8 @@ export const evoClient = {
   // experimental e grade
   agendarAulaExperimental,
   reservarEmSessao,
+  ehJaAgendado,
+  sessoesDoProspect,
   listarAtividades,
   buscarGrade,
   // catálogo
