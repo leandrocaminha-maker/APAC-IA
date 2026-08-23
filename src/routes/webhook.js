@@ -223,6 +223,17 @@ async function handleIncomingMessage(event) {
   // a cada resposta — sem retroceder quem já avançou.
   await moverFunil(() => funil.aoReceberMensagem(contact));
 
+  // Quem respondeu não está em silêncio: as sondagens pendentes perdem o
+  // motivo de existir. O lembrete da aula e a conversa pós-aula NÃO são
+  // canceladas — elas dependem da aula, não do silêncio.
+  await moverFunil(async () => {
+    const lead = await funil.leadAbertoPorContato(contact.id);
+    if (lead) {
+      const { followup } = await import('../services/followup.js');
+      await followup.cancelar(lead.id, ['sondagem_1', 'sondagem_2'], 'o cliente respondeu');
+    }
+  });
+
   // Se conversa está em modo humano, não processa com IA
   if (conversation.status === 'human') {
     logger.info(`[webhook] Conversa em modo humano — mensagem registrada sem resposta IA`);

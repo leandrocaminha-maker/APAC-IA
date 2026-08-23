@@ -343,6 +343,16 @@ export async function agendarExperimental(lead, dados, { usuario = null } = {}) 
       payload: { idProspect, dados, raw, dryRun },
     });
 
+    // A régua de follow-up nasce aqui, do mesmo fato: lembrete 24h antes e
+    // conversa 4h depois. Em try/catch porque falhar em agendar o
+    // follow-up não pode desfazer uma aula que já foi marcada no EVO.
+    try {
+      const { followup } = await import('./followup.js');
+      await followup.aoAgendarExperimental(atualizado || base, dados);
+    } catch (err) {
+      logger.error('[evo-sync] Aula marcada, mas o follow-up não foi agendado:', err.message);
+    }
+
     logger.info(`[evo-sync] Lead ${base.id}: experimental em ${dados.dataHora}${dryRun ? ' (dry-run)' : ''}`);
     return { ok: true, dryRun, lead: atualizado, raw };
   } catch (err) {

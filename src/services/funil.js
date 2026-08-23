@@ -257,6 +257,18 @@ export async function mudarEtapa(lead, novaEtapa, {
     return atual;
   }
 
+  // Lead fechado não recebe follow-up de venda. Cancelar aqui, e não em
+  // cada chamador, é o que garante que vale para todo caminho — painel,
+  // webhook do EVO e poller.
+  if (!bloquear && !mesmaEtapa && (novaEtapa === 'ganho' || novaEtapa === 'perdido')) {
+    try {
+      const { followup } = await import('./followup.js');
+      await followup.cancelar(atual.id, [], `lead passou para "${novaEtapa}"`);
+    } catch (err) {
+      logger.error('[funil] Falha ao cancelar follow-ups:', err.message);
+    }
+  }
+
   if (!bloquear && !mesmaEtapa) {
     await registrarEvento(atual.id, {
       type: 'stage_change',

@@ -72,6 +72,15 @@ export const config = {
     syncMinutos: parseInt(env('EVO_SYNC_MINUTOS', '15'), 10),
   },
 
+  // Follow-up de venda — a régua que recupera quem some.
+  //
+  // O agente só roda quando chega mensagem, então sem este worker quem
+  // para de responder some em silêncio: não existe turno em que o modelo
+  // possa agir. Todo envio respeita a janela de 9h–20h30.
+  followup: {
+    minutos: parseInt(env('FOLLOWUP_MINUTOS', '10'), 10),
+  },
+
   // Painel CRM (crm.apacademia.com.br) — login por consultor.
   //
   // Diferente da /teste, que tem senha única: aqui o painel escreve venda

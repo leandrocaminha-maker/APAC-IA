@@ -384,10 +384,42 @@ export function ehJaAgendado(erro) {
 
 /** Sessões já reservadas por um prospect numa janela de datas. */
 export async function sessoesDoProspect(idProspect, { de, ate } = {}) {
+  return sessoesDaPessoa({ idProspect, de, ate });
+}
+
+/**
+ * Sessões de uma pessoa — prospect OU aluno.
+ *
+ * Depois da aula, cada sessão traz `statusName`, `presenca`, `falta` e
+ * `faltaJustificada`. É a única forma de saber se a pessoa apareceu, e é
+ * o que separa "como foi a aula?" de uma mensagem para quem faltou.
+ */
+export async function sessoesDaPessoa({ idProspect, idMember, de, ate } = {}) {
   const lista = await evoFetch(`/api/v2/activities/member/sessions${qs({
-    idProspect, dateStart: de, dateEnd: ate, take: 50,
+    idProspect, idMember, dateStart: de, dateEnd: ate, take: 50,
   })}`);
   return Array.isArray(lista) ? lista : [];
+}
+
+/**
+ * A pessoa compareceu à aula daquele dia?
+ *
+ * @returns {Promise<'presente'|'falta'|'falta_justificada'|'nao_finalizada'|'desconhecida'>}
+ */
+export async function presencaNaAula({ idProspect, idMember, data }) {
+  const dia = String(data).slice(0, 10);
+  const sessoes = await sessoesDaPessoa({ idProspect, idMember, de: dia, ate: dia }).catch(() => []);
+
+  if (!sessoes.length) return 'desconhecida';
+
+  const s = sessoes[0];
+  if (s.presenca === true || /presente/i.test(s.statusName || '')) return 'presente';
+  if (s.faltaJustificada === true) return 'falta_justificada';
+  if (s.falta === true || /falta/i.test(s.statusName || '')) return 'falta';
+
+  // A academia nem sempre marca presença na hora. Sem marcação, dizer
+  // "vi que você faltou" seria acusar quem talvez tenha ido.
+  return s.isFinalized ? 'desconhecida' : 'nao_finalizada';
 }
 
 /**
@@ -691,6 +723,8 @@ export const evoClient = {
   reservarEmSessao,
   ehJaAgendado,
   sessoesDoProspect,
+  sessoesDaPessoa,
+  presencaNaAula,
   listarAtividades,
   buscarGrade,
   // catálogo

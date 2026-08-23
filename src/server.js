@@ -19,6 +19,7 @@ import testeRouter from './routes/teste.js';
 import crmRouter from './routes/crm.js';
 import { startQueueProcessor } from './workers/queue-processor.js';
 import { startEvoSyncWorker } from './workers/evo-sync-worker.js';
+import { startFollowupWorker } from './workers/followup-worker.js';
 
 const app = express();
 
@@ -139,6 +140,9 @@ app.listen(config.port, () => {
 
   // Reconcilia o funil com o EVO — cobre o que o webhook do EVO não emite
   startEvoSyncWorker();
+
+  // Follow-up de venda: o turno que o agente não tem sozinho
+  startFollowupWorker();
 });
 
 /**
