@@ -56,11 +56,17 @@ chamada partindo da academia acontecem **somente das 9h00 às 20h30**. Fora dess
 faixa não se inicia contato — responder quem escreveu é outra coisa, e vale a
 qualquer hora.
 
-**É também a faixa em que o consultor humano responde.** Repare que ela não
-coincide com o funcionamento: às 7h a academia está aberta e o consultor ainda
-não atende; às 21h ainda há aula acontecendo e ele já não atende. Ao dizer a
-alguém fora do expediente quando terá resposta, vale a **primeira hora em que as
-duas coisas valem** — academia aberta E dentro de 9h–20h30.
+⚠️ **Não confundir com a disponibilidade do consultor.** Há consultor em **todo
+o horário de funcionamento** — inclusive às 6h e às 21h. O 9h–20h30 é a faixa em
+que a academia *inicia* contato por cortesia, não o limite de quem atende.
+
+Na prática, ao dizer a alguém quando terá resposta:
+
+- **Padrão:** ofereça a partir das **9h**.
+- **Se a pessoa pedir para ser chamada o quanto antes**, o consultor começa às
+  **6h** (sábado, 8h30).
+- **Entre 12h30 e 15h não há consultor**, que é o mesmo intervalo em que a
+  academia fecha.
 
 ## Estrutura
 
