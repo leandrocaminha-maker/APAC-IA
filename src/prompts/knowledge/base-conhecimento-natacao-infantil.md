@@ -16,7 +16,7 @@
 
 ## Turmas de natação 3 a 5 anos
 
-*As turmas de natação de 3 a 5 anos são divididas em 6 níveis: adaptação, estrelinha N1, peixinho N2, golfinho I, golfinho II e jubarte.
+*As turmas de natação de 3 a 5 anos são divididas em 6 níveis: adaptação, estrelinha N1, peixinho N2, golfinho I, golfinho II e tutubarão.
 *A aula tem duração de 45 minutos.
 *O aluno é matriculado em horário determinado aula duas vezes por semana.
 *No horário, divide-se as turmas por nível.
@@ -49,7 +49,7 @@ Dominar as habilidades fundamentais e ser introduzido aos nados de forma natural
 
 Aprender a realizar deslocamentos maiores com eficiência e desenvolver habilidades combinadas.
 
-## Jubarte (3 a 5 anos)
+## Tutubarão (3 a 5 anos)
 
 Concluir a trilha da natação infantil de 3 a 5 anos e estar pronto para a transição às turmas de 6 a 12 anos.
 

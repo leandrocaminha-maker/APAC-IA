@@ -8,34 +8,45 @@
 
 ## Comece por aqui — 23/08/2026
 
-**O dia 22/08 construiu o CRM.** O painel do consultor saiu do papel: funil de
-vendas, histórico de conversas, simulador da Leia e ajustes, com login por
-pessoa. O EVO deixou de ser só leitura — cadastro de prospect, agendamento de
-experimental, venda e follow-up agora têm caminho. Cinco commits, no branch
-`crm-painel`, tudo no ar e testado contra produção.
+**O dia 22/08 fez o CRM inteiro e ligou a Leia ao EVO.** Painel do consultor com
+funil, conversas, simulador e ajustes; agendamento de aula experimental
+conduzido pela própria Leia; e a régua de follow-up que recupera quem some.
+Dezenove commits no branch `crm-painel`, tudo no ar e exercitado contra a conta
+de produção.
 
-**Quatro coisas para saber antes de tocar em qualquer coisa:**
+**O WhatsApp está conectado e atendendo.** 175 mensagens nas primeiras 6 horas.
 
-1. **A URL mudou de novo.** O painel é
-   **`https://crm.apacademia.com.br`**. O subdomínio `leia` foi descartado: o
-   DNS já não existia no começo do dia, e o vhost e o certificado foram
-   removidos da VPS (backup do conf em `/root/leia.conf.removido-2026-08-22`).
-   **O link antigo morreu** — a `/teste` agora vive dentro do painel, na aba
-   Simulador.
-2. **✅ A migration 002 foi aplicada** e o primeiro admin criado
-   (`leandro.caminha@gmail.com`). Se o login algum dia responder "e-mail ou senha
-   incorretos" para uma senha que você tem certeza que está certa, olhe o log do
-   boot: tabela do CRM inacessível produz exatamente esse sintoma.
-3. **✅ Está no ar.** A VPS roda o branch `crm-painel`. Painel, funil,
-   conversas, simulador e o catálogo do EVO foram testados contra produção. O que **não** está resolvido
-   são as permissões do token do EVO — ver o bloco próprio mais abaixo.
-4. **⚠️ O EVO está em modo ensaio.** `EVO_DRY_RUN=true` no `.env` da VPS:
-   cadastro, agendamento e venda **não chegam ao EVO** — são registrados no log
-   e o funil anda normalmente. Foi decisão de primeira subida, porque não existe
-   filial de testes na conta e uma venda criada por engano é registro
-   financeiro. O painel mostra uma fita âmbar quando está assim. Para valer de
-   verdade: `EVO_DRY_RUN=false` no `.env` e recriar o container.
+**Cinco coisas para saber antes de tocar em qualquer coisa:**
 
+1. **A URL mudou.** O painel é **`https://crm.apacademia.com.br`**. O subdomínio
+   `leia` foi descartado — DNS, vhost e certificado (backup do conf em
+   `/root/leia.conf.removido-2026-08-22`). A `/teste` agora vive dentro do
+   painel, na aba Simulador.
+2. **✅ Migrations 002 e 003 aplicadas**, primeiro admin criado
+   (`leandro.caminha@gmail.com`). Se o login um dia responder "e-mail ou senha
+   incorretos" para uma senha que você sabe estar certa, olhe o log do boot:
+   tabela do CRM inacessível produz exatamente esse sintoma.
+3. **✅ `EVO_DRY_RUN=false`** desde 22/08 à noite. As escritas no EVO **valem de
+   verdade** — cadastro de prospect, agendamento e venda. O painel só mostra a
+   fita âmbar quando o ensaio está ligado; sem fita, é produção.
+4. **⚠️ Quatro workers rodando.** Fila (5s), sync do EVO (15min), follow-up
+   (10min) e o processador de mensagens. O de follow-up **manda mensagem para
+   cliente real** — ver a seção própria antes de mexer.
+5. **⚠️ O container roda em UTC.** `TZ` não está definida. Toda data lida de
+   string precisa de offset **explícito** `-03:00`; sem ele o parse usa o fuso do
+   processo e grava 3 horas adiantado. Isso já aconteceu com `experimental_at` e
+   foi corrigido em `paraISO()`. **Vale para qualquer código novo.**
+
+### O saldo da API acaba sem aviso prévio
+
+Em 22/08 os créditos da Anthropic zeraram no meio do dia e a Leia parou de
+responder — toda mensagem recebida caía no fallback. Desde então a falha da IA
+abre handoff com o motivo técnico, em vez de prometer atendimento que não vem,
+mas **o sintoma de fundo continua**: sem crédito, não há agente.
+
+Vale um alarme de saldo antes que aconteça de novo num sábado à noite.
+
+### O que foi resolvido em 22/08
 ### O que foi resolvido em 22/08
 
 **A porta 8080 da Evolution está fechada.** Era a pendência de segurança aberta
@@ -396,6 +407,66 @@ vendeu e a venda não existir.
 **A VPS está com `EVO_DRY_RUN=true`.** Para valer de verdade, troque no `.env` e
 recrie o container.
 
+## Follow-up de venda — a régua que recupera quem some
+
+O agente só roda quando chega mensagem: um `messages.create` por mensagem
+recebida, sem agendador. Consequência que valeu meses de silêncio: **quem some,
+some sem que ninguém saiba**, e nenhuma regra de prompt recupera essa conversa,
+porque não existe turno em que o modelo possa agir.
+
+`workers/followup-worker.js` é esse turno.
+
+| Quando | Tipo | O que faz |
+|---|---|---|
+| 24h antes da aula | `ae_lembrete_24h` | Confirma presença, reforça o valor, diz o que levar |
+| 4h depois da aula | `ae_pos_aula` | **Consulta presença no EVO** e conversa de acordo |
+| +2 dias | `sondagem_1` | "O que falta para você decidir?" |
+| +4 dias | `sondagem_2` | Última, porta aberta |
+| +5 dias sem resposta | — | Lead vira `perdido` explícito |
+
+### Três decisões que não são detalhe
+
+**A mensagem é gerada no envio, não guardada no agendamento.** Ela depende de um
+fato que só existe depois: se a pessoa compareceu. Texto pronto produziria "como
+foi a aula?" para quem faltou, e essa mensagem não tem desfazer.
+
+**A instrução que orienta cada mensagem NÃO entra no histórico.** Vai como turno
+de usuário marcado com `[INSTRUÇÃO INTERNA DO SISTEMA]`, orienta aquele turno e
+some. Gravá-la criaria uma fala falsa do cliente em todas as conversas
+seguintes.
+
+**Três cancelamentos**, e a diferença entre eles importa:
+
+- Lead que fechou ou foi perdido → cancela **tudo**. Fica em `mudarEtapa`, que é
+  o caminho comum de painel, webhook do EVO e poller.
+- Cliente que responde → cancela **só as sondagens**. O lembrete da aula
+  depende da aula, não do silêncio.
+- Conversa que o consultor assumiu (`status = human`) → nada é enviado. Quem
+  fala é ele.
+
+### A janela de 9h–20h30
+
+Toda mensagem que parte da academia respeita a janela. `dentroDaJanela()` empurra
+o que cai fora: antes das 9h vai para as 9h do mesmo dia; depois das 20h30 vai
+para as 9h do dia seguinte. Testado em virada de dia e de mês.
+
+Efeito visível: aula na segunda às 6h45 teria lembrete no domingo às 6h45 — ele
+sai domingo às 9h.
+
+### O que ainda não existe
+
+O **pós-venda** (D+1 a D+300, renovação a D-30) foi desenhado mas não
+implementado. Quando for, vale prompt separado — o maquinário de venda (âncora
+de preço, matriz de objeções) é ativamente nocivo numa conversa de retenção, e
+54 mil caracteres com a ressalva "mas se já for cliente, não venda" vazam. A
+infra já suporta: `loadPrompt(slug)` e `processMessage({ promptSlug })` são
+parametrizados.
+
+⚠️ **Não unificar o banco com o AQUAP sem resolver o isolamento antes.** Os
+projetos foram separados de propósito, e o motivo está registrado: o anon key
+público do AQUAP vai no bundle do Next.js e não pode alcançar conversa de
+cliente.
+
 ## Prompt: arquivo × banco
 
 `src/prompts/vendas.md` é a fonte de verdade **para humanos**, mas o agente lê
@@ -613,68 +684,65 @@ reativar, remova o nome de `PAUSED_TOOLS`.
 | Tool | Por que está pausada |
 |---|---|
 | `emitir_voucher` | gera código que **não é persistido** — o cliente receberia voucher irresgatável. Precisa de tabela de vouchers antes. |
-| `cadastrar_prospect` | o handler ainda aponta para o caminho antigo. **O bug de fundo foi corrigido em 22/08** — `evoClient.criarProspect` agora usa `POST /api/v1/prospects` — mas a tool continua pausada por decisão, não por defeito. |
-| `agendar_aula_experimental` | idem: o caminho existe e funciona (`evoSync.agendarExperimental`), mas quem dispara é o consultor, pelo painel. |
 
-Bloqueio duplo: além de não serem declaradas, `executeTool` recusa executá-las
-caso o modelo alucine a chamada. **Tool ativa: apenas `transferir_para_humano`.**
+`cadastrar_prospect` e `agendar_aula_experimental` **saíram desta lista em
+22/08/2026** e estão ativas.
 
-### O que mudou em 22/08 e por que elas continuam pausadas
+Bloqueio duplo: além de não ser declarada, `executeTool` recusa executá-la caso o
+modelo alucine a chamada.
 
-As três ações agora **existem e funcionam** — só que pelo painel, não pela Leia:
-`evoSync.cadastrarProspect`, `agendarExperimental` e `registrarVenda`, com autor
-registrado e etapa do funil movida.
-
-Reativar a Leia para escrever no EVO é decisão de operação em aberto, e o
-raciocínio do bloco 11 da revisão continua valendo: **no momento do handoff a
-Leia só tem a intenção** ("quer experimental amanhã 9h20"). Quem cria o fato é o
-consultor, depois, e pode ser outro horário — ou plano fechado sem experimental
-nenhuma. Cadastrar prospect é o candidato de menor risco a ser reativado
-primeiro; venda é o de maior.
-
-Reativar exige, além de remover o nome de `PAUSED_TOOLS`, **reescrever os
-handlers em `ai-tools.js` para chamarem `evo-sync.js`** em vez do client direto —
-senão a escrita acontece no EVO sem passar pelo funil, e o lead fica com o dado
-faltando.
+**Tools ativas desde 22/08/2026:** `transferir_para_humano`, `buscar_cadastro`,
+`cadastrar_prospect` e `agendar_aula_experimental`. A Leia conduz o agendamento
+da aula experimental do começo ao fim — ver "A integração com o EVO".
 
 ## Próxima sessão
 
-### Onde retomar — nesta ordem
+### Onde retomar
 
-O prompt continua sincronizado (`npm run prompt -- --dry` deve dizer que o banco
-já está igual ao arquivo). O que está pendente é a subida do CRM:
+Tudo o que foi construído em 22/08 está **no ar e funcionando**: migrations
+aplicadas, prompt publicado, WhatsApp conectado, quatro workers rodando. Não há
+passo de instalação pendente.
 
-**1. ~~Rodar a migration 002~~ — feita.** As tabelas do CRM respondem; o boot
-confirma com `[crm] Tabelas do CRM acessíveis`.
+O que vale fazer a seguir, em ordem de retorno:
 
-**2. ~~Subir o código~~ — feito.** A VPS está no branch `crm-painel`. Para
-atualizar daqui em diante: `git pull && docker compose up -d --build backend`.
+**1. Esvaziar a fila de conversas paradas.** No fim de 22/08, seis das dez
+conversas de WhatsApp estavam em `human` — ou seja, com a Leia pausada. Cada uma
+espera um consultor. No painel: **Conversas → filtro "Com consultor"**, e
+*Devolver para a Leia* nas que já foram resolvidas.
 
-⚠️ **Um deploy com `docker compose up -d` (sem `backend`) recria o container da
-Evolution.** Enquanto não houver número pareado não há o que perder; depois do
-pareamento, passa a haver.
+**2. Ver a régua de follow-up rodar pela primeira vez.** Há três leads com aula
+marcada e follow-up agendado. As mensagens saem sozinhas — vale acompanhar a
+primeira leva e ler o que a Leia escreveu.
 
-**3. ~~Criar o primeiro consultor~~ — feito.** `leandro.caminha@gmail.com`, como
-admin. Troque a senha em Ajustes → Consultores, ou por
-`node scripts/criar-consultor.js --email ... --senha ...`.
+**3. O aviso ativo de handoff.** Continua sendo pull: alguém precisa abrir o
+painel. O destino (número do consultor, grupo, dono do lead) ficou para o
+Leandro decidir. A infra de envio já está pareada.
 
-**4. Percorrer o fluxo em modo ensaio**, que é como a VPS está: criar lead,
-cadastrar no EVO, agendar experimental, registrar venda. Tudo simulado. Depois
-`EVO_DRY_RUN=false` e repetir **uma vez** com um lead de verdade, conferindo no
-EVO que o prospect apareceu.
+**4. Alarme de saldo da API.** Ver "O saldo da API acaba sem aviso prévio".
 
-**5. Parear o WhatsApp** — Ajustes → WhatsApp. Precisa do aparelho da academia.
+**5. Merge de `crm-painel` para `main`.** A VPS roda o branch. Quando o time
+validar, o merge fecha o ciclo.
 
-**6. Liberar as permissões do token do EVO** — no EVO, Configurações →
-Integrações: marcar `POST /api/v1/webhook`, `POST /api/v2/sales` e
-`POST /api/v1/notifications/prospect`, que hoje dão 403. Conferir também
-`POST /api/v1/prospects`. Só depois disso os webhooks podem ser registrados,
-em Ajustes → Webhooks do EVO → Registrar.
+**6. Pós-venda**, se o funil de venda estiver estável — desenho na seção de
+follow-up.
 
 **7. A bateria de testes de prompt que ficou de 20/08.** Agora dá para pedir ao
 time, porque o simulador está dentro do painel. Roteiros nunca exercitados:
-pedir desconto, reclamar de preço, pedir cancelamento com motivo raso, esquecer
-um objeto, não conseguir agendar no FITI, perguntar sobre atendimento a PCD.
+pedir desconto, reclamar de preço, cancelamento com motivo raso, esquecer um
+objeto, não conseguir agendar no FITI, atendimento a PCD.
+
+### Limpeza pendente no EVO (assumida pelo Leandro)
+
+Testes de 22/08 deixaram registros a remover no painel do EVO — sem impacto
+financeiro (serviço R$ 0), mas com registro errado:
+
+- Vendas **95003–95006** e sessões **199608–199610** (Priscilla)
+- Duas das três reservas do **Dalmario** em 25/08 (15h15, 16h15, 17h15) e as
+  vendas **95009, 95011, 95013**
+
+⚠️ Se o horário do Dalmario mudar na limpeza, `crm_leads.experimental_at` e os
+follow-ups dele precisam ser ajustados junto — senão ele recebe lembrete do
+horário errado.
 
 ### O que ainda mexe no resultado e continua pendente
 

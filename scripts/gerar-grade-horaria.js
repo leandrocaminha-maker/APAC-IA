@@ -39,7 +39,7 @@ const SECOES = [
     regime: 'par',
     nota:
       'Níveis da trilha 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → ' +
-      'Peixinho N2 → Golfinho I → Golfinho II → Jubarte. As turmas agrupam níveis ' +
+      'Peixinho N2 → Golfinho I → Golfinho II → Tutubarão. As turmas agrupam níveis ' +
       'vizinhos. O conteúdo de cada nível e a idade de entrada estão em ' +
       '`base-conhecimento-natacao-infantil.md`.',
     atividades: [

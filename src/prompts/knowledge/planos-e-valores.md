@@ -28,7 +28,7 @@ tradução entre os dois vocabulários:
 | Frequência | Turmas de 3 a 5 anos | Turmas de 6 a 12 anos |
 | --- | --- | --- |
 | **Iniciante** — 2 sessões | Adaptação, Estrelinha N1, Peixinho N2 | N1 Branca, N2 Branca |
-| **Intermediário** — 3 sessões | Golfinho I, Golfinho II, Jubarte | N3 Amarela, N4 Amarela |
+| **Intermediário** — 3 sessões | Golfinho I, Golfinho II, tutubarão | N3 Amarela, N4 Amarela |
 | **Aperfeiçoamento** — 5 sessões | — | N5 Laranja, N6 Laranja, N7 Vermelha, N8 Vermelha, Atleta |
 
 **A trilha de 3 a 5 anos não chega ao Aperfeiçoamento** — ela vai até

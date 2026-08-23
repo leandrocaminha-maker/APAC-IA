@@ -3,7 +3,7 @@
 > **Arquivo gerado automaticamente** a partir de `data/grade-aulas.csv`
 > (exportação da grade do sistema). Não edite este `.md` à mão: atualize o
 > CSV e rode `npm run grade`, senão a próxima geração desfaz a edição.
-> Última geração: 20/08/2026.
+> Última geração: 22/08/2026.
 
 ## Como usar esta grade no atendimento
 
@@ -68,7 +68,7 @@ Vale para toda a Escola de Natação Infantil (3 a 5 e 6 a 12 anos).
 
 ## Escola de Natação Infantil — trilha 3 a 5 anos
 
-> Níveis da trilha 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → Peixinho N2 → Golfinho I → Golfinho II → Jubarte. As turmas agrupam níveis vizinhos. O conteúdo de cada nível e a idade de entrada estão em `base-conhecimento-natacao-infantil.md`.
+> Níveis da trilha 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → Peixinho N2 → Golfinho I → Golfinho II → Tutubarão. As turmas agrupam níveis vizinhos. O conteúdo de cada nível e a idade de entrada estão em `base-conhecimento-natacao-infantil.md`.
 
 ### Natação 3-5 Adaptação — quem nunca teve contato com a piscina
 
