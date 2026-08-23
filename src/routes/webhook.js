@@ -288,10 +288,29 @@ async function handleIncomingMessage(event) {
   } catch (err) {
     logger.error(`[webhook] Erro no processamento IA para ${phone}:`, err);
 
-    // Resposta de fallback
+    // Falha da IA vira HANDOFF, não só uma frase de espera.
+    //
+    // Antes o cliente lia "já vou te atender" e a conversa morria ali:
+    // nenhum handoff era registrado, o funil não andava e ninguém ficava
+    // sabendo. A promessa era pior do que o silêncio.
+    //
+    // Isso deixou de ser hipótese em 23/08/2026, quando o saldo da API da
+    // Anthropic acabou: toda mensagem recebida caía aqui, e cada pessoa
+    // recebia a promessa de um atendimento que não estava a caminho.
+    const motivo = `Falha técnica no atendimento automático (${err?.message?.slice(0, 120) || 'erro desconhecido'}). ` +
+      'O cliente escreveu e a IA não respondeu — retomar a conversa do ponto em que parou.';
+
+    try {
+      await handoffToHuman(conversation.id, contact.id, motivo);
+      await moverFunil(() => funil.aoAbrirHandoff(contact, motivo));
+    } catch (e2) {
+      logger.error('[webhook] Falha ao registrar o handoff de emergência:', e2.message);
+    }
+
     await sendAndSave(
       phone,
-      'Olá! Estou com um probleminha técnico, mas já vou te atender. Um momento! 😊',
+      'Opa, tive um probleminha técnico aqui 😅 Já passei sua mensagem para um consultor — ' +
+      'ele te responde por aqui mesmo. Desculpa a demora!',
       conversation.id,
       contact.id
     );
