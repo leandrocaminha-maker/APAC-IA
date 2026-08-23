@@ -114,10 +114,14 @@ function instrucao(tipo, { lead, presenca, contexto }) {
  */
 async function sugerirAoConsultor(lead, { presenca, conversa }) {
   const dica = presenca === 'presente'
-    ? 'A pessoa compareceu — é o melhor momento para o consultor entrar com proposta fechada.'
-    : presenca === 'falta'
-      ? 'A pessoa faltou. Antes de vender, entender o motivo: horário, insegurança ou desistência.'
-      : 'Presença não registrada. Confirmar com a recepção antes de abordar.';
+    ? 'A pessoa compareceu (confirmado: a sessão foi fechada à mão antes das 22h) — ' +
+      'é o melhor momento para entrar com proposta fechada.'
+    : presenca === 'falta' || presenca === 'falta_justificada'
+      ? 'A pessoa faltou, e alguém marcou isso na sessão. ' +
+        'Antes de vender, entender o motivo: horário, insegurança ou desistência.'
+      : '⚠️ Presença NÃO confirmada — o EVO traz "presente" por padrão, e esta sessão não foi ' +
+        'fechada à mão a tempo. Não dá para saber se ela veio: confirme com a recepção ou com o ' +
+        'professor antes de abordar.';
 
   await funil.registrarEvento(lead.id, {
     type: 'sugestao_consultor',
@@ -179,26 +183,35 @@ async function enviarUm(item) {
     return;
   }
 
-  // 2. O fato que só o EVO sabe.
+  // 2. O fato que só o EVO sabe — e que ele conta mal.
   let presenca = null;
+  let leitura = null;
+
   if (item.tipo === 'ae_pos_aula') {
-    presenca = await evoClient.presencaNaAula({
+    leitura = await evoClient.presencaNaAula({
       idProspect: lead.evo_id_prospect,
       idMember: lead.evo_id_member,
       data: item.contexto?.aula || lead.experimental_at,
-    }).catch(() => 'desconhecida');
+    }).catch(() => ({ resultado: 'desconhecida', motivo: 'falha ao consultar o EVO' }));
 
-    // Aula ainda não fechada no sistema: adia em vez de perguntar às
-    // cegas. A academia costuma marcar presença ao longo do dia.
-    if (presenca === 'nao_finalizada' && item.tentativas < 2) {
+    presenca = leitura.resultado;
+    logger.info(`[followup] Lead ${lead.id}: presença "${presenca}" — ${leitura.motivo}`);
+
+    // Sessão ainda aberta: adiar vale a pena, porque a presença costuma
+    // ser fechada ao longo do dia. Mas só até as 22h — depois disso a
+    // finalização é automática e deixa de significar presença.
+    if (presenca === 'nao_finalizada' && item.tentativas < 3) {
       const novaHora = followup.dentroDaJanela(new Date(Date.now() + 3 * 60 * 60 * 1000));
       await supabase
         .from('crm_followups')
         .update({ scheduled_for: novaHora.toISOString(), tentativas: item.tentativas + 1 })
         .eq('id', item.id);
-      logger.info(`[followup] Lead ${lead.id}: presença ainda não marcada, adiando`);
+      logger.info(`[followup] Lead ${lead.id}: sessão ainda aberta, reconsultando às ${novaHora.toISOString()}`);
       return;
     }
+
+    // Esgotou o prazo sem finalização humana: não dá para afirmar nada.
+    if (presenca === 'nao_finalizada') presenca = 'desconhecida';
   }
 
   // 3. Gerar e enviar.
@@ -236,7 +249,7 @@ async function enviarUm(item) {
   await followup.registrarNoFunil(
     lead.id, item.tipo,
     `Follow-up "${item.tipo}" enviado${presenca ? ` (presença: ${presenca})` : ''}`,
-    { texto: texto.slice(0, 400) }
+    { texto: texto.slice(0, 400), leitura }
   );
   await funil.tocarAtividade(lead.id);
 

@@ -404,22 +404,77 @@ export async function sessoesDaPessoa({ idProspect, idMember, de, ate } = {}) {
 /**
  * A pessoa compareceu à aula daquele dia?
  *
- * @returns {Promise<'presente'|'falta'|'falta_justificada'|'nao_finalizada'|'desconhecida'>}
+ * ⚠️ **"Presente" é o valor PADRÃO no EVO, não uma afirmação.** Todo
+ * participante nasce com `status: 0` (Attending). Ler isso como presença
+ * confirmada faria a Leia dizer "como foi a aula?" para quem não apareceu
+ * — e não há como desfazer essa mensagem.
+ *
+ * O que é evidência de verdade:
+ *
+ * - **Falta** é confiável sempre. Ninguém "cai" em falta: alguém marcou.
+ * - **Presente** só vale se a sessão foi **finalizada por gente**.
+ *
+ * E como saber se foi gente? A API não expõe timestamp de finalização —
+ * conferido no swagger e nos payloads: existe só `status: 6 / Finalized`.
+ * Sessão não fechada à mão é fechada automaticamente perto da meia-noite.
+ * Logo, a evidência é **o momento em que observamos**: ver "Finalized"
+ * enquanto ainda são menos de 22h do dia da aula significa que alguém
+ * fechou antes do processo automático.
+ *
+ * Isso também cobre a cautela com prospect: sem finalização humana, um
+ * prospect "presente" volta como `desconhecida`, e a Leia pergunta em vez
+ * de afirmar.
+ *
+ * @returns {Promise<{resultado: 'presente'|'falta'|'falta_justificada'|'nao_finalizada'|'desconhecida',
+ *                    confiavel: boolean, finalizada: boolean, observadoEm: string, motivo: string}>}
  */
 export async function presencaNaAula({ idProspect, idMember, data }) {
+  const agora = new Date();
   const dia = String(data).slice(0, 10);
+
   const sessoes = await sessoesDaPessoa({ idProspect, idMember, de: dia, ate: dia }).catch(() => []);
 
-  if (!sessoes.length) return 'desconhecida';
+  const base = {
+    confiavel: false,
+    finalizada: false,
+    observadoEm: agora.toISOString(),
+  };
+
+  if (!sessoes.length) {
+    return { ...base, resultado: 'desconhecida', motivo: 'nenhuma sessão encontrada para o dia' };
+  }
 
   const s = sessoes[0];
-  if (s.presenca === true || /presente/i.test(s.statusName || '')) return 'presente';
-  if (s.faltaJustificada === true) return 'falta_justificada';
-  if (s.falta === true || /falta/i.test(s.statusName || '')) return 'falta';
+  const finalizada = s.isFinalized === true;
 
-  // A academia nem sempre marca presença na hora. Sem marcação, dizer
-  // "vi que você faltou" seria acusar quem talvez tenha ido.
-  return s.isFinalized ? 'desconhecida' : 'nao_finalizada';
+  // Falta exige ação de alguém — vale independentemente da finalização.
+  if (s.faltaJustificada === true) {
+    return { ...base, resultado: 'falta_justificada', confiavel: true, finalizada,
+      motivo: 'falta justificada marcada por alguém' };
+  }
+  if (s.falta === true || /falta/i.test(s.statusName || '')) {
+    return { ...base, resultado: 'falta', confiavel: true, finalizada,
+      motivo: 'falta marcada por alguém' };
+  }
+
+  // Daqui para baixo o EVO diz "presente" — que é o default.
+  // Limite de confiança: 22h do dia da aula, no horário de São Paulo.
+  const limite = new Date(`${dia}T22:00:00-03:00`);
+  const dentroDoPrazo = agora < limite;
+
+  if (!finalizada) {
+    return dentroDoPrazo
+      ? { ...base, resultado: 'nao_finalizada', finalizada: false,
+          motivo: 'sessão ainda aberta; vale reconsultar antes das 22h' }
+      : { ...base, resultado: 'desconhecida', finalizada: false,
+          motivo: 'sessão nunca foi finalizada e o prazo confiável passou' };
+  }
+
+  return dentroDoPrazo
+    ? { ...base, resultado: 'presente', confiavel: true, finalizada: true,
+        motivo: 'sessão finalizada antes das 22h — finalização humana' }
+    : { ...base, resultado: 'desconhecida', finalizada: true,
+        motivo: 'finalizada, mas só observada depois das 22h — pode ter sido automática' };
 }
 
 /**

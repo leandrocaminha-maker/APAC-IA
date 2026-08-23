@@ -310,6 +310,33 @@ Registrar os webhooks: Ajustes → Webhooks do EVO → **Registrar**. É idempot
 Depende de `EVO_WEBHOOK_SECRET` estar no `.env` — sem ele `/webhook/evo` responde
 503 (fail-closed, porque o endpoint escreve no funil).
 
+### ⚠️ "Presente" é o valor PADRÃO do EVO, não uma afirmação
+
+Todo participante de uma sessão nasce com `status: 0` (Attending). Ler isso como
+presença confirmada faz a Leia perguntar "como foi a aula?" para quem não
+apareceu — e não existe desfazer para essa mensagem.
+
+O que é evidência de verdade:
+
+| Sinal | Confiável? | Por quê |
+|---|---|---|
+| `falta` / `faltaJustificada` | **Sim, sempre** | Ninguém cai em falta: alguém marcou |
+| `presente` + sessão finalizada **antes das 22h** | **Sim** | Quem fechou foi gente |
+| `presente` + sessão **não** finalizada | Não | É só o default |
+| `presente` + finalizada, observada **depois das 22h** | Não | Pode ter sido a finalização automática da meia-noite |
+
+⚠️ **A API não expõe timestamp de finalização** — conferido no swagger e nos
+payloads, existe só `status: 6 / Finalized`. Então a evidência é **o momento em
+que observamos**: ver "Finalized" enquanto ainda são menos de 22h do dia da aula
+prova que alguém fechou antes do processo automático.
+
+É por isso que o worker de follow-up reconsulta de 3 em 3 horas enquanto a
+sessão estiver aberta, e desiste às 22h — depois disso a finalização deixa de
+significar presença. Sem evidência, a Leia pergunta em vez de afirmar.
+
+Isso também cobre a cautela com prospect: sem finalização humana, um prospect
+"presente" volta como `desconhecida`.
+
 ### ⚠️ Permissões do token do EVO — três escritas estão bloqueadas
 
 Levantado em 22/08/2026 por sondagem com dados inválidos de propósito
