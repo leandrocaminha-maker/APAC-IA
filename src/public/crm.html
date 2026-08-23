@@ -91,6 +91,36 @@
   .cartao.ruim .valor { color: var(--erro); }
   .cartao.bom .valor { color: var(--acento); }
 
+  /* ── Pendência de atendimento ────────────── */
+  /* O aviso é a cor do CARTÃO INTEIRO, não só do número: quem está no
+     painel precisa ver que tem gente esperando sem parar para ler. Âmbar
+     assim que alguém entra na fila, vermelho quando o mais antigo passa
+     de meia hora. */
+  .cartao.pendencia { background: #422006; border-color: #92400e; }
+  .cartao.pendencia .rotulo { color: #fcd34d; }
+  .cartao.pendencia .valor { color: #fbbf24; }
+  .cartao.pendencia .nota { color: #fde68a; opacity: .85; }
+  .cartao.pendencia.grave { background: #450a0a; border-color: #7f1d1d; }
+  .cartao.pendencia.grave .rotulo { color: #fca5a5; }
+  .cartao.pendencia.grave .valor { color: #f87171; }
+  .cartao.pendencia.grave .nota { color: #fecaca; }
+  .cartao.clicavel { cursor: pointer; }
+  .cartao.clicavel:hover { border-color: var(--suave); }
+  .cartao.aberto { outline: 2px solid var(--suave); outline-offset: -1px; }
+
+  .fila-pendencia { background: var(--painel); border: 1px solid var(--borda);
+    border-radius: 11px; padding: 2px 15px; margin-bottom: 16px; }
+  .fila-pendencia .linha { display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 10px 0; border-bottom: 1px solid #24324a;
+    cursor: pointer; font-size: 14px; }
+  .fila-pendencia .linha:last-child { border-bottom: 0; }
+  .fila-pendencia .linha:hover b { color: var(--info); }
+  .fila-pendencia .quem-espera { min-width: 0; }
+  .fila-pendencia small { display: block; color: var(--suave); font-size: 12px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fila-pendencia .espera { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .fila-pendencia .resto { padding: 10px 0; color: var(--suave); font-size: 13px; }
+
   /* ── Funil visual ────────────────────────── */
   .funil-barras { background: var(--painel); border: 1px solid var(--borda);
     border-radius: 11px; padding: 14px 16px; margin-bottom: 16px; }
@@ -237,6 +267,21 @@
   .aviso.ok { background: #14532d; color: #bbf7d0; border: 1px solid var(--acento-escuro); }
   .aviso.info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #1d4ed8; }
 
+  .linha-usuario { display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; padding: 8px 0; border-bottom: 1px solid #24324a; }
+  .linha-usuario:last-child { border-bottom: 0; }
+  .linha-usuario small { color: var(--suave); }
+
+  /* ── Diálogo (troca de senha) ────────────── */
+  dialog { background: var(--painel); color: var(--texto); border: 1px solid var(--borda);
+    border-radius: 14px; padding: 22px 24px; width: min(92vw, 380px); }
+  dialog::backdrop { background: rgba(2,6,23,.66); }
+  dialog h3 { margin: 0 0 16px; font-size: 17px; }
+  dialog .campo { margin-bottom: 10px; }
+  .erro-dlg { color: var(--erro); font-size: 13px; min-height: 18px; }
+  .acoes-dlg { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .nota-dlg { color: var(--suave); font-size: 12px; margin: 14px 0 0; line-height: 1.4; }
+
   #toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
     background: var(--painel-2); border: 1px solid var(--borda); color: var(--texto);
     padding: 11px 18px; border-radius: 10px; z-index: 60; display: none; max-width: 90vw; }
@@ -283,6 +328,7 @@
     </nav>
     <div class="espaco"></div>
     <div class="quem"><b id="quem-nome"></b><span id="quem-papel"></span></div>
+    <button class="btn pequeno" id="btn-senha">Senha</button>
     <button class="btn pequeno" id="btn-sair">Sair</button>
   </header>
 
@@ -290,6 +336,8 @@
     <!-- ── FUNIL ──────────────────────────────── -->
     <section class="vista ativa" id="vista-funil">
       <div class="metricas" id="metricas"></div>
+      <div class="metricas" id="pendencias"></div>
+      <div class="fila-pendencia" id="fila-pendencia" style="display:none"></div>
       <div class="funil-barras" id="funil-barras"></div>
 
       <div class="chips" id="chips-etapas"></div>
@@ -445,6 +493,28 @@
   </div>
 </div>
 
+<!-- ══ TROCA DE SENHA ═════════════════════════════════ -->
+<dialog id="dlg-senha">
+  <h3>Alterar minha senha</h3>
+  <form id="form-senha">
+    <input class="campo" type="password" id="s-atual" placeholder="Senha atual"
+           autocomplete="current-password" required>
+    <input class="campo" type="password" id="s-nova" placeholder="Nova senha (mín. 8)"
+           autocomplete="new-password" minlength="8" required>
+    <input class="campo" type="password" id="s-nova2" placeholder="Repita a nova senha"
+           autocomplete="new-password" minlength="8" required>
+    <div class="erro-dlg" id="erro-senha"></div>
+    <div class="acoes-dlg">
+      <button class="btn" type="button" id="btn-senha-cancelar">Cancelar</button>
+      <button class="btn primario" type="submit" id="btn-senha-salvar">Salvar</button>
+    </div>
+  </form>
+  <p class="nota-dlg">
+    A senha não é recuperável, só redefinível — se esquecer, um administrador redefine
+    em Ajustes. Trocar aqui <b>não desconecta</b> sessões já abertas em outros aparelhos.
+  </p>
+</dialog>
+
 <div id="toast"></div>
 
 <script>
@@ -557,7 +627,11 @@ const estado = {
   leadAberto: null,
   conversaAberta: null,
   usuarios: [],
+  pendencias: null,
+  filaAberta: null,
 };
+
+let temporizadorPendencias;
 
 // ══════════════════════════════════════════════════════
 // Login
@@ -601,19 +675,68 @@ $('#btn-sair').addEventListener('click', async () => {
 });
 
 // ══════════════════════════════════════════════════════
+// Minha conta
+// ══════════════════════════════════════════════════════
+
+$('#btn-senha').addEventListener('click', () => {
+  $('#form-senha').reset();
+  $('#erro-senha').textContent = '';
+  $('#dlg-senha').showModal();
+});
+
+$('#btn-senha-cancelar').addEventListener('click', () => $('#dlg-senha').close());
+
+$('#form-senha').addEventListener('submit', async e => {
+  e.preventDefault();
+  const atual = $('#s-atual').value;
+  const nova = $('#s-nova').value;
+
+  // A repetição é conferida no navegador porque o servidor não teria como:
+  // ele recebe uma senha só. É o único ponto em que o erro de digitação
+  // ainda pode ser pego — depois de gravado, vira uma senha que ninguém
+  // sabe qual é.
+  if (nova !== $('#s-nova2').value) {
+    $('#erro-senha').textContent = 'A repetição não bate com a nova senha.';
+    return;
+  }
+
+  const btn = $('#btn-senha-salvar');
+  btn.disabled = true;
+  $('#erro-senha').textContent = '';
+
+  try {
+    await api('/senha', { corpo: { atual, nova } });
+    $('#dlg-senha').close();
+    toast('Senha alterada.', 'ok');
+  } catch (err) {
+    $('#erro-senha').textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ══════════════════════════════════════════════════════
 // Navegação
 // ══════════════════════════════════════════════════════
 
-$$('nav button').forEach(b => b.addEventListener('click', () => {
-  $$('nav button').forEach(x => x.classList.remove('ativo'));
-  b.classList.add('ativo');
-  $$('.vista').forEach(v => v.classList.remove('ativa'));
-  $('#vista-' + b.dataset.vista).classList.add('ativa');
+/**
+ * Troca de vista.
+ *
+ * Virou função (e não só o corpo do clique no menu) porque a fila de
+ * pendências manda o consultor direto para a conversa certa — e isso
+ * precisa esperar a lista carregar antes de abrir a conversa.
+ */
+async function mostrarVista(nome) {
+  $$('nav button').forEach(b => b.classList.toggle('ativo', b.dataset.vista === nome));
+  $$('.vista').forEach(v => v.classList.toggle('ativa', v.id === 'vista-' + nome));
 
-  if (b.dataset.vista === 'conversas') carregarConversas();
-  if (b.dataset.vista === 'simulador') carregarSimulador();
-  if (b.dataset.vista === 'ajustes') carregarAjustes();
-}));
+  if (nome === 'conversas') await carregarConversas();
+  if (nome === 'simulador') await carregarSimulador();
+  if (nome === 'ajustes') await carregarAjustes();
+}
+
+$$('nav button').forEach(b => b.addEventListener('click', () =>
+  mostrarVista(b.dataset.vista).catch(err => toast(err.message, 'erro'))));
 
 // ══════════════════════════════════════════════════════
 // Funil
@@ -656,6 +779,126 @@ async function carregarMetricas() {
       <span class="barra"><i style="width:${(m.porEtapa[e] || 0) / maior * 100}%"></i></span>
       <span class="qtd">${m.porEtapa[e] || 0}</span>
     </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// Pendências de atendimento
+//
+// Os dois cartões abaixo dos números do funil. Eles não somam ao funil:
+// respondem "tem gente esperando gente?", que é a pergunta que faz alguém
+// abrir o painel no meio do dia.
+// ══════════════════════════════════════════════════════
+
+/** Acima disso a fila deixa de ser âmbar e passa a vermelha. */
+const PENDENCIA_GRAVE_MIN = 30;
+
+const FILAS = {
+  consultor: {
+    campo: 'aguardandoConsultor',
+    rotulo: 'Aguardando consultor',
+    cheia: 'ninguém assumiu',
+    vazia: 'ninguém na fila',
+  },
+  resposta: {
+    campo: 'aguardandoResposta',
+    rotulo: 'Consultor — contatos aguardando resposta',
+    cheia: 'cliente falou por último',
+    vazia: 'ninguém no vácuo',
+  },
+};
+
+async function carregarPendencias() {
+  // Falha de rede aqui não vira erro na cara do consultor: o cartão
+  // simplesmente segue mostrando a última contagem boa. O 401 já foi
+  // tratado no api(), que devolve para o login.
+  try { estado.pendencias = await api('/atendimento/pendencias'); }
+  catch { return; }
+  desenharPendencias();
+}
+
+function cartaoPendencia(chave, dado) {
+  const { rotulo, cheia, vazia } = FILAS[chave];
+  const total = dado?.total || 0;
+  const esperaMs = dado?.maisAntigoEm ? Date.now() - new Date(dado.maisAntigoEm).getTime() : 0;
+
+  const classes = ['cartao'];
+  if (total > 0) classes.push('pendencia', 'clicavel');
+  if (total > 0 && esperaMs > PENDENCIA_GRAVE_MIN * 60000) classes.push('grave');
+  if (total > 0 && estado.filaAberta === chave) classes.push('aberto');
+
+  return `<div class="${classes.join(' ')}" data-fila="${chave}">
+      <div class="rotulo">${rotulo}</div>
+      <div class="valor">${total}</div>
+      <div class="nota">${total
+        ? `${cheia} · mais antigo há ${desde(dado.maisAntigoEm).texto}`
+        : vazia}</div>
+    </div>`;
+}
+
+function desenharPendencias() {
+  const p = estado.pendencias;
+  if (!p) return;
+
+  // Fila que esvaziou não fica aberta embaixo do cartão.
+  if (estado.filaAberta && !p[FILAS[estado.filaAberta].campo]?.total) estado.filaAberta = null;
+
+  $('#pendencias').innerHTML =
+    cartaoPendencia('consultor', p.aguardandoConsultor)
+    + cartaoPendencia('resposta', p.aguardandoResposta);
+
+  $$('#pendencias .clicavel').forEach(c => c.addEventListener('click', () => {
+    estado.filaAberta = estado.filaAberta === c.dataset.fila ? null : c.dataset.fila;
+    desenharPendencias();
+  }));
+
+  desenharFila();
+}
+
+/** Quem está esperando, em ordem de espera — o cartão aberto. */
+function desenharFila() {
+  const cx = $('#fila-pendencia');
+  const chave = estado.filaAberta;
+  const dado = chave ? estado.pendencias?.[FILAS[chave].campo] : null;
+
+  if (!dado?.itens?.length) {
+    cx.style.display = 'none';
+    cx.innerHTML = '';
+    return;
+  }
+
+  cx.style.display = 'block';
+  const restantes = dado.total - dado.itens.length;
+
+  cx.innerHTML = dado.itens.map(i => {
+    const espera = desde(i.desde);
+    const alvo = chave === 'consultor'
+      ? `data-lead="${i.leadId}"`
+      : `data-conversa="${i.conversaId}"`;
+    const detalhe = chave === 'consultor'
+      ? telefoneBonito(i.telefone)
+      : [telefoneBonito(i.telefone), i.consultor ? 'com ' + i.consultor : null, i.previa]
+          .filter(Boolean).join(' · ');
+
+    return `<div class="linha" ${alvo}>
+        <span class="quem-espera">
+          <b>${esc(i.nome || 'Sem nome')}</b>
+          <small>${esc(detalhe)}</small>
+        </span>
+        <span class="espera ${espera.classe}">há ${espera.texto}</span>
+      </div>`;
+  }).join('')
+    + (restantes > 0 ? `<div class="resto">…e mais ${restantes} na fila.</div>` : '');
+
+  $$('#fila-pendencia [data-lead]').forEach(el =>
+    el.addEventListener('click', () => abrirFicha(el.dataset.lead)));
+  $$('#fila-pendencia [data-conversa]').forEach(el =>
+    el.addEventListener('click', () => irParaConversa(el.dataset.conversa)));
+}
+
+/** Da fila direto para a conversa, sem passar pela lista à mão. */
+async function irParaConversa(id) {
+  await mostrarVista('conversas');
+  await abrirConversa(id);
 }
 
 function montarChips() {
@@ -736,7 +979,9 @@ $('#f-busca').addEventListener('input', () => {
 });
 ['#f-dono', '#f-origem', '#f-fechados'].forEach(s =>
   $(s).addEventListener('change', carregarFunil));
-$('#btn-recarregar').addEventListener('click', () => { carregarFunil(); carregarMetricas(); });
+$('#btn-recarregar').addEventListener('click', () => {
+  carregarFunil(); carregarMetricas(); carregarPendencias();
+});
 
 $('#btn-novo-lead').addEventListener('click', async () => {
   const nome = prompt('Nome completo do lead:');
@@ -1123,6 +1368,7 @@ async function abrirConversa(id) {
       await api(`/conversas/${id}/reativar`, { corpo: {} });
       toast('Conversa devolvida para a Leia.', 'ok');
       abrirConversa(id);
+      carregarPendencias();
     } catch (err) { toast(err.message, 'erro'); }
   });
 
@@ -1135,6 +1381,7 @@ async function abrirConversa(id) {
       $('#resposta').value = '';
       abrirConversa(id);
       carregarConversas();
+      carregarPendencias();
     } catch (err) { toast(err.message, 'erro'); }
   });
 }
@@ -1282,17 +1529,39 @@ $('#btn-evo-sync').addEventListener('click', async () => {
 async function carregarUsuarios() {
   const lista = await api('/usuarios');
   estado.usuarios = lista;
+  const ehAdmin = estado.usuario?.papel === 'admin';
 
   $('#lista-usuarios').innerHTML = lista.map(u => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #24324a">
-      <span>${esc(u.name)}<br><small style="color:var(--suave)">${esc(u.email)} · ${esc(u.role)}${u.active ? '' : ' · inativo'}</small></span>
+    <div class="linha-usuario">
+      <span>${esc(u.name)}<br><small>${esc(u.email)} · ${esc(u.role)}${u.active ? '' : ' · inativo'}</small></span>
+      ${ehAdmin ? `<button class="btn pequeno" data-redefinir="${u.id}"
+          data-nome="${esc(u.name)}">Redefinir senha</button>` : ''}
     </div>`).join('');
+
+  $$('#lista-usuarios [data-redefinir]').forEach(b => b.addEventListener('click', () =>
+    redefinirSenha(b.dataset.redefinir, b.dataset.nome)));
 
   const sel = $('#f-dono');
   const atual = sel.value;
   sel.innerHTML = '<option value="">Todos os consultores</option><option value="sem_dono">Sem dono</option>'
     + lista.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('');
   sel.value = atual;
+}
+
+/**
+ * Redefinição pelo administrador — sem pedir a senha antiga, que ele não
+ * tem. Este é o caminho de quem esqueceu a senha: não existe "esqueci
+ * minha senha" por e-mail, e o hash não volta atrás.
+ */
+async function redefinirSenha(id, nome) {
+  const nova = (prompt(`Nova senha para ${nome} (mínimo 8 caracteres):`) || '').trim();
+  if (!nova) return;
+  if (nova.length < 8) return toast('A senha precisa de pelo menos 8 caracteres.', 'erro');
+
+  try {
+    await api('/usuarios/' + id, { metodo: 'PATCH', corpo: { senha: nova } });
+    toast(`Senha de ${nome} redefinida — avise a pessoa, não sai aviso automático.`, 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
 }
 
 $('#btn-criar-usuario').addEventListener('click', async () => {
@@ -1329,8 +1598,24 @@ async function iniciar() {
   await carregarFunil();
   montarChips();
   await carregarMetricas();
+  await carregarPendencias();
   await carregarUsuarios();
+
+  // O alarme só serve se ele mesmo se atualizar: um handoff aberto com o
+  // painel já na tela não avisaria ninguém. Só com a aba à vista — painel
+  // esquecido em segundo plano não precisa acordar o servidor de minuto
+  // em minuto.
+  clearInterval(temporizadorPendencias);
+  temporizadorPendencias = setInterval(() => {
+    if (document.visibilityState === 'visible') carregarPendencias();
+  }, 60000);
 }
+
+// Voltar para a aba tem que trazer a contagem de agora, não a de quando
+// ela foi deixada.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && estado.usuario) carregarPendencias();
+});
 
 // Sessão viva? Entra direto. Senão, tela de login.
 fetch('/crm/api/eu')

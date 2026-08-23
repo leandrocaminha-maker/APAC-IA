@@ -202,7 +202,7 @@ Construído em 22/08/2026. Quatro superfícies, uma autenticação.
 
 | Aba | O que faz |
 |---|---|
-| **Funil** | A tabela de gestão de leads. Métricas, filtros por etapa/dono/origem, ordenação, e a ficha do lead numa gaveta com as ações que escrevem no EVO |
+| **Funil** | A tabela de gestão de leads. Métricas, os dois cartões de pendência, filtros por etapa/dono/origem, ordenação, e a ficha do lead numa gaveta com as ações que escrevem no EVO |
 | **Conversas** | Histórico de **todas** as conversas, por id. Abre a thread, responde pelo WhatsApp e devolve para a Leia |
 | **Simulador** | Conversar com a Leia sem WhatsApp. Herdeiro da `/teste`, agora amarrado ao consultor logado |
 | **Ajustes** | Pareamento do WhatsApp (QR), webhooks do EVO, sincronização e cadastro de consultores |
@@ -225,6 +225,56 @@ node scripts/criar-consultor.js --listar
 
 Sem `--senha`, uma é sorteada e impressa **uma única vez**. Depois do primeiro
 admin, os demais saem por Ajustes → Consultores.
+
+**Trocar a senha, a partir de 23/08/2026, é pelo painel** — o script continua
+existindo para o primeiro admin e para quando ninguém consegue entrar:
+
+| Quem | Onde | Precisa da senha antiga? |
+|---|---|---|
+| A própria pessoa | Botão **Senha**, no cabeçalho | Sim |
+| Administrador, para qualquer um | Ajustes → Consultores → **Redefinir senha** | Não |
+| Sem ninguém logado | `scripts/criar-consultor.js --email … --senha …` | Não (roda no servidor) |
+
+Mínimo de 8 caracteres nos três caminhos. **Não existe "esqueci minha senha"**:
+o hash não volta atrás, e não há e-mail transacional no projeto — quem esquecer
+depende de um administrador.
+
+⚠️ **Trocar a senha não derruba sessão já aberta.** A sessão é cookie assinado
+sem store (ver `crm-auth.js`): não há o que invalidar sem trocar o segredo, o
+que desconectaria todo mundo. Para senha realmente vazada, o caminho é
+desativar a conta — `exigirLogin` relê o usuário a cada requisição, então
+`active = false` corta o acesso na hora.
+
+A senha atual é conferida com **403, não 401**: o painel trata 401 como "a
+sessão morreu" e volta para o login. Errar a digitação não pode deslogar
+ninguém.
+
+### Os dois cartões de pendência
+
+Logo abaixo dos números do funil, e eles **mudam de cor** — âmbar quando alguém
+entra na fila, vermelho quando o mais antigo passa de 30 minutos. O buraco que
+fechavam era antigo: a Leia abria o handoff, calava o bot e **ninguém era
+avisado**; o lead ficava em `aguardando_consultor` até alguém abrir a aba certa
+por acaso.
+
+| Cartão | Quem entra | De onde sai a conta |
+|---|---|---|
+| **Aguardando consultor** | Handoff aberto, ninguém assumiu | Leads em `aguardando_consultor`, por `stage_since` |
+| **Consultor — contatos aguardando resposta** | Já tem consultor, e o cliente falou por último | Conversa `human` cuja **última mensagem** é `inbound` |
+
+**Os dois particionam a fila, não se sobrepõem** (`src/services/atendimento.js`):
+a segunda conta ignora quem ainda está na primeira. A mesma conversa aparecendo
+nos dois faria o consultor contar duas vezes o mesmo problema.
+
+A segunda não sai de `wa_conversations.status`: `human` só diz que o bot está
+calado, não quem falou por último. Quem responde isso é a direção da última
+mensagem — daí a leitura de `wa_messages`, em **uma** consulta para todas as
+conversas (janela a partir da conversa parada há mais tempo), e não uma por
+conversa.
+
+Clicar no cartão abre a lista de quem está esperando, em ordem de espera: a
+fila de handoff leva à ficha do lead, a de resposta leva direto à conversa. O
+painel recontabiliza a cada minuto, e só com a aba à vista.
 
 ### As etapas do funil
 

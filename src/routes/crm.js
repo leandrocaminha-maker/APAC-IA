@@ -20,9 +20,10 @@ import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { supabase } from '../lib/supabase.js';
 import {
-  login, gravarCookie, limparCookie, exigirLogin, exigirAdmin, hashSenha,
+  login, gravarCookie, limparCookie, exigirLogin, exigirAdmin, hashSenha, conferirSenha,
 } from '../services/crm-auth.js';
 import { funil } from '../services/funil.js';
+import { atendimento } from '../services/atendimento.js';
 import { evoSync } from '../services/evo-sync.js';
 import { evoClient } from '../services/evo-client.js';
 import { aiAgent } from '../services/ai-agent.js';
@@ -90,6 +91,54 @@ router.get('/api/eu', (req, res) => {
   });
 });
 
+/**
+ * Trocar a própria senha.
+ *
+ * Pede a senha atual mesmo já havendo sessão válida: o cookie prova que
+ * alguém entrou naquele navegador, não que é a pessoa — sem isso, uma
+ * máquina destravada vira troca de senha e conta perdida.
+ *
+ * ⚠️ Trocar a senha **não derruba sessões já abertas**. A sessão é cookie
+ * assinado sem store (ver crm-auth.js): não há o que invalidar do lado do
+ * servidor sem trocar o segredo, o que derrubaria todo mundo. Para uma
+ * senha realmente vazada, o caminho é desativar a conta.
+ */
+router.post('/api/senha', rota(async (req, res) => {
+  const atual = String(req.body?.atual || '');
+  const nova = String(req.body?.nova || '');
+
+  if (nova.length < 8) {
+    return res.status(400).json({ erro: 'A nova senha precisa de pelo menos 8 caracteres.' });
+  }
+  if (nova === atual) {
+    return res.status(400).json({ erro: 'A nova senha é igual à atual.' });
+  }
+
+  const { data: usuario } = await supabase
+    .from('crm_users')
+    .select('password_hash')
+    .eq('id', req.usuario.id)
+    .maybeSingle();
+
+  // 403 e não 401: o painel trata 401 como "a sessão morreu" e joga para
+  // a tela de login. Errar a senha atual não é sessão inválida — seria
+  // deslogar quem só digitou errado.
+  if (!usuario || !(await conferirSenha(atual, usuario.password_hash))) {
+    logger.warn(`[crm] Senha atual incorreta na troca de ${req.usuario.email}`);
+    return res.status(403).json({ erro: 'Senha atual incorreta.' });
+  }
+
+  const { error } = await supabase
+    .from('crm_users')
+    .update({ password_hash: await hashSenha(nova) })
+    .eq('id', req.usuario.id);
+
+  if (error) return res.status(500).json({ erro: error.message });
+
+  logger.info(`[crm] ${req.usuario.nome} trocou a própria senha`);
+  res.json({ ok: true });
+}));
+
 // ──────────────────────────────────────────────
 // Funil
 // ──────────────────────────────────────────────
@@ -117,6 +166,18 @@ router.get('/api/funil/metricas', rota(async (req, res) => {
     desde: req.query.desde || null,
     diasParado: parseInt(req.query.diasParado || '2', 10),
   }));
+}));
+
+/**
+ * Pendências de atendimento — quem está esperando gente.
+ *
+ * Fica separado das métricas do funil de propósito: as métricas são
+ * fotografia do pipeline e mudam devagar; isto aqui é alarme, o painel
+ * repete a chamada a cada minuto e precisa que ela seja barata.
+ */
+router.get('/api/atendimento/pendencias', rota(async (req, res) => {
+  const limite = Math.min(Math.max(parseInt(req.query.limite || '12', 10) || 12, 1), 50);
+  res.json(await atendimento.pendencias({ limite }));
 }));
 
 router.get('/api/leads/:id', rota(async (req, res) => {
