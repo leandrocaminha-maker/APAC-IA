@@ -56,6 +56,12 @@ chamada partindo da academia acontecem **somente das 9h00 às 20h30**. Fora dess
 faixa não se inicia contato — responder quem escreveu é outra coisa, e vale a
 qualquer hora.
 
+**É também a faixa em que o consultor humano responde.** Repare que ela não
+coincide com o funcionamento: às 7h a academia está aberta e o consultor ainda
+não atende; às 21h ainda há aula acontecendo e ele já não atende. Ao dizer a
+alguém fora do expediente quando terá resposta, vale a **primeira hora em que as
+duas coisas valem** — academia aberta E dentro de 9h–20h30.
+
 ## Estrutura
 
 - Piscina: piscina de 15m coberta e aquecida, 4 raias, mantida entre 30 e 30,5 graus celsius. Tratamento comOzônio. Uso de controle eletrônico de paramentros de qualidade.
