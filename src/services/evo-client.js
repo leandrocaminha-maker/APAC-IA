@@ -362,6 +362,34 @@ export async function agendarAulaExperimental(dados) {
   return evoFetch(`/api/v1/activities/schedule/experimental-class${qs(params)}`, { method: 'POST' });
 }
 
+/**
+ * Reserva alguém numa sessão que JÁ EXISTE na grade.
+ *
+ * Diferença para `agendarAulaExperimental`, e é o motivo de existir: este
+ * endpoint **só reserva**. Não cria sessão e não vende serviço nenhum.
+ *
+ * Serve para quem já tem a aula experimental comprada — o ex-aluno que
+ * comprou pelo cadastro de cliente, ou alguém sendo remarcado. Passar pelo
+ * `experimental-class` nesses casos venderia o mesmo serviço de novo.
+ *
+ * ⚠️ Aceita `idProspect` ou `idMember`, mas **recusa membro inativo**
+ * ("Agendamento indisponível pelo motivo: Inactive member") — testado nas
+ * duas rotas e nos 14 valores de `origin`. Para ex-aluno, portanto, só
+ * funciona pelo prospect.
+ */
+export async function reservarEmSessao({ idProspect, idMember, idConfiguration, data, slot, origem }) {
+  const params = {
+    idProspect,
+    idMember,
+    idConfiguration,
+    activityDate: String(data).slice(0, 10),
+    slotNumber: slot,
+    origin: origem,
+    idBranch: ID_BRANCH_PADRAO,
+  };
+  return evoFetch(`/api/v2/activities/booking${qs(params)}`, { method: 'POST' });
+}
+
 // ──────────────────────────────────────────────
 // Atividades e grade
 // ──────────────────────────────────────────────
@@ -632,6 +660,7 @@ export const evoClient = {
   situacaoDoMembro,
   // experimental e grade
   agendarAulaExperimental,
+  reservarEmSessao,
   listarAtividades,
   buscarGrade,
   // catálogo

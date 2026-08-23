@@ -296,9 +296,17 @@ const handlers = {
           // sair no cadastro de aluno que já existe, em vez de criar outro.
           try {
             const { lead } = await leadDaConversa(contexto);
+            // Guardamos os dados do cadastro antigo no lead — não só o
+            // vínculo. É o que permite abrir a oportunidade mais tarde, na
+            // hora do agendamento, sem pedir nada de novo à pessoa.
             await supabase
               .from('crm_leads')
-              .update({ evo_id_member: m.idMember, full_name: lead.full_name || dados.nome })
+              .update({
+                evo_id_member: m.idMember,
+                full_name: dados.nome || lead.full_name,
+                email: lead.email || dados.email,
+                birth_date: lead.birth_date || dados.nascimento,
+              })
               .eq('id', lead.id);
           } catch (err) {
             logger.warn(`[ai-tools] Não consegui vincular o ex-aluno ao lead: ${err.message}`);
@@ -394,6 +402,38 @@ const handlers = {
 
     try {
       const { lead } = await leadDaConversa(contexto);
+
+      // ⚠️ Ex-aluno NÃO vira oportunidade aqui.
+      //
+      // Ele já tem cadastro de cliente no EVO. Abrir uma oportunidade em
+      // paralelo só se justifica quando ela é necessária — e é necessária
+      // por uma razão só: o endpoint de aula experimental não aceita
+      // `idMember`. Se a conversa não chegar à experimental, a pessoa
+      // continua sendo o cliente que já era, e o fechamento sai no cadastro
+      // dela em vez de num registro novo.
+      //
+      // Por isso a criação foi movida para dentro do agendamento, que é
+      // exatamente o momento em que ela deixa de ser opcional.
+      if (lead.evo_id_member && !lead.evo_id_prospect) {
+        await supabase
+          .from('crm_leads')
+          .update({
+            full_name: nome,
+            birth_date: args.data_nascimento || lead.birth_date,
+            email: args.email || lead.email,
+            interest: args.interesse || lead.interest,
+          })
+          .eq('id', lead.id);
+
+        return {
+          success: true,
+          idMember: lead.evo_id_member,
+          semCadastroNovo: true,
+          mensagem: 'Ela já tem cadastro de cliente e os dados foram confirmados — não criei cadastro novo. ' +
+            'Se ela fechar a aula experimental, a oportunidade é aberta no agendamento. ' +
+            'Se não quiser, siga a conversa normalmente: a venda sai no cadastro que ela já tem.',
+        };
+      }
 
       // Ex-aluno reativado: a nota liga o cadastro novo ao antigo.
       //

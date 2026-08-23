@@ -266,15 +266,35 @@ export async function agendarExperimental(lead, dados, { usuario = null } = {}) 
     );
   }
 
+  // Quem já comprou a aula experimental não pode comprá-la de novo.
+  //
+  // É o caso do ex-aluno que fechou o serviço pelo cadastro de cliente: o
+  // `experimental-class` sempre vende (o serviço é obrigatório nele), então
+  // usá-lo aqui geraria uma segunda venda do mesmo item. O
+  // `/api/v2/activities/booking` só reserva — e aceita prospect.
+  const jaComprou = base.evo_id_member
+    ? await evoClient.membroJaTemExperimental(base.evo_id_member).catch(() => false)
+    : false;
+
   try {
-    const raw = await evoClient.agendarAulaExperimental({
-      idProspect,
-      dataHora: dados.dataHora,
-      idActivity: sessao.idActivity,
-      idService,
-      // Sempre true: a pessoa entra numa aula que já está na grade.
-      atividadeExiste: true,
-    });
+    const raw = jaComprou
+      ? await evoClient.reservarEmSessao({
+          idProspect,
+          idConfiguration: sessao.idConfiguration,
+          data: dados.dataHora,
+        })
+      : await evoClient.agendarAulaExperimental({
+          idProspect,
+          dataHora: dados.dataHora,
+          idActivity: sessao.idActivity,
+          idService,
+          // Sempre true: a pessoa entra numa aula que já está na grade.
+          atividadeExiste: true,
+        });
+
+    if (jaComprou) {
+      logger.info(`[evo-sync] Lead ${base.id}: reservado sem revender (serviço já comprado)`);
+    }
 
     const dryRun = raw?.dryRun === true;
     const quando = new Date(String(dados.dataHora).replace(' ', 'T')).toISOString();
