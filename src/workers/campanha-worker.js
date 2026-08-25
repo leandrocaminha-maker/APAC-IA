@@ -27,7 +27,7 @@
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { supabase } from '../lib/supabase.js';
-import { campanhasAtivas, processarCampanha } from '../services/campanhas.js';
+import { campanhasAtivas, processarCampanha, reconciliarEnviados } from '../services/campanhas.js';
 import { aiAgent } from '../services/ai-agent.js';
 
 let rodando = false;
@@ -55,6 +55,11 @@ async function ciclo() {
   rodando = true;
 
   try {
+    // Primeiro alinha o que a fila já entregou: sem isto o alvo fica
+    // eternamente "agendado" e a campanha roda sem medição.
+    await reconciliarEnviados().catch(err =>
+      logger.warn('[campanha] Reconciliação falhou:', err.message));
+
     const ativas = await campanhasAtivas();
     if (!ativas.length) return;
 

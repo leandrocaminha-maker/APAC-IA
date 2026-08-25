@@ -641,10 +641,13 @@ export async function gerarFollowup({ instrucao, conversationId, contactInfo = {
  * @param {object} params.alvo - Linha de `crm_campanha_alvos` (nome, contexto)
  * @param {string} params.oferta - O que a campanha está oferecendo
  * @param {string} [params.roteiro] - Ângulo/condução, opcional
+ * @param {'abertura'|'oferta'} [params.etapa] - Qual das duas mensagens
  * @param {number} [params.conversationId] - Só para a telemetria
  * @returns {Promise<{text: string}>}
  */
-export async function gerarMensagemCampanha({ alvo, oferta, roteiro = null, conversationId = null }) {
+export async function gerarMensagemCampanha({
+  alvo, oferta, roteiro = null, etapa = 'abertura', conversationId = null,
+}) {
   const systemPrompt = await loadCampanhaPrompt();
 
   const contexto = alvo?.contexto ?? {};
@@ -664,17 +667,66 @@ export async function gerarMensagemCampanha({ alvo, oferta, roteiro = null, conv
     linhas.push(`- Na época procurava: ${contexto.interesse}`);
   }
 
-  linhas.push(
-    '',
-    '## OFERTA — o ÚNICO fato que você pode afirmar',
-    'Escrita por um consultor humano. Reescreva com naturalidade, mas não',
-    'acrescente nenhum número, prazo, condição ou benefício que não esteja aqui:',
-    '',
-    oferta,
-  );
+  // A abordagem tem duas mensagens, e a diferença entre elas é o que a
+  // pessoa já autorizou você a dizer.
+  if (etapa === 'abertura') {
+    // A oferta NÃO entra aqui. A abertura só pede licença — despejar
+    // condição e preço antes de a pessoa aceitar ouvir é o que faz um
+    // contato frio virar denúncia.
+    linhas.push(
+      '',
+      '## ESTA É A MENSAGEM DE ABERTURA',
+      'Você ainda NÃO vai apresentar a condição. O objetivo desta mensagem é',
+      'só conseguir licença para apresentá-la.',
+      '',
+      'Ela precisa ter, nesta ordem:',
+      '1. Saudação curta, dizendo quem é você e de onde fala.',
+      '2. O motivo do contato (abaixo).',
+      '3. Uma pergunta fechada, do tipo "temos uma condição especial para',
+      '   você, tem interesse de saber?" — fácil de responder com sim ou não.',
+      '4. Em linha própria, a saída: "Se preferir não receber mais mensagens',
+      '   da AP Academia, é só responder aqui que eu não te escrevo mais."',
+      '',
+      '**NÃO** cite valor, desconto, número de parcelas, nome de plano nem',
+      'benefício. Nada disso foi autorizado ainda.',
+    );
+    if (roteiro) linhas.push('', '## MOTIVO DO CONTATO', roteiro);
+  } else {
+    // A pessoa respondeu que sim. Agora a oferta vai.
+    linhas.push(
+      '',
+      '## A PESSOA DISSE QUE QUER SABER',
+      'Ela acabou de responder que sim à sua abertura. Apresente a condição',
+      'agora, direto, sem reapresentar você mesma e sem perguntar de novo se',
+      'ela quer ouvir.',
+      '',
+      '## OFERTA — o ÚNICO fato que você pode afirmar',
+      'Escrita por um consultor humano. Reescreva com naturalidade, mas não',
+      'acrescente nenhum número, prazo, condição ou benefício que não esteja aqui:',
+      '',
+      oferta,
+    );
 
-  if (roteiro) {
-    linhas.push('', '## COMO CONDUZIR', roteiro);
+    // Link de pagamento tokenizado por pessoa, vindo do EVO. Não se recupera
+    // depois: nenhuma API devolve este token. É o que encurta a campanha de
+    // "vamos conversar" para "está aqui".
+    if (alvo?.link_checkout) {
+      linhas.push(
+        '',
+        '## LINK DE CONTRATAÇÃO DESTA PESSOA',
+        'Cole o link exatamente como está, sem encurtar e sem alterar nenhum',
+        'caractere. É pessoal e intransferível. Ofereça como caminho, não como',
+        'cobrança — e deixe claro que ela pode tirar dúvidas com você antes.',
+        '',
+        alvo.link_checkout,
+      );
+    }
+
+    linhas.push(
+      '',
+      'Termine com uma pergunta aberta e curta, que convide a tirar dúvida.',
+      'Não repita a linha de descadastro: ela já foi na abertura.',
+    );
   }
 
   const system = [

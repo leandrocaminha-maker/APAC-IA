@@ -503,6 +503,7 @@ export async function processarCampanha(campanha, gerarTexto) {
           .from('crm_campanha_alvos')
           .update({
             status: 'agendado',
+            etapa_conversa: 'aguardando_consentimento',
             mensagem: texto,
             queue_id: null,
             scheduled_for: quando.toISOString(),
@@ -524,6 +525,10 @@ export async function processarCampanha(campanha, gerarTexto) {
         .from('crm_campanha_alvos')
         .update({
           status: 'agendado',
+          // A abertura só pede licença. Daqui até a resposta, esta pessoa
+          // está na porta de consentimento: um "sim" ou "não" curto é
+          // resolvido sem acordar o agente completo.
+          etapa_conversa: 'aguardando_consentimento',
           mensagem: texto,
           queue_id: queueId,
           scheduled_for: quando.toISOString(),
@@ -554,6 +559,231 @@ async function marcarErro(alvoId, erro) {
   await supabase
     .from('crm_campanha_alvos')
     .update({ status: 'erro', erro })
+    .eq('id', alvoId);
+}
+
+
+/**
+ * Marca como `enviado` os alvos cuja mensagem a fila já entregou.
+ *
+ * Nada fazia isso. `campanhas.js` agenda e o `queue-processor` envia, e os
+ * dois não se conhecem — de propósito, porque é essa separação que impede
+ * um disparo em rajada. O preço é que o alvo ficava eternamente
+ * "agendado", e `enviados`, `taxa_resposta` e `taxa_supressao` na view
+ * nunca saíam do zero. Ou seja: a campanha rodaria sem medição, que é a
+ * única coisa que autoriza escalá-la.
+ *
+ * A reconciliação é por `queue_id`: se a linha da fila sumiu (o
+ * queue-processor apaga? não — ele marca 'sent'), lê-se o status dela.
+ *
+ * @returns {Promise<number>} quantos foram reconciliados
+ */
+export async function reconciliarEnviados() {
+  const { data: alvos } = await supabase
+    .from('crm_campanha_alvos')
+    .select('id, queue_id')
+    .eq('status', 'agendado')
+    .not('queue_id', 'is', null)
+    .limit(200);
+
+  if (!alvos?.length) return 0;
+
+  const { data: filas } = await supabase
+    .from('wa_message_queue')
+    .select('id, status, processed_at')
+    .in('id', alvos.map(a => a.queue_id));
+
+  const porId = new Map((filas ?? []).map(f => [f.id, f]));
+  let n = 0;
+
+  for (const alvo of alvos) {
+    const fila = porId.get(alvo.queue_id);
+    if (!fila) continue;
+
+    if (fila.status === 'sent') {
+      await supabase
+        .from('crm_campanha_alvos')
+        .update({ status: 'enviado', sent_at: fila.processed_at ?? new Date().toISOString() })
+        .eq('id', alvo.id);
+      n++;
+    } else if (fila.status === 'failed') {
+      await supabase
+        .from('crm_campanha_alvos')
+        .update({ status: 'erro', erro: 'a fila não conseguiu entregar' })
+        .eq('id', alvo.id);
+      n++;
+    }
+  }
+
+  if (n) logger.info(`[campanhas] ${n} alvo(s) reconciliado(s) com a fila`);
+  return n;
+}
+
+// ──────────────────────────────────────────────
+// Segmento vindo do EVO (crm.segmentation.batch)
+// ──────────────────────────────────────────────
+
+/**
+ * Absorve um evento de segmentação do CRM do EVO.
+ *
+ * A automação do EVO dispara **um POST por pessoa** — o primeiro lote real
+ * trouxe 47 em 2,6 segundos. Cada um vira um alvo `pendente`; nada sai daí
+ * por chegar, porque quem decide o envio é a regulagem, com o teto diário.
+ *
+ * **O `eventType` não identifica o segmento.** É sempre
+ * `crm.segmentation.batch`, para qualquer segmento que se monte na tela do
+ * EVO. Quem distingue é o texto de `communication.message`, que é a
+ * descrição escrita por uma pessoa — e é por ele que se acha a campanha.
+ * Renomear o segmento no EVO quebra o vínculo, então a convenção é começar
+ * a descrição com um código entre colchetes.
+ *
+ * ⚠️ `communication.message` **não é mensagem para o cliente**. No lote real
+ * veio "alunos inativos que tinham contrato aqua que venceu entre jul e dez
+ * de 2025" — o filtro, não um texto. Enviá-lo seria mandar a descrição do
+ * segmento para as 47 pessoas.
+ *
+ * @param {object} payload - Corpo cru do webhook
+ * @returns {Promise<{ok:boolean, motivo?:string, alvoId?:number}>}
+ */
+export async function absorverSegmentacao(payload) {
+  const descricao = payload?.communication?.message?.trim();
+  const pessoa = payload?.person ?? {};
+
+  if (!descricao) return { ok: false, motivo: 'evento sem descrição de segmento' };
+
+  const { data: campanha } = await supabase
+    .from('crm_campanhas')
+    .select('*')
+    .eq('evento_gatilho', descricao)
+    .maybeSingle();
+
+  if (!campanha) {
+    return { ok: false, motivo: `nenhuma campanha com evento_gatilho "${descricao.slice(0, 60)}"` };
+  }
+
+  const phone = telefoneValido(pessoa.phone);
+  if (!phone) return { ok: false, motivo: `telefone inutilizável (${pessoa.phone ?? 'ausente'})` };
+
+  if (await estaSuprimido(phone)) {
+    return { ok: false, motivo: 'telefone na lista de supressão' };
+  }
+
+  const { data, error } = await supabase
+    .from('crm_campanha_alvos')
+    .upsert({
+      campanha_id: campanha.id,
+      phone,
+      nome: (pessoa.firstName || pessoa.fullName || '').trim().split(/\s+/)[0] || null,
+      evo_id_member: pessoa.idMember ?? null,
+      evo_id_prospect: pessoa.idProspect ?? null,
+      // O link é tokenizado por pessoa e NÃO se recupera depois: nenhuma
+      // API do EVO devolve este token. Perder o evento é perder o link.
+      link_checkout: payload?.links?.checkout ?? null,
+      contexto: {
+        segmento: descricao,
+        origem: 'crm.segmentation.batch',
+        status_evo: pessoa.status ?? null,
+        email: pessoa.email ?? null,
+        nome_completo: pessoa.fullName ?? null,
+        recebido_em: new Date().toISOString(),
+      },
+      status: 'pendente',
+    }, { onConflict: 'campanha_id,phone', ignoreDuplicates: true })
+    .select('id')
+    .maybeSingle();
+
+  if (error) return { ok: false, motivo: error.message };
+  return { ok: true, alvoId: data?.id ?? null, campanha: campanha.slug };
+}
+
+/**
+ * Celular utilizável para WhatsApp, a partir do `person.phone` do EVO.
+ * Vem com DDI ("+5511943470015"). Fixo e número truncado ficam de fora: no
+ * lote real, 46 dos 47 passaram.
+ */
+function telefoneValido(bruto) {
+  const digitos = String(bruto || '').replace(/\D/g, '');
+  const semDdi = digitos.startsWith('55') && digitos.length > 11 ? digitos.slice(2) : digitos;
+  if (semDdi.length !== 11) return null;
+  if (semDdi[2] !== '9') return null;
+  return `55${semDdi}`;
+}
+
+// ──────────────────────────────────────────────
+// Porta de consentimento
+// ──────────────────────────────────────────────
+
+/**
+ * Palavras que valem como "sim, pode contar" na resposta à abertura.
+ * Só valem em mensagem curta: quem escreve um parágrafo está conversando,
+ * e conversa é assunto do agente completo, não desta porta.
+ */
+const SIM = [
+  /^sim\b/, /^s\b/, /^claro\b/, /^quero\b/, /^pode\b/, /^manda\b/, /^me conta\b/,
+  /^tenho interesse\b/, /^gostaria\b/, /^por favor\b/, /^bora\b/, /^vamos\b/,
+  /^aceito\b/, /^ok\b/, /^certo\b/, /^blz\b/, /^beleza\b/, /^positivo\b/,
+];
+
+/**
+ * Palavras que valem como "não tenho interesse".
+ *
+ * Separado do opt-out de propósito: "não quero saber da oferta" é recusa da
+ * campanha; "não quero receber mais mensagens" é pedido de saída, tratado
+ * antes disto em `ehPedidoDeSaida` e com efeito permanente.
+ */
+const NAO = [
+  /^n[aã]o\b/, /^n\b/, /^nao tenho interesse\b/, /^sem interesse\b/,
+  /^agora n[aã]o\b/, /^obrigad[oa]\b/, /^dispenso\b/, /^negativo\b/,
+];
+
+/**
+ * Lê a resposta à mensagem de abertura.
+ *
+ * Devolve 'sim', 'nao' ou 'outro'. **'outro' é o caminho seguro**: cai no
+ * agente completo, que sabe lidar com qualquer coisa. Errar para 'outro'
+ * custa tokens; errar para 'sim' manda oferta a quem não pediu, e errar
+ * para 'nao' encerra quem estava interessado.
+ *
+ * Por isso não há adivinhação: frase longa é sempre 'outro', mesmo que
+ * comece com "sim".
+ *
+ * @param {string} texto
+ * @returns {'sim'|'nao'|'outro'}
+ */
+export function lerConsentimento(texto) {
+  const limpo = normalizar(texto);
+  if (!limpo) return 'outro';
+
+  // Acima disto a pessoa não está respondendo sim ou não: está falando.
+  if (limpo.length > 40) return 'outro';
+
+  if (NAO.some(re => re.test(limpo))) return 'nao';
+  if (SIM.some(re => re.test(limpo))) return 'sim';
+  return 'outro';
+}
+
+/**
+ * O alvo de campanha desta pessoa que está esperando resposta à abertura.
+ * Devolve null quando a mensagem não tem nada a ver com campanha — que é o
+ * caso da esmagadora maioria das conversas.
+ */
+export async function alvoAguardandoConsentimento(phone) {
+  const { data } = await supabase
+    .from('crm_campanha_alvos')
+    .select('*, campanha:crm_campanhas(*)')
+    .eq('phone', normalizePhone(phone))
+    .eq('etapa_conversa', 'aguardando_consentimento')
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ?? null;
+}
+
+/** Move o alvo de etapa na conversa. */
+export async function marcarEtapaConversa(alvoId, etapa) {
+  await supabase
+    .from('crm_campanha_alvos')
+    .update({ etapa_conversa: etapa })
     .eq('id', alvoId);
 }
 
@@ -592,6 +822,8 @@ export async function resumo(idOuSlug = null) {
 
 export const campanhas = {
   ehPedidoDeSaida, suprimir, estaSuprimido,
+  absorverSegmentacao, lerConsentimento, alvoAguardandoConsentimento, marcarEtapaConversa,
+  reconciliarEnviados,
   montarAlvos, registrarResposta,
   distribuirHorarios, enviadosHoje, processarCampanha, conferirGuarda,
   buscarCampanha, campanhasAtivas, resumo, hojeSP,

@@ -112,8 +112,18 @@ router.post('/evo', async (req, res) => {
   }
 
   // O EVO pode mandar um evento ou um lote.
+  //
+  // São DOIS sistemas de webhook, com envelopes diferentes, chegando na
+  // mesma porta:
+  //
+  //   API (/api/v1/webhook)  → `EventType` maiúsculo, ids + ApiCallback
+  //   Automação do CRM       → `eventType` minúsculo, payload completo
+  //
+  // Ler só o maiúsculo era o que fazia a automação aparecer no log como
+  // "1 evento(s): ?".
   const envelopes = Array.isArray(req.body) ? req.body : [req.body];
-  logger.info(`[webhook/evo] ${envelopes.length} evento(s): ${envelopes.map(e => e?.EventType || '?').join(', ')}`);
+  const tipoDe = (e) => e?.EventType || e?.eventType || '?';
+  logger.info(`[webhook/evo] ${envelopes.length} evento(s): ${envelopes.map(tipoDe).join(', ')}`);
 
   res.status(200).json({ recebido: envelopes.length });
 
@@ -121,7 +131,23 @@ router.post('/evo', async (req, res) => {
   for (const envelope of envelopes) {
     try {
       const evento = await evoSync.guardarEventoWebhook(envelope);
-      if (evento) await evoSync.processarEventoWebhook(evento);
+      if (!evento) continue; // duplicado
+
+      // Segmentação do CRM: a coorte da campanha, uma pessoa por POST.
+      // Não passa pelo `processarEventoWebhook` — aquele switch é do
+      // webhook da API, trabalha com ApiCallback e não tem o que fazer
+      // aqui, porque este payload já vem completo.
+      if (String(tipoDe(envelope)).startsWith('crm.segmentation')) {
+        const r = await campanhas.absorverSegmentacao(envelope);
+        if (r.ok && r.alvoId) {
+          logger.info(`[webhook/evo] Alvo criado na campanha "${r.campanha}"`);
+        } else if (!r.ok) {
+          logger.warn(`[webhook/evo] Segmentação ignorada: ${r.motivo}`);
+        }
+        continue;
+      }
+
+      await evoSync.processarEventoWebhook(evento);
     } catch (err) {
       logger.error('[webhook/evo] Falha ao processar evento:', err.message);
     }
@@ -253,6 +279,17 @@ async function handleIncomingMessage(event) {
   // andamento seria falar duas vezes ao mesmo tempo.
   await campanhas.registrarResposta(phone).catch(err =>
     logger.warn('[webhook] Não consegui encerrar o alvo de campanha:', err.message));
+
+  // Porta de consentimento da campanha.
+  //
+  // A abertura só pede licença ("temos uma condição especial, tem interesse
+  // de saber?"). Interpretar esse "sim" com o prompt de vendas inteiro
+  // custaria ~48.000 tokens para ler três letras — por isso o sim e o não
+  // são resolvidos aqui, e só quem vai além disso chega ao agente completo.
+  //
+  // Falha para o lado seguro: qualquer coisa que não seja um sim ou um não
+  // curto e claro cai no agente, que sabe lidar com o resto.
+  if (await tratarConsentimentoDeCampanha({ phone, contact, conversation, content })) return;
 
   // O lead entra no funil na primeira mensagem, e volta para "em conversa"
   // a cada resposta — sem retroceder quem já avançou.
@@ -499,6 +536,83 @@ async function responderTurno({ phone, contact, conversation, content, savedIds 
       conversation.id,
       contact.id
     );
+  }
+}
+
+/**
+ * Resolve a resposta à abertura da campanha, sem acordar o agente completo.
+ *
+ * A abertura pergunta se a pessoa quer conhecer a condição. Só isso. Ler
+ * "sim" com o prompt de vendas inteiro custaria ~48.000 tokens de prefixo
+ * para interpretar três letras — e a campanha é justamente onde o volume
+ * multiplica esse custo.
+ *
+ * Três saídas:
+ *   sim   → manda a oferta (com o link de checkout da pessoa) e encerra o turno
+ *   não   → agradece, encerra, marca no funil. SEM handoff: 47 recusas
+ *           virariam 47 pendências numa fila que já tem gente esperando.
+ *   outro → devolve false e o agente completo assume, como sempre
+ *
+ * @returns {Promise<boolean>} true se o turno já foi resolvido aqui.
+ */
+async function tratarConsentimentoDeCampanha({ phone, contact, conversation, content }) {
+  let alvo;
+  try {
+    alvo = await campanhas.alvoAguardandoConsentimento(phone);
+  } catch (err) {
+    logger.warn('[webhook] Não consegui ler o alvo de campanha:', err.message);
+    return false;
+  }
+  if (!alvo) return false;
+
+  const decisao = campanhas.lerConsentimento(content);
+  logger.info(`[webhook] Campanha "${alvo.campanha?.slug}": ${phone} respondeu "${decisao}"`);
+
+  if (decisao === 'outro') {
+    // Foi além do sim/não. A partir daqui é conversa, e conversa é do
+    // agente completo — inclusive as perguntas sobre a própria oferta.
+    await campanhas.marcarEtapaConversa(alvo.id, 'conversando');
+    return false;
+  }
+
+  if (decisao === 'nao') {
+    await campanhas.marcarEtapaConversa(alvo.id, 'recusou');
+    await sendAndSave(
+      phone,
+      'Sem problema, obrigada por responder 🙂\n\n' +
+      'Qualquer dia que quiser saber como está a academia, é só me chamar por aqui.',
+      conversation.id,
+      contact.id,
+      { campanha: alvo.campanha?.slug, decisao: 'recusou' },
+    );
+    await moverFunil(() => funil.aoReceberMensagem(contact));
+    return true;
+  }
+
+  // Disse que sim: a oferta vai agora, no mesmo turno.
+  try {
+    const { text } = await aiAgent.gerarMensagemCampanha({
+      alvo,
+      oferta: alvo.campanha?.oferta,
+      roteiro: alvo.campanha?.roteiro,
+      etapa: 'oferta',
+      conversationId: conversation.id,
+    });
+
+    if (!text) throw new Error('o gerador não produziu texto');
+
+    await campanhas.marcarEtapaConversa(alvo.id, 'aceitou');
+    await sendAndSave(phone, text, conversation.id, contact.id, {
+      campanha: alvo.campanha?.slug, decisao: 'aceitou',
+    });
+    return true;
+  } catch (err) {
+    // Se a oferta não pôde ser gerada, NÃO se responde qualquer coisa: a
+    // pessoa acabou de dizer que quer ouvir. Deixa o agente completo
+    // assumir, que é quem sabe conduzir sem o texto pronto.
+    logger.error('[webhook] Falha ao gerar a oferta da campanha:', err.message);
+    await campanhas.marcarEtapaConversa(alvo.id, 'conversando');
+    return false;
   }
 }
 
