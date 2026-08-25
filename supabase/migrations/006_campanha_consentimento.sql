@@ -69,8 +69,20 @@ CREATE INDEX IF NOT EXISTS idx_crm_alvos_etapa
 
 -- ────────────────────────────────────────
 -- A view precisa ser recriada para enxergar as etapas de conversa
+--
+-- DROP antes do CREATE, e não CREATE OR REPLACE: o `replace` só aceita
+-- ACRESCENTAR colunas no fim da lista. As três novas (aceitaram, recusaram,
+-- conversando) entram no meio, junto das outras contagens, onde se lê
+-- melhor — e aí o Postgres recusa com:
+--
+--   42P16: cannot change name of view column "enviados_hoje" to "aceitaram"
+--
+-- A view não tem dependentes, então derrubar é barato. O GRANT é refeito
+-- logo abaixo porque DROP leva os privilégios junto.
 -- ────────────────────────────────────────
-CREATE OR REPLACE VIEW crm_campanhas_resumo AS
+DROP VIEW IF EXISTS crm_campanhas_resumo;
+
+CREATE VIEW crm_campanhas_resumo AS
 SELECT
   c.id, c.slug, c.titulo, c.tipo, c.status, c.teto_diario,
   COUNT(a.id)                                                   AS alvos,
