@@ -6,6 +6,27 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## ⚠️ Antes de qualquer coisa — 25/08/2026
+
+**Tem campanha ativa mandando mensagem para cliente real, agora.**
+
+`aqua-anual-2026`: 46 alvos da base do EVO, teto de 20/dia, `CAMPANHA_DRY_RUN=false`.
+As mensagens saem sozinhas dentro da janela de 9h–20h30, agendadas pelo worker.
+
+```bash
+docker compose exec backend npm run campanha -- status aqua-anual-2026   # ver
+docker compose exec backend npm run campanha -- pausar aqua-anual-2026 "motivo"
+```
+
+`pausar` impede NOVOS agendamentos mas **não cancela o que já está na fila**.
+Para estancar tudo: `docker compose stop backend` — a fila para junto.
+
+**Mudança de comportamento que a equipe precisa saber:** desde hoje, consultor
+que escreve pelo **celular** põe a conversa em modo humano e a Leia cala até
+alguém **reativar no painel**. Antes ela retomava sozinha.
+
+---
+
 ## Comece por aqui — 23/08/2026
 
 **O dia 22/08 fez o CRM inteiro e ligou a Leia ao EVO.** Painel do consultor com
@@ -608,76 +629,161 @@ Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
 - **Desligue a página quando a rodada de testes acabar** — senha curta em IP
   público não é para ficar no ar indefinidamente.
 
-## O que foi feito em 25/08/2026 — campanha ativa (Fase 1)
+## O que foi feito em 25/08/2026
 
-Primeira vez que o sistema **começa** uma conversa. Até aqui era tudo
-reativo: os 71 leads de `crm_leads` têm todos `source: whatsapp`, ou seja,
-cada um escreveu primeiro.
+Dia longo. Campanha ativa no ar, dois bugs de produção corrigidos, prompt
+aparado e a Leia passou a ouvir áudio. Commits de `17a3ebf` a `9915cda`.
 
-### O que o levantamento mostrou
+### Estado no fim do dia
 
-- O webhook do EVO está vivo (70 eventos), mas **não entrega segmento**: os 6
-  eventos assinados são todos de conversão. Dizem quem comprou, não quem é
-  alvo. Coorte se monta puxando estado pela API.
-- Os 43 `NewSale` recebidos **não batem com nenhum lead** (`sale_at` nulo nos
-  71). São da base do EVO — que é grande, ativa, e não estava neste sistema.
-- **Não existia opt-out.** Nenhuma tag, nenhuma coluna.
-- `wa_message_queue` já era um disparador agendado, com `scheduled_for`,
-  retry e rate limit. A campanha não precisava de remetente — precisava de
-  **regulagem**.
+| | |
+|---|---|
+| Migrations aplicadas | 004, 005 e **006** |
+| Deploy | `9915cda`, VPS igual ao repositório |
+| Campanha `aqua-anual-2026` | **ATIVA e disparando** — 46 alvos, 19 agendadas, 1ª enviada 16:15 |
+| `CAMPANHA_HABILITADA` / `DRY_RUN` | `true` / `false` — mensagens saem para cliente real |
+| Transcrição de áudio | ligada (Groq), testada com áudio real |
 
-### Desenho
+### A campanha, e o que o EVO revelou
 
-`campanhas.js` **não envia**. Ele decide QUANDO cada mensagem sai e grava uma
-linha em `wa_message_queue` com `scheduled_for` no futuro; quem envia é o
-`queue-processor`, que já existia. Como não há caminho daqui até a Evolution,
-não há caminho para um disparo em rajada — nem por bug.
+O webhook de automação do CRM do EVO é **outro sistema** do webhook da API
+(`/api/v1/webhook`). Não tem lista de eventos: o webhook é uma AÇÃO dentro de
+uma automação montada na tela, e o `eventType` sai do que a automação faz.
+Não adianta procurar catálogo — não existe.
 
-`distribuirHorarios()` espalha as mensagens pelo que sobra da janela de hoje,
-com folga aleatória. Vinte mensagens em 9h–20h30 dão uma a cada ~34 minutos.
+O primeiro disparo real trouxe `crm.segmentation.batch`: **47 pessoas em 2,6
+segundos**, um POST por pessoa, com telefone (46 são celular válido),
+`idMember` e um **link de checkout tokenizado por pessoa**. Esse link não se
+recupera depois — nenhuma API do EVO o devolve. Perder o evento é perder o
+link.
 
-### Três armadilhas do EVO, descobertas batendo nelas
+O `eventType` é o MESMO para todo segmento. Quem distingue é o texto de
+`communication.message`, a descrição escrita na tela do EVO — e é por ela que
+a campanha é encontrada (`crm_campanhas.evento_gatilho`). **Renomear o
+segmento no EVO quebra o vínculo.**
 
-Vale registrar, porque nenhuma aparece na documentação e as três produzem
-falha silenciosa:
+`communication.message` **não é mensagem para o cliente**. Veio como "alunos
+inativos que tinham contrato aqua que venceu entre jul e dez de 2025" — o
+filtro, uso interno. Enviá-lo contaria às pessoas por qual critério foram
+escolhidas. O prompt proíbe por escrito.
 
-1. **A API limita 40 requisições/minuto** por CONTA. Descoberto ao montar o
-   primeiro segmento. O freio em `segmentos.js` usa 25/min de propósito: a
-   cota é compartilhada com o `evo-sync-worker` e com as tools do agente, e
-   uma varredura de campanha que consumisse tudo faria o cadastro de um
-   prospect real falhar no meio de um atendimento.
-2. **`membershipStatus` vem VAZIO na listagem** de `/api/v2/members`. O campo
-   que carrega o dado é `status` ('Active'/'Inactive'). `membershipStatus` só
-   é preenchido em `buscarMembroPorId` — que é a chamada cara que o
-   pré-filtro existe para evitar.
-3. **O celular não é um campo.** Vem em `contacts[]`, com `contactType`
-   ('Cellphone'/'Telephone'/'E-mail') e o número em `description`, formatado.
-   A primeira versão lia `membro.cellphone`, que não existe: o efeito era
-   coorte sempre vazia, sem erro nenhum no log.
+### A abordagem tem duas mensagens
 
-### Freios
+A abertura só pede licença. A oferta só vai para quem aceitou. Interpretar
+esse "sim" com o prompt de vendas inteiro custaria ~48.000 tokens para ler
+três letras, então sim e não são resolvidos na **porta de consentimento**
+(`tratarConsentimentoDeCampanha` em `webhook.js`), sem acordar o agente.
 
-- `CAMPANHA_HABILITADA` (padrão **false**) — o worker nem inicia.
-- `CAMPANHA_DRY_RUN` (padrão **true**) — gera e grava os textos, não envia.
-- `teto_diario` por campanha, padrão 20.
-- **Pausa automática** acima de 3% de supressão (após 30 contatos).
-- **Opt-out**: "SAIR", "PARAR", "descadastrar" e variantes são detectados na
-  entrada, ANTES do funil e do agente. A supressão apaga o que já estava
-  agendado na fila — receber mensagem depois de pedir para sair é o que
-  transforma pedido em denúncia.
+A porta falha para o lado seguro: frase longa é sempre "outro" e cai no
+agente, mesmo começando com "sim".
 
-A oferta é escrita por uma PESSOA, em `crm_campanhas.oferta`. O modelo
-embrulha, não inventa: este caminho não carrega a base de conhecimento, então
-preço e prazo só existem se estiverem escritos ali.
+Recusa encerra e marca o funil, **sem handoff** — 47 recusas virariam 47
+pendências numa fila que já tem gente esperando.
 
-### ⚠️ Pendências
+### Dois bugs de produção, achados e corrigidos
 
-- **Migration 005 não aplicada.** Rode `supabase/migrations/005_campanhas.sql`.
-- **Nada foi disparado ainda.** O piloto é: ensaio → ler os textos → decidir.
-- **Fase 2 não foi feita**: tela no painel, campanhas por gatilho ligadas em
-  `processarEventoWebhook`, e segunda instância na Evolution.
-- **O piloto vai rodar no número principal**, por decisão registrada. Se ele
-  for bloqueado, cai junto o atendimento e o follow-up.
+**1. Nenhum `ApiCallback` do EVO era seguido.** A guarda anti-SSRF comparava
+com `config.evo.baseUrl`, e o EVO chama de volta por OUTRO domínio:
+consultamos `evo-integracao-api`, ele responde `evo-integracao` (sem o
+"-api"). Sintoma mudo — venda chegava, detalhe nunca era buscado, lead não
+fechava. Agora confere contra `config.evo.callbackHosts`, uma allowlist.
+
+Junto: nem todo `ApiCallback` vem interpolado. O de `CreateMember` chega como
+`/api/v1/members/{idMember}`, literal. A troca usa o `IdRecord` e é feita na
+string crua — `new URL()` percent-encoda as chaves.
+
+**2. Agendar aula experimental REGISTRA UMA VENDA no EVO.** O serviço "AULA
+EXPERIMENTAL" (idService 6, `experimentalClass`) é vendido por R$ 0 a cada
+trial, inclusive quando quem marca é a Leia. `NewSale` dispara para
+agendamento, não só para venda.
+
+Ao reprocessar os 88 eventos guardados, **8 leads foram para "ganho" e 8
+follow-ups futuros foram cancelados** — um deles dispararia naquela noite.
+Ninguém tinha comprado. Revertido a partir de `crm_lead_events`, sem perda. O
+handler agora confere o `idService` antes de fechar.
+
+**Conclusão que isso derruba:** a conversão WhatsApp para matrícula ainda é
+**zero**. As 43 `NewSale` são trials e vendas de balcão.
+
+### A Leia cala quando o consultor assume
+
+Aconteceu com a Gisleide: consultora escreveu do celular às 12h19, cliente
+respondeu às 12h39, e a Leia entrou no mesmo minuto se apresentando do zero.
+`aoConsultorAssumir` movia só a etapa do funil.
+
+Agora escrever do aparelho põe a conversa em modo humano na hora. Cobre o
+caso que o handoff não cobria: conversa que o consultor **inicia**.
+
+**Efeito colateral a vigiar:** toda conversa que um consultor tocar pelo
+celular fica em modo humano **até ser reativada no painel**. Se a equipe usa
+o celular para responder coisas rápidas esperando que a Leia retome sozinha,
+isso mudou.
+
+Junto veio o fechamento de uma corrida: a Evolution devolve como `fromMe`
+tudo que sai da instância, e as duas checagens de eco só enxergavam o que já
+estava gravado — o `queue-processor` grava DEPOIS de enviar. A terceira
+checagem consulta a FILA. Sem ela, a mensagem da campanha calaria a Leia
+justamente para quem acabou de recebê-la.
+
+### Prompt aparado com dado, não palpite
+
+Medido em 89 conversas reais e 631 mensagens: app FITI 0,5%, cancelamento
+0,5%, afastamento 0,2%, objeto esquecido 0,2%, troca de horário **0,0%**.
+Esses cinco eram a seção "Como conduzir o atendimento de aluno matriculado" —
+3.794 tokens, 17% do prompt.
+
+A BASE desses assuntos já carregava sob demanda (16%); a CONDUÇÃO ia em 100%.
+Virou `knowledge/conducao-matriculado.md`, no módulo `matriculado`.
+
+Prefixo no caminho comum: **48.875 para 45.333 tokens, -7%**.
+
+**A detecção do infantil foi medida e NÃO deve ser mexida.** A regra de idade
+parecia solta, mas em 81 conversas ela só decidiu uma — e acertou ("natação
+para 4 anos", sem palavra-chave). Zero falsos positivos. A comparação
+anterior (25% das chamadas contra 6,3% das mensagens) era de unidades
+diferentes: conversa contra conversa dá 20%, e as 16 são genuínas.
+
+### A Leia ouve áudio
+
+O Claude **não aceita áudio** — a transcrição acontece fora dele em qualquer
+cenário. Local foi medido e descartado: nesta VPS (2 vCPU, ~1,9 GB livres) o
+modelo que caberia leva 20 a 40s por áudio. Groq faz em 300 a 750 ms por
+~US$ 0,04 a hora.
+
+**A Groq valida pela EXTENSÃO do nome.** O WhatsApp entrega `.oga`, que não
+está na lista aceita (`ogg` e `opus` estão). Conteúdo idêntico, só o nome
+reprova. Não está na documentação.
+
+A transcrição roda **antes** do opt-out e da porta de consentimento. Na
+primeira versão estava depois, e um "SAIR" falado passaria batido.
+
+Os 8 áudios antigos foram transcritos e gravados. Dois eram intenção de
+compra perdida: **Ma Prof Barbara** pedindo aula experimental e **Tassia
+Santos** dizendo que ia fechar o anual. As duas em `human`, esperando
+consultor.
+
+### Pendências
+
+- **Sem tela de campanha e sem tela de custo.** Só CLI e SQL:
+  `npm run campanha -- status <slug>` e `select * from wa_ai_usage_diario`.
+- **Alvo de campanha não entra no funil** até responder — campanha grava em
+  `crm_campanha_alvos`, o funil lê `crm_leads`.
+- **27 alvos ainda pendentes** na `aqua-anual-2026`, teto 20/dia.
+- **Custo: ~$0,50 por conversa, ~$8/dia** (~$240/mês no volume atual). 486
+  mil tokens de escrita de cache num dia — o prefixo é reescrito ~10x, uma
+  por hora. Pré-aquecer não resolve; só prefixo menor resolve.
+- **`unknown` são 28 mensagens (3,2%)**, mais que áudio. Tipos não tratados
+  que recebem "[mensagem não suportada]". Nunca foram levantados.
+- **Segunda instância na Evolution não foi feita.** Hoje um bloqueio derruba
+  atendimento, follow-up e campanha juntos. O desenho está discutido: a
+  mudança de fundo é que NADA no modelo de dados sabe por qual número nosso a
+  conversa passou (`evolution.js` tem a instância fixa no módulo,
+  `webhook.js` nunca lê `event.instance`).
+- **`CreateMembership` continua assinado e tratado como venda**, mas pela doc
+  do EVO é o CATÁLOGO de planos, não contrato de aluno. Inerte hoje.
+- **Eventos de churn não assinados:** `ScheduleCancelMembership` (cancelamento
+  AGENDADO, sabe antes da pessoa sair), `CancelMembership`, `Freeze`,
+  `ClearedDebt`. O primeiro é o mais valioso do sistema para retenção.
 
 ## O que foi feito em 24/08/2026 — custo de crédito
 
