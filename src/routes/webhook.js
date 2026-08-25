@@ -596,6 +596,9 @@ async function tratarConsentimentoDeCampanha({ phone, contact, conversation, con
       oferta: alvo.campanha?.oferta,
       roteiro: alvo.campanha?.roteiro,
       etapa: 'oferta',
+      // O que a academia decidiu que a pessoa precisa saber, e que o
+      // gerador confere depois de escrever. Ver `pontosFaltando`.
+      pontosObrigatorios: alvo.campanha?.metadata?.pontos_obrigatorios ?? [],
       conversationId: conversation.id,
     });
 

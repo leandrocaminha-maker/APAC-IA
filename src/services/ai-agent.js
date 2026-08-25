@@ -62,6 +62,17 @@ const MAX_TOOL_ITERATIONS = 5;
  */
 const CACHE_TTL = '1h';
 
+// Quebra de linha usada ao montar os blocos de instrução.
+const SEPARADOR = String.fromCharCode(10);
+
+/** Minúsculas e sem acento, para comparação tolerante a digitação. */
+function semAcento(texto) {
+  return String(texto || '')
+    .normalize('NFD')
+    .replace(new RegExp('[' + String.fromCharCode(0x300) + '-' + String.fromCharCode(0x36f) + ']', 'g'), '')
+    .toLowerCase();
+}
+
 const FALLBACK_TEXT = 'Desculpe, não consegui processar sua solicitação no momento.';
 
 // A academia é uma só e fica em São Paulo. O servidor roda em UTC, então sem
@@ -625,6 +636,23 @@ export async function gerarFollowup({ instrucao, conversationId, contactInfo = {
 }
 
 /**
+ * Quais pontos obrigatórios ficaram de fora do texto gerado.
+ *
+ * A conferência é por `termo`: um radical curto e sem acento, escolhido
+ * para casar com as variações que o modelo usa naturalmente ("ilimitado",
+ * "ilimitados", "ilimitada"). Deliberadamente burra — a alternativa seria
+ * outra chamada ao modelo para julgar a primeira, o que dobra o custo e
+ * põe um segundo juiz que também erra.
+ */
+function pontosFaltando(texto, pontos) {
+  const limpo = semAcento(texto);
+  return pontos.filter(p => {
+    const termo = semAcento(p?.termo);
+    return termo && !limpo.includes(termo);
+  });
+}
+
+/**
  * Gera a primeira mensagem de campanha para uma pessoa.
  *
  * Caminho ainda mais enxuto que o follow-up: aqui não há sequer histórico,
@@ -647,6 +675,7 @@ export async function gerarFollowup({ instrucao, conversationId, contactInfo = {
  */
 export async function gerarMensagemCampanha({
   alvo, oferta, roteiro = null, etapa = 'abertura', conversationId = null,
+  pontosObrigatorios = [],
 }) {
   const systemPrompt = await loadCampanhaPrompt();
 
@@ -722,6 +751,14 @@ export async function gerarMensagemCampanha({
       );
     }
 
+    if (pontosObrigatorios.length) {
+      linhas.push(
+        '',
+        '## PONTOS OBRIGATÓRIOS — todos precisam aparecer no seu texto',
+        ...pontosObrigatorios.map(p => `- ${p.descricao}`),
+      );
+    }
+
     linhas.push(
       '',
       'Termine com uma pergunta aberta e curta, que convide a tirar dúvida.',
@@ -737,38 +774,85 @@ export async function gerarMensagemCampanha({
     },
   ];
 
-  const inicio = Date.now();
-  const response = await client.beta.messages.create({
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    output_config: { effort: 'low' },
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    system,
-    messages: [{ role: 'user', content: linhas.join('\n') }],
-  });
+  const pedir = async (conteudo, iteracao) => {
+    const inicio = Date.now();
+    const response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      output_config: { effort: 'low' },
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      system,
+      messages: [{ role: 'user', content: conteudo }],
+    });
 
-  aiUsage.registrar({
-    usage: response.usage,
-    modelo: MODEL,
-    conversationId,
-    origem: 'campanha',
-    iteracao: 0,
-    modulos: [],
-    stopReason: response.stop_reason,
-    duracaoMs: Date.now() - inicio,
-  });
+    aiUsage.registrar({
+      usage: response.usage,
+      modelo: MODEL,
+      conversationId,
+      origem: 'campanha',
+      iteracao,
+      modulos: [],
+      stopReason: response.stop_reason,
+      duracaoMs: Date.now() - inicio,
+    });
 
-  if (response.stop_reason === 'refusal') {
-    logger.warn(`[ai-agent] Recusa na campanha (${response.stop_details?.category || 'sem categoria'})`);
-    return { text: '' };
+    if (response.stop_reason === 'refusal') {
+      logger.warn(`[ai-agent] Recusa na campanha (${response.stop_details?.category || 'sem categoria'})`);
+      return '';
+    }
+
+    return response.content
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join(SEPARADOR)
+      .trim();
+  };
+
+  const conteudo = linhas.join(SEPARADOR);
+  let text = await pedir(conteudo, 0);
+
+  // Estar escrito no prompt não é o mesmo que ter saído no texto.
+  //
+  // A mensagem é gerada, então varia — e o que a academia decidiu que a
+  // pessoa PRECISA saber não pode depender de sorte. Falar do preço e calar
+  // o que mudou no serviço faz a pessoa comparar o valor de hoje com a
+  // lembrança do que ela tinha antes, e concluir errado.
+  //
+  // Uma repetição só. Se ainda faltar, a mensagem VAI assim mesmo, com
+  // aviso no log: quem respondeu "sim" está esperando resposta, e mandar
+  // mensagem incompleta é melhor do que não mandar nenhuma.
+  if (text && pontosObrigatorios.length) {
+    const faltando = pontosFaltando(text, pontosObrigatorios);
+    if (faltando.length) {
+      logger.warn(
+        `[ai-agent] Campanha: faltaram pontos obrigatórios ` +
+        `(${faltando.map(x => x.termo).join(', ')}) — refazendo`
+      );
+
+      const reforco = [
+        conteudo,
+        '',
+        '## VOCÊ ESQUECEU',
+        'Sua mensagem anterior deixou de fora, e não pode:',
+        ...faltando.map(x => `- ${x.descricao}`),
+        '',
+        'Escreva de novo, com tudo.',
+      ].join(SEPARADOR);
+
+      const segunda = await pedir(reforco, 1);
+      if (segunda) {
+        const aindaFalta = pontosFaltando(segunda, pontosObrigatorios);
+        if (aindaFalta.length) {
+          logger.error(
+            `[ai-agent] Campanha: pontos obrigatórios AUSENTES na 2ª tentativa ` +
+            `(${aindaFalta.map(x => x.termo).join(', ')}) — enviando assim mesmo`
+          );
+        }
+        text = segunda;
+      }
+    }
   }
-
-  const text = response.content
-    .filter(block => block.type === 'text')
-    .map(block => block.text)
-    .join('\n')
-    .trim();
 
   return { text };
 }
