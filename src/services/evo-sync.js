@@ -692,6 +692,16 @@ export async function processarEventoWebhook(evento) {
  * de webhook, num processo que alcança a rede interna do Docker, seria
  * entregar a rede a quem descobrir o endpoint.
  */
+/**
+ * Exportada SÓ para teste.
+ *
+ * A versão anterior deste código foi para produção com `/^d+$/` no lugar de
+ * `/^\d+$/` — uma barra invertida comida pelo script que gerou o arquivo.
+ * O teste da época não pegou porque reimplementava a regex em vez de chamar
+ * esta função, e assim testava uma cópia correta de um código quebrado.
+ */
+export { buscarDetalhe as _buscarDetalhe };
+
 async function buscarDetalhe(evento) {
   // A substituição acontece na string CRUA, antes de parsear.
   //
@@ -705,14 +715,14 @@ async function buscarDetalhe(evento) {
   // de host continua depois, sobre a URL final.
   let bruto = String(evento.api_callback || '');
 
-  if (/{[^}]+}/.test(bruto)) {
+  if (/\{[^}]+\}/.test(bruto)) {
     const id = String(evento.id_record ?? '');
-    if (!/^d+$/.test(id)) {
+    if (!/^\d+$/.test(id)) {
       throw new Error(
         `ApiCallback tem placeholder (${bruto}) e o IdRecord não é utilizável — ignorado`
       );
     }
-    bruto = bruto.replace(/{[^}]+}/g, id);
+    bruto = bruto.replace(/\{[^}]+\}/g, id);
     logger.debug(`[evo-sync] Placeholder do ApiCallback resolvido pelo IdRecord: ${bruto}`);
   }
 
