@@ -10,3 +10,7 @@ data/conversas/
 data/backups/
 # Config local do Claude Code (caminhos da máquina, não do projeto)
 .claude/
+# Capturas de tela caem na raiz ao colar imagem — não são do projeto,
+# e costumam mostrar painel administrativo com dado de cliente.
+Captura de tela*.png
+*.screenshot.png
