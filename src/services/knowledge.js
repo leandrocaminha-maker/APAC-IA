@@ -92,7 +92,13 @@ export const MODULOS = {
 
   // Assunto de quem JÁ é aluno: contrato, férias, atestado, cancelamento,
   // e os erros do app FITI. Nada disso aparece numa venda nova.
+  // `conducao-matriculado.md` é CONDUÇÃO, não fato: saiu de `vendas.md` em
+  // 25/08/2026. O prompt vai inteiro em toda conversa, e aquela seção
+  // custava 17% dele para assuntos que somam 1,4% das mensagens. A base
+  // desses mesmos assuntos já carregava sob demanda; agora a condução vem
+  // junto, no mesmo módulo.
   matriculado: [
+    'conducao-matriculado.md',
     'contrato-resumo.md',
     'suporte-fiti.md',
   ],
