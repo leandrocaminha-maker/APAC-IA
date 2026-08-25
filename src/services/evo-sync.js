@@ -586,6 +586,26 @@ export async function processarEventoWebhook(evento) {
       case 'NewSale':
       case 'RecurrentSale':
       case 'CreateMembership': {
+        // Agendar aula experimental REGISTRA UMA VENDA no EVO.
+        //
+        // O serviço "AULA EXPERIMENTAL" é vendido por R$ 0 toda vez que
+        // alguém marca um trial — inclusive quando é a própria Leia que
+        // marca, via `agendar_aula_experimental`. Então `NewSale` dispara
+        // para agendamento, não só para venda de plano.
+        //
+        // Sem esta conferência, fechar o lead como "ganho" erra duas vezes:
+        // afirma uma venda que não houve, e o "ganho" CANCELA os follow-ups
+        // da régua — o lembrete da aula e a conversa pós-aula deixam de sair
+        // justamente para quem tem aula marcada. Aconteceu com 8 leads em
+        // 25/08/2026, ao reprocessar os eventos guardados.
+        if (await ehSomenteExperimental(detalhe)) {
+          logger.info(
+            `[evo-sync] ${tipo} ${evento.id_record} é do serviço de aula experimental — ` +
+            'não fecha lead como ganho'
+          );
+          break;
+        }
+
         const idMember = detalhe?.idMember ?? detalhe?.IdMember ?? null;
         lead = idMember ? await leadPorMembro(idMember) : null;
         if (!lead && detalhe?.idProspect) lead = await leadPorProspect(detalhe.idProspect);
@@ -667,6 +687,52 @@ export async function processarEventoWebhook(evento) {
       .eq('id', evento.id);
     return { ok: false, erro: err.message };
   }
+}
+
+/**
+ * Cache do id do serviço de aula experimental no EVO.
+ * O catálogo de serviços praticamente não muda; consultá-lo a cada webhook
+ * seria gastar cota da API por um dado estável.
+ */
+let idServicoExperimental;
+
+/**
+ * A venda é SÓ de aula experimental?
+ *
+ * A conferência é pelo `idService`, não pelo nome: o EVO marca o serviço
+ * com `experimentalClass: true` e é isso que manda. Casar por texto
+ * quebraria no dia em que alguém renomeasse "AULA EXPERIMENTAL" na tela do
+ * EVO, e o sintoma seria lead fechado como ganho sem venda — o pior lado
+ * do erro. O nome fica como rede: se o catálogo não puder ser lido, é
+ * melhor reconhecer o experimental por texto do que tratá-lo como venda.
+ *
+ * Item com `idMembership` é plano, e plano é venda de verdade sempre.
+ *
+ * Venda SEM itens não conta como experimental: não dá para afirmar nada, e
+ * o padrão seguro aí é seguir o fluxo normal de venda.
+ */
+export { ehSomenteExperimental as _ehSomenteExperimental };
+
+async function ehSomenteExperimental(detalhe) {
+  const itens = detalhe?.saleItens ?? detalhe?.saleItems ?? [];
+  if (!Array.isArray(itens) || itens.length === 0) return false;
+
+  if (idServicoExperimental === undefined) {
+    try {
+      const servico = await evoClient.buscarServicoExperimental();
+      idServicoExperimental = servico?.idService ?? servico?.id ?? null;
+    } catch (err) {
+      logger.warn('[evo-sync] Não consegui ler o serviço experimental do EVO:', err.message);
+      idServicoExperimental = null;
+    }
+  }
+
+  return itens.every(item => {
+    if (item?.idMembership) return false;
+    if (idServicoExperimental != null && item?.idService === idServicoExperimental) return true;
+    const texto = `${item?.item ?? ''} ${item?.description ?? ''}`;
+    return /aula\s*experimental/i.test(texto);
+  });
 }
 
 /**
