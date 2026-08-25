@@ -41,6 +41,23 @@ export const config = {
     token: env('EVO_API_TOKEN', ''),
     baseUrl: 'https://evo-integracao-api.w12app.com.br',
 
+    // Hosts aceitos no `ApiCallback` que vem dentro do webhook do EVO.
+    //
+    // Precisa ser lista, e não o host de `baseUrl`: o EVO **chama de volta
+    // por outro domínio**. Nós consultamos `evo-integracao-api`, e o
+    // webhook manda `evo-integracao` (sem o "-api"). Comparar com o
+    // `baseUrl` fazia a guarda anti-SSRF rejeitar TODO callback legítimo —
+    // e o sintoma era mudo: a venda chegava, o detalhe nunca era buscado, e
+    // o lead simplesmente não fechava como ganho.
+    //
+    // Continua sendo allowlist, e de propósito não vem do .env: seguir URL
+    // arbitrária vinda de webhook é SSRF, e este processo alcança a rede
+    // interna do Docker. Ampliar isto é decisão de código, revisada.
+    callbackHosts: [
+      'evo-integracao-api.w12app.com.br',
+      'evo-integracao.w12app.com.br',
+    ],
+
     // Filial. 1 = AP ACADEMIA - PIRITUBA, confirmado em /api/v1/prospects.
     idBranch: parseInt(env('EVO_ID_BRANCH', '1'), 10),
 

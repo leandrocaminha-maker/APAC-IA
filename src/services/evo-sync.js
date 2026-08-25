@@ -672,15 +672,53 @@ export async function processarEventoWebhook(evento) {
 /**
  * Busca o detalhe apontado pelo ApiCallback.
  *
- * O EVO manda a URL completa da própria API dele. Confirmamos que é mesmo
- * o host do EVO antes de chamar: seguir URL arbitrária vinda de um webhook
- * é SSRF, e este processo alcança a rede interna do Docker.
+ * O envelope do webhook só traz ids; o dado real está atrás desta URL.
+ *
+ * ## Duas correções que vieram da observação, não da doc
+ *
+ * **O host do callback não é o host da API.** Nós consultamos
+ * `evo-integracao-api`, e o EVO chama de volta apontando para
+ * `evo-integracao` (sem o "-api"). Comparar com `config.evo.baseUrl`
+ * rejeitava todo callback legítimo, e o sintoma era mudo: a venda chegava,
+ * o detalhe nunca era buscado, e o lead não fechava como ganho. Por isso a
+ * conferência é contra `callbackHosts`, uma allowlist.
+ *
+ * **Nem todo ApiCallback vem interpolado.** O de `CreateMember` chega
+ * literalmente como `/api/v1/members/{idMember}` — o EVO não substitui o
+ * placeholder. Quando isso acontece, o id certo é o `IdRecord` do próprio
+ * envelope, que veio correto.
+ *
+ * A allowlist continua sendo o que impede SSRF: seguir URL arbitrária vinda
+ * de webhook, num processo que alcança a rede interna do Docker, seria
+ * entregar a rede a quem descobrir o endpoint.
  */
 async function buscarDetalhe(evento) {
-  const url = new URL(evento.api_callback);
-  const permitido = new URL(config.evo.baseUrl).host;
+  // A substituição acontece na string CRUA, antes de parsear.
+  //
+  // `new URL()` percent-encoda as chaves — `{idMember}` vira
+  // `%7BidMember%7D` — e aí uma regex procurando `{` no `pathname` nunca
+  // casa. A primeira versão disto fazia exatamente isso e deixava o
+  // placeholder passar direto para o fetch, que voltava 404.
+  //
+  // Trocar antes de parsear é seguro porque o valor é validado como só
+  // dígitos: não há como injetar `://`, `@` ou outro host. A conferência
+  // de host continua depois, sobre a URL final.
+  let bruto = String(evento.api_callback || '');
 
-  if (url.host !== permitido) {
+  if (/{[^}]+}/.test(bruto)) {
+    const id = String(evento.id_record ?? '');
+    if (!/^d+$/.test(id)) {
+      throw new Error(
+        `ApiCallback tem placeholder (${bruto}) e o IdRecord não é utilizável — ignorado`
+      );
+    }
+    bruto = bruto.replace(/{[^}]+}/g, id);
+    logger.debug(`[evo-sync] Placeholder do ApiCallback resolvido pelo IdRecord: ${bruto}`);
+  }
+
+  const url = new URL(bruto);
+
+  if (!config.evo.callbackHosts.includes(url.host)) {
     throw new Error(`ApiCallback aponta para host inesperado (${url.host}) — ignorado`);
   }
 
