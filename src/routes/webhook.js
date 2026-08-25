@@ -8,7 +8,7 @@ import { config } from '../config.js';
 import { supabase } from '../lib/supabase.js';
 import { getOrCreateContact, getOrCreateConversation, saveMessage, handoffToHuman } from '../services/contacts.js';
 import { aiAgent } from '../services/ai-agent.js';
-import { sendText } from '../services/evolution.js';
+import { sendText, normalizePhone } from '../services/evolution.js';
 import { funil } from '../services/funil.js';
 import { evoSync } from '../services/evo-sync.js';
 import { campanhas } from '../services/campanhas.js';
@@ -658,6 +658,34 @@ async function registrarMensagemDeSaida({ phone, content, contentType, evolution
     }
   }
 
+  // 3ª checagem: a fila mandou isto?
+  //
+  // As duas de cima só enxergam o que JÁ foi gravado, e o
+  // `queue-processor` grava DEPOIS de enviar — são três idas ao banco entre
+  // o envio e o registro. O eco da Evolution é local e chega no meio desse
+  // intervalo com frequência.
+  //
+  // Antes isso só movia o funil para `com_consultor` indevidamente. Agora
+  // que escrever do aparelho CALA a Leia, o mesmo erro silenciaria o
+  // atendimento justamente para quem acabou de receber a campanha — e a
+  // pessoa responderia "sim" para o vazio.
+  //
+  // A fila é a fonte certa aqui: ela tem a linha desde antes do envio.
+  const desdeFila = new Date(Date.now() - 5 * 60_000).toISOString();
+  const { data: daFila } = await supabase
+    .from('wa_message_queue')
+    .select('id, source_app')
+    .eq('phone', normalizePhone(phone))
+    .eq('content', content)
+    .in('status', ['processing', 'sent'])
+    .gte('scheduled_for', desdeFila)
+    .limit(1);
+
+  if (daFila?.length) {
+    logger.debug(`[webhook] Eco de envio da fila (${daFila[0].source_app}) — ignorado`);
+    return;
+  }
+
   const desde = new Date(Date.now() - 30_000).toISOString();
   const { data: mesmoTexto } = await supabase
     .from('wa_messages')
@@ -687,6 +715,34 @@ async function registrarMensagemDeSaida({ phone, content, contentType, evolution
   // Consultor digitando no aparelho é o sinal mais confiável de que ele
   // assumiu o atendimento — mais do que qualquer botão no painel, que ele
   // pode nunca clicar.
+  //
+  // E por isso a Leia CALA. Até 25/08/2026 isto movia só a etapa do funil e
+  // deixava `wa_conversations.status` como estava, então a conversa
+  // continuava valendo como automática: o consultor escrevia do aparelho, o
+  // cliente respondia, e a Leia respondia junto.
+  //
+  // Aconteceu com a Gisleide nesse dia. A consultora abriu a conversa às
+  // 12h19 pelo aparelho, o cliente respondeu às 12h39, e a Leia entrou no
+  // mesmo minuto se apresentando do zero — no meio de um assunto que já
+  // estava em andamento e sobre o qual ela não sabia nada. Só parou às
+  // 12h42, quando a consultora usou o painel.
+  //
+  // Vale para conversa que o consultor INICIA, que é o caso que o handoff
+  // não cobre: não existe handoff, porque nunca houve atendimento
+  // automático ali. Para voltar a automática, o caminho é o mesmo de sempre
+  // — o botão de reativar, no painel.
+  if (conversation.status !== 'human') {
+    await supabase
+      .from('wa_conversations')
+      .update({ status: 'human', ai_enabled: false })
+      .eq('id', conversation.id);
+
+    logger.info(
+      `[webhook] Consultor escreveu do aparelho para ${phone} — conversa ${conversation.id} ` +
+      'passou para modo humano, a IA não responde até alguém reativar'
+    );
+  }
+
   await moverFunil(() => funil.aoConsultorAssumir(contact, { via: 'whatsapp' }));
 
   logger.info(`[webhook] 👤 consultor → ${phone}: ${content.slice(0, 80)}`);
