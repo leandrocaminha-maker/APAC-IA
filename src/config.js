@@ -72,6 +72,23 @@ export const config = {
     syncMinutos: parseInt(env('EVO_SYNC_MINUTOS', '15'), 10),
   },
 
+  // Agente — agrupamento de mensagens antes de responder.
+  //
+  // No WhatsApp ninguém escreve um parágrafo: escreve "oi", "quero saber de
+  // natação", "pro meu filho" em três balões seguidos. Sem agrupar, cada
+  // balão dispara um turno completo do agente — três vezes o custo do
+  // prefixo, e a primeira resposta sai antes de a pessoa terminar de
+  // perguntar.
+  //
+  // `debounceSegundos` é quanto se espera por mais um balão depois do
+  // último. `debounceTetoSegundos` é o tempo máximo que a primeira mensagem
+  // pode ficar esperando — sem ele, quem digita sem parar nunca é
+  // respondido. 0 no debounce desliga o agrupamento.
+  agente: {
+    debounceSegundos: parseInt(env('AGENTE_DEBOUNCE_SEGUNDOS', '12'), 10),
+    debounceTetoSegundos: parseInt(env('AGENTE_DEBOUNCE_TETO_SEGUNDOS', '45'), 10),
+  },
+
   // Follow-up de venda — a régua que recupera quem some.
   //
   // O agente só roda quando chega mensagem, então sem este worker quem

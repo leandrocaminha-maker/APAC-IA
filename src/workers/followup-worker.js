@@ -215,8 +215,19 @@ async function enviarUm(item) {
   }
 
   // 3. Gerar e enviar.
-  const resposta = await aiAgent.processMessage({
-    message: instrucao(item.tipo, { lead, presenca, contexto: item.contexto }),
+  //
+  // `gerarFollowup`, e não `processMessage`: a retomada é uma mensagem de
+  // duas ou três linhas que faz uma pergunta, e não precisa da base de
+  // conhecimento nem das tools de cadastro para isso. Pelo caminho completo
+  // ela custava os ~61.700 tokens de prefixo do atendimento inteiro — o
+  // trabalho mais simples do sistema pelo caminho mais caro.
+  //
+  // A contrapartida: sem a base carregada, o agente é proibido de afirmar
+  // preço, horário ou regra (está escrito em `prompts/followup.md`). Os
+  // roteiros em `instrucao()` perguntam, não afirmam — mas um roteiro novo
+  // que precise de um dado da academia tem que voltar para `processMessage`.
+  const resposta = await aiAgent.gerarFollowup({
+    instrucao: instrucao(item.tipo, { lead, presenca, contexto: item.contexto }),
     conversationId: conversa.id,
     contactInfo: {
       id: lead.contact_id,

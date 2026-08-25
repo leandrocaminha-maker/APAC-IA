@@ -1,8 +1,37 @@
 # Pasta de Conhecimento do Agente IA
 
-Todos os arquivos `.md` desta pasta (menos este README) são concatenados e
-enviados no contexto do agente **a cada resposta**. O cache recarrega sozinho a
-cada 5 minutos, ou na hora com `POST /admin/reload-cache`.
+Os arquivos `.md` desta pasta são enviados no contexto do agente **por
+módulo**, não todos de uma vez. O cache recarrega sozinho a cada 5 minutos, ou
+na hora com `POST /admin/reload-cache`.
+
+## Módulos — o que vai em qual conversa
+
+Até 24/08/2026 a pasta inteira ia junto em toda mensagem: 38.038 tokens, o que
+fazia os 9.647 tokens de metodologia da natação infantil viajarem junto de quem
+perguntou o preço da musculação. Agora a composição é esta (definida em
+[`src/services/knowledge.js`](../../services/knowledge.js)):
+
+| Módulo | Arquivos | Quando entra |
+|---|---|---|
+| `nucleo` | `informacoes-gerais`, `planos-e-valores`, `atividades`, `grade-horaria` | **Sempre** |
+| `adulto` | `anamnese-perfil-cliente`, `operacional-adulto` | **Sempre** (material 13+) |
+| `infantil` | `base-conhecimento-natacao-infantil` | Sinal de criança na conversa |
+| `matriculado` | `contrato-resumo`, `suporte-fiti` | Sinal de aluno/suporte, ou `is_prospect = false` |
+
+A detecção lê a conversa inteira que está na janela de histórico, não só a
+última mensagem — e erra para o lado de **carregar demais** de propósito.
+Quando ela erra para menos, o próprio agente pede o módulo que falta com a tool
+`carregar_base`, e ele fica travado naquela conversa
+(`wa_conversations.context.knowledge`).
+
+> ⚠️ **Arquivo novo nesta pasta NÃO entra sozinho.** Ele precisa ser listado em
+> um módulo dentro de `knowledge.js`. É proposital: varrer o diretório foi
+> exatamente o que fazia todo arquivo novo virar custo em toda conversa sem
+> ninguém decidir isso. Se você criou um `.md` aqui e o agente não o enxerga, é
+> isto.
+
+O **follow-up** ([`src/prompts/followup.md`](../followup.md)) não carrega
+módulo nenhum — ver o cabeçalho daquele arquivo.
 
 ## Divisão de responsabilidade
 

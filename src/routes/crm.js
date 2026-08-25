@@ -643,6 +643,7 @@ router.post('/api/simulador/mensagem', rota(async (req, res) => {
       is_prospect: contato.is_prospect,
       tags: contato.tags,
     },
+    origem: 'crm',
   });
 
   const houveHandoff = resposta.action === 'handoff';

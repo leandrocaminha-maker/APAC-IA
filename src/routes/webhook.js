@@ -255,12 +255,150 @@ async function handleIncomingMessage(event) {
     return;
   }
 
-  // Processa com agente IA
+  // Não responde agora: enfileira e espera os próximos balões. Ver
+  // `agendarResposta`.
+  agendarResposta({ phone, contact, conversation, savedMessage, content });
+}
+
+// ──────────────────────────────────────────────
+// Agrupamento de mensagens picotadas
+//
+// No WhatsApp a pergunta chega em pedaços: "oi", "queria saber de natação",
+// "é pro meu filho". Até 24/08/2026 cada pedaço disparava um turno completo
+// do agente — três chamadas à API, cada uma reenviando o prefixo inteiro, e
+// a primeira resposta saindo antes de a pessoa terminar de perguntar. O
+// agente respondia "natação para quem?" enquanto a resposta já estava
+// chegando.
+//
+// Agora cada mensagem reinicia um cronômetro curto e só o silêncio dispara a
+// resposta. As mensagens acumuladas viram um único turno, separadas por
+// quebra de linha.
+//
+// **O teto existe para quem não para de digitar.** Sem ele, um cliente
+// ansioso mandando um balão a cada 10 segundos adiaria a resposta para
+// sempre. Passado `debounceTetoSegundos` desde o PRIMEIRO balão, responde-se
+// com o que houver.
+//
+// **O que continua imediato:** gravar a mensagem, mover o funil e cancelar
+// as sondagens pendentes. Só a resposta espera — o resto do sistema enxerga
+// a mensagem no instante em que ela chega.
+//
+// **Limite conhecido:** os buffers vivem em memória. Um restart do container
+// com mensagens pendentes perde a resposta daquele turno (a mensagem do
+// cliente já está gravada). Aceito enquanto for um processo só; virou fila
+// no banco no dia em que houver mais de uma réplica.
+// ──────────────────────────────────────────────
+
+const buffers = new Map(); // conversationId -> { timer, mensagens, ... }
+
+// Conversas com um turno do agente em voo. Ver `responderBuffer`.
+const emAtendimento = new Set();
+
+const DEBOUNCE_MS = Math.max(0, config.agente.debounceSegundos) * 1000;
+const DEBOUNCE_TETO_MS = Math.max(0, config.agente.debounceTetoSegundos) * 1000;
+
+// De quanto em quanto tempo reconferir se o turno em voo já terminou.
+const REARME_MS = 2_000;
+
+/**
+ * Acumula a mensagem e (re)arma o cronômetro da resposta.
+ */
+function agendarResposta({ phone, contact, conversation, savedMessage, content }) {
+  const chave = conversation.id;
+  const agora = Date.now();
+
+  let buf = buffers.get(chave);
+  if (!buf) {
+    buf = { mensagens: [], primeiroEm: agora, timer: null };
+    buffers.set(chave, buf);
+  }
+
+  // Sempre os dados mais recentes: o `pushName` pode ter chegado só agora.
+  buf.phone = phone;
+  buf.contact = contact;
+  buf.conversation = conversation;
+  buf.mensagens.push({ id: savedMessage?.id ?? null, content });
+
+  if (buf.timer) clearTimeout(buf.timer);
+
+  const restanteDoTeto = DEBOUNCE_TETO_MS - (agora - buf.primeiroEm);
+  const espera = Math.max(0, Math.min(DEBOUNCE_MS, restanteDoTeto));
+
+  if (buf.mensagens.length > 1) {
+    logger.debug(`[webhook] Agrupando (${buf.mensagens.length} msgs), respondendo em ${espera}ms`);
+  }
+
+  buf.timer = setTimeout(() => {
+    responderBuffer(chave).catch(err =>
+      logger.error('[webhook] Falha ao responder o buffer:', err));
+  }, espera);
+
+  // Não segura o processo no shutdown.
+  buf.timer.unref?.();
+}
+
+/**
+ * Dispara o turno do agente com tudo o que se acumulou.
+ */
+async function responderBuffer(chave) {
+  const buf = buffers.get(chave);
+  if (!buf) return;
+
+  // Já existe um turno em voo para esta conversa.
+  //
+  // Acontece quando a pessoa escreve de novo enquanto o agente ainda está
+  // pensando. Deixar os dois correrem juntos custaria duas chamadas cheias
+  // e produziria duas respostas — a segunda sem enxergar a primeira, porque
+  // a resposta do agente só é gravada no fim. Melhor esperar: quando o
+  // turno atual terminar, a mensagem nova entra num turno próprio, já com a
+  // resposta anterior no histórico.
+  if (emAtendimento.has(chave)) {
+    buf.timer = setTimeout(() => {
+      responderBuffer(chave).catch(err =>
+        logger.error('[webhook] Falha ao responder o buffer:', err));
+    }, REARME_MS);
+    buf.timer.unref?.();
+    return;
+  }
+
+  buffers.delete(chave);
+  emAtendimento.add(chave);
+
+  try {
+    const { phone, contact, conversation, mensagens } = buf;
+
+    // Um consultor pode ter assumido a conversa durante a espera. O status
+    // lido lá em cima está velho — vale o de agora.
+    const { data: atual } = await supabase
+      .from('wa_conversations')
+      .select('status')
+      .eq('id', conversation.id)
+      .single();
+
+    if (atual?.status === 'human') {
+      logger.info('[webhook] Conversa passou a modo humano durante o agrupamento — sem resposta IA');
+      return;
+    }
+
+    // Um turno só, na ordem em que a pessoa escreveu.
+    const content = mensagens.map(m => m.content).join('\n');
+    const savedIds = mensagens.map(m => m.id).filter(Boolean);
+
+    await responderTurno({ phone, contact, conversation, content, savedIds });
+  } finally {
+    emAtendimento.delete(chave);
+  }
+}
+
+/**
+ * Um turno do agente: chama a IA, trata handoff e envia a resposta.
+ */
+async function responderTurno({ phone, contact, conversation, content, savedIds }) {
   try {
     const aiResponse = await aiAgent.processMessage({
       message: content,
       conversationId: conversation.id,
-      excludeMessageId: savedMessage?.id,
+      excludeMessageId: savedIds,
       contactInfo: {
         id: contact.id,
         name: contact.name,
@@ -268,6 +406,7 @@ async function handleIncomingMessage(event) {
         is_prospect: contact.is_prospect,
         tags: contact.tags,
       },
+      origem: 'webhook',
     });
 
     // Se IA solicitou handoff

@@ -23,6 +23,7 @@ import { logger } from '../lib/logger.js';
 import { evoClient } from './evo-client.js';
 import { evoSync } from './evo-sync.js';
 import { funil } from './funil.js';
+import { MODULOS } from './knowledge.js';
 
 // ──────────────────────────────────────────────
 // Tools pausadas
@@ -154,6 +155,29 @@ const allToolDeclarations = [
       required: ['motivo', 'mensagem'],
     },
   },
+  {
+    name: 'carregar_base',
+    description:
+      'Carrega no seu contexto um módulo da base de conhecimento que não está carregado agora. ' +
+      'O cabeçalho da sua BASE DE CONHECIMENTO diz quais módulos estão e quais NÃO estão. ' +
+      'Use assim que perceber que o assunto do cliente é de um módulo ausente — ANTES de responder, ' +
+      'e antes de cogitar `transferir_para_humano`. ' +
+      'Módulo `infantil`: metodologia, níveis, turmas e objeções da escola de natação infantil e de bebês. ' +
+      'Módulo `matriculado`: contrato, férias, atestado, afastamento, cancelamento e app FITI. ' +
+      'Não custa nada ao cliente e não aparece para ele: se estiver em dúvida, carregue. ' +
+      'Nunca responda de memória sobre um assunto cujo módulo está ausente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        modulo: {
+          type: 'string',
+          description: 'Qual módulo carregar.',
+          enum: ['infantil', 'matriculado'],
+        },
+      },
+      required: ['modulo'],
+    },
+  },
 ];
 
 /** Tools efetivamente oferecidas ao Claude (as pausadas ficam de fora). */
@@ -231,6 +255,50 @@ function validarDataHora(valor) {
 // ──────────────────────────────────────────────
 
 const handlers = {
+  /**
+   * Puxa um módulo ausente da base de conhecimento.
+   *
+   * Não devolve o TEXTO do módulo de propósito. Um `tool_result` com 9.647
+   * tokens de natação infantil dentro entraria em `messages`, que fica fora
+   * do breakpoint de cache — a preço cheio, e reenviado em toda chamada
+   * seguinte da conversa. Sairia mais caro do que o problema que resolve.
+   *
+   * Em vez disso devolve uma ordem para `ai-agent.js`, que remonta o
+   * `system` com o módulo dentro. Ali ele é cacheado como qualquer outra
+   * variante de prefixo, e é lido a ~10% do preço nas chamadas seguintes.
+   */
+  async carregar_base(args, contexto) {
+    const modulo = String(args.modulo || '').trim();
+
+    // `nucleo` e `adulto` vão sempre; pedi-los é sinal de que o modelo não
+    // leu o cabeçalho, e recarregá-los não faria nada.
+    if (!MODULOS[modulo] || modulo === 'nucleo' || modulo === 'adulto') {
+      return {
+        success: false,
+        mensagem: `Não existe módulo "${modulo}" para carregar. Os que se pode pedir são ` +
+          '`infantil` e `matriculado`. Se o que você procura não é nenhum dos dois, ' +
+          'o dado não está na base — nesse caso vale `transferir_para_humano`.',
+      };
+    }
+
+    if ((contexto?.modulosCarregados || []).includes(modulo)) {
+      return {
+        success: true,
+        ja_carregado: true,
+        mensagem: `O módulo "${modulo}" JÁ está na sua base de conhecimento. ` +
+          'Releia a seção correspondente e responda ao cliente — não chame esta ferramenta de novo.',
+      };
+    }
+
+    return {
+      success: true,
+      action: 'carregar_modulo',
+      modulo,
+      mensagem: `Módulo "${modulo}" carregado. O conteúdo já está na sua BASE DE CONHECIMENTO. ` +
+        'Leia-o e responda ao cliente a partir dele.',
+    };
+  },
+
   /**
    * Procura a pessoa no EVO antes de cadastrar.
    *

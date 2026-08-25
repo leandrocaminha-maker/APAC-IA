@@ -4,20 +4,36 @@
  *
  * Fluxo:
  * 1. Carrega prompt do banco (wa_ai_prompts)
- * 2. Carrega knowledge files da pasta prompts/knowledge/
- * 3. Monta histórico da conversa
- * 4. Envia ao Claude com as tools
+ * 2. Carrega histórico da conversa
+ * 3. Decide quais módulos da base de conhecimento a conversa precisa
+ * 4. Monta o system em 2 blocos (estável + volátil) e envia ao Claude
  * 5. Processa tool calls em loop
  * 6. Retorna resposta final
+ *
+ * ## Onde o dinheiro é gasto
+ *
+ * Cada volta do loop de tools é uma chamada nova, e cada chamada reenvia o
+ * prefixo inteiro. Medido com `count_tokens` em 24/08/2026, o prefixo era de
+ * 61.694 tokens (prompt 21.741 + base 38.038 + tools 1.915), o que colocava
+ * ~95% do custo de entrada num bloco que é idêntico em toda conversa de todo
+ * cliente. Três coisas atacam isso, e as três estão neste arquivo:
+ *
+ * 1. **TTL de 1h no cache** (era 5 min). Ver `CACHE_TTL`.
+ * 2. **Base modular** (`knowledge.js`): o núcleo vai sempre, o resto por sinal.
+ * 3. **Caminho enxuto de follow-up** (`gerarFollowup`): sem base e sem tools.
+ *
+ * O que sobra é medido chamada a chamada em `wa_ai_usage` (`ai-usage.js`).
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { readdir, readFile } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { toolDeclarations, executeTool } from './ai-tools.js';
+import { detectarModulos, montarKnowledge, invalidarKnowledge } from './knowledge.js';
+import { aiUsage } from './ai-usage.js';
 
 const MODEL = 'claude-opus-5';
 
@@ -27,6 +43,24 @@ const MAX_TOKENS = 2048;
 
 // Teto de idas e voltas de tool num mesmo turno.
 const MAX_TOOL_ITERATIONS = 5;
+
+/**
+ * TTL do cache de prompt.
+ *
+ * Era o padrão de 5 minutos, e com tráfego de WhatsApp isso estava
+ * ENCARECENDO o sistema em vez de baratear: escrever o cache custa 1,25x o
+ * preço de entrada, contra 1x de não ter cache nenhum. Só compensa se a
+ * entrada for lida depois — e uma conversa em que o cliente responde 20
+ * minutos depois nunca lia.
+ *
+ * Com 1h a escrita sobe para 2x, mas passa a cobrir o intervalo real entre
+ * mensagens. E como o prefixo é o MESMO para todos os clientes, qualquer
+ * conversa mantém o cache quente para todas as outras: o custo da escrita é
+ * dividido pelo movimento do dia inteiro, não por uma conversa.
+ *
+ * Se este valor mudar, `ESCRITA_MULTIPLICADOR` em `ai-usage.js` muda junto.
+ */
+const CACHE_TTL = '1h';
 
 const FALLBACK_TEXT = 'Desculpe, não consegui processar sua solicitação no momento.';
 
@@ -42,33 +76,17 @@ const client = new Anthropic({
   maxRetries: 3,
 });
 
-/**
- * Registra o aproveitamento do cache de prompt.
- * Se cache_read ficar sempre em zero, algo está invalidando o prefixo
- * (o mais provável: conteúdo variável entrando antes do breakpoint).
- */
-function logCacheUsage(usage) {
-  if (!usage) return;
-  logger.debug(
-    `[ai-agent] tokens: entrada=${usage.input_tokens} ` +
-    `cache_escrita=${usage.cache_creation_input_tokens ?? 0} ` +
-    `cache_leitura=${usage.cache_read_input_tokens ?? 0} ` +
-    `saida=${usage.output_tokens}`
-  );
-}
-
-// Caminho para os knowledge files
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const KNOWLEDGE_DIR = join(__dirname, '..', 'prompts', 'knowledge');
+const FOLLOWUP_PROMPT_PATH = join(__dirname, '..', 'prompts', 'followup.md');
 
 // ──────────────────────────────────────────────
-// Cache
+// Cache local (disco/banco → memória)
 // ──────────────────────────────────────────────
 
 let cachedPrompt = null;
-let cachedKnowledge = null;
+let cachedFollowupPrompt = null;
 let promptLoadedAt = 0;
-let knowledgeLoadedAt = 0;
+let followupLoadedAt = 0;
 const CACHE_MS = 5 * 60 * 1000; // 5 minutos
 
 /**
@@ -99,69 +117,87 @@ async function loadPrompt(slug = 'vendas') {
 }
 
 /**
- * Bloco usado quando a base de conhecimento não pôde ser carregada.
- * Sem ele o modelo ficaria sem nenhuma instrução sobre preços/horários e
- * tenderia a inventar valores.
- */
-const NO_KNOWLEDGE_GUARD = '\n\n## BASE DE CONHECIMENTO\n' +
-  'A base de conhecimento não pôde ser carregada nesta conversa. Você NÃO tem ' +
-  'nenhum dado de planos, valores ou grade horária. É proibido inventar ou ' +
-  'estimar qualquer informação desse tipo — use transferir_para_humano.';
-
-/**
- * Carrega todos os knowledge files (.md) da pasta prompts/knowledge/.
- * Estes arquivos contêm informações estáticas editáveis sem deploy:
- * planos, valores, grade horária, FAQ, regras de negócio.
+ * Carrega o prompt enxuto de follow-up do disco.
  *
- * @returns {Promise<string>} Conteúdo concatenado de todos os arquivos
+ * O corte em "Você é a Leia" descarta o cabeçalho de edição do .md — mesma
+ * convenção do `scripts/publicar-prompt.js`. O cabeçalho é instrução para
+ * humano, e mandá-lo ao modelo seria pagar por ele em toda retomada.
  */
-async function loadKnowledgeFiles() {
+async function loadFollowupPrompt() {
   const now = Date.now();
-  if (cachedKnowledge && (now - knowledgeLoadedAt) < CACHE_MS) {
-    return cachedKnowledge;
+  if (cachedFollowupPrompt && (now - followupLoadedAt) < CACHE_MS) {
+    return cachedFollowupPrompt;
   }
 
   try {
-    const files = await readdir(KNOWLEDGE_DIR);
-    const mdFiles = files
-      .filter(f => extname(f) === '.md' && f !== 'README.md')
-      .sort();
-
-    if (mdFiles.length === 0) {
-      logger.warn('[ai-agent] Nenhum knowledge file encontrado');
-      cachedKnowledge = NO_KNOWLEDGE_GUARD;
-      knowledgeLoadedAt = now;
-      return cachedKnowledge;
-    }
-
-    const sections = [];
-    for (const file of mdFiles) {
-      const content = await readFile(join(KNOWLEDGE_DIR, file), 'utf-8');
-      sections.push(`\n--- Arquivo: ${file} ---\n${content.trim()}`);
-    }
-
-    cachedKnowledge = '\n\n## BASE DE CONHECIMENTO (arquivos locais)\n' +
-      'As informações abaixo são a ÚNICA fonte de verdade sobre planos, valores, ' +
-      'modalidades, grade horária e regras da academia. Não existe consulta a ' +
-      'sistema externo para esses dados.\n' +
-      'REGRA CRÍTICA: se a informação que o cliente pediu não estiver abaixo, ou ' +
-      'estiver marcada como "PENDENTE", "_preencha_", "Exemplo", "XXX" ou ' +
-      '"descreva aqui", esse dado AINDA NÃO ESTÁ DISPONÍVEL. Nesse caso é ' +
-      'proibido inventar, estimar ou aproximar: ' +
-      'diga que vai confirmar a informação exata com um consultor e use a ' +
-      'ferramenta transferir_para_humano.\n' +
-      sections.join('\n');
-
-    knowledgeLoadedAt = now;
-    logger.info(`[ai-agent] ${mdFiles.length} knowledge file(s) carregado(s): ${mdFiles.join(', ')}`);
-    return cachedKnowledge;
+    const bruto = await readFile(FOLLOWUP_PROMPT_PATH, 'utf-8');
+    const inicio = bruto.indexOf('Você é a Leia');
+    cachedFollowupPrompt = (inicio < 0 ? bruto : bruto.slice(inicio)).trim();
+    followupLoadedAt = now;
+    return cachedFollowupPrompt;
   } catch (err) {
-    logger.error('[ai-agent] Erro ao carregar knowledge files:', err.message);
-    cachedKnowledge = NO_KNOWLEDGE_GUARD;
-    knowledgeLoadedAt = now;
-    return cachedKnowledge;
+    logger.error('[ai-agent] Erro ao ler followup.md:', err.message);
+    // Sem o arquivo, o mínimo que impede o pior: retomar sem afirmar fato.
+    return 'Você é a Leia, consultora virtual da AP Academia. Você está retomando ' +
+      'uma conversa que já existe — não cumprimente como primeiro contato. ' +
+      'Escreva de duas a quatro linhas, uma pergunta só, sem pressão. ' +
+      'Você NÃO tem a base de conhecimento carregada: não afirme preço, valor, ' +
+      'horário, prazo ou regra de contrato. Devolva apenas o texto da mensagem.';
   }
 }
+
+// ──────────────────────────────────────────────
+// Módulos da base fixados na conversa
+// ──────────────────────────────────────────────
+
+/**
+ * Lê os módulos que já foram travados nesta conversa.
+ *
+ * Isso existe para o caso em que o modelo pediu um módulo com
+ * `carregar_base`: a chamada de tool não vira mensagem em `wa_messages`, e
+ * portanto some do histórico no turno seguinte. Sem gravar em algum lugar, o
+ * módulo teria de ser pedido de novo a cada mensagem — uma chamada de API
+ * extra por turno, que é exatamente o que se está tentando evitar.
+ */
+async function modulosFixados(conversationId) {
+  if (!conversationId) return [];
+
+  const { data, error } = await supabase
+    .from('wa_conversations')
+    .select('context')
+    .eq('id', conversationId)
+    .single();
+
+  if (error || !data) return [];
+  const lista = data.context?.knowledge;
+  return Array.isArray(lista) ? lista : [];
+}
+
+/** Trava um módulo na conversa, preservando o resto do `context`. */
+async function fixarModulo(conversationId, modulo) {
+  if (!conversationId) return;
+
+  const { data } = await supabase
+    .from('wa_conversations')
+    .select('context')
+    .eq('id', conversationId)
+    .single();
+
+  const context = data?.context ?? {};
+  const atuais = Array.isArray(context.knowledge) ? context.knowledge : [];
+  if (atuais.includes(modulo)) return;
+
+  const { error } = await supabase
+    .from('wa_conversations')
+    .update({ context: { ...context, knowledge: [...atuais, modulo] } })
+    .eq('id', conversationId);
+
+  if (error) logger.warn(`[ai-agent] Não fixou o módulo "${modulo}":`, error.message);
+}
+
+// ──────────────────────────────────────────────
+// Histórico
+// ──────────────────────────────────────────────
 
 /**
  * Busca as últimas N mensagens de uma conversa para contexto.
@@ -169,12 +205,14 @@ async function loadKnowledgeFiles() {
  * @param {number} conversationId
  * @param {object} [opts]
  * @param {number} [opts.limit] - Quantas mensagens trazer
- * @param {number} [opts.excludeMessageId] - Mensagem a ignorar. A mensagem que
- *   está sendo respondida agora já foi gravada pelo webhook antes de chegar
- *   aqui; sem excluí-la ela entraria no histórico E seria enviada de novo
- *   como mensagem atual, chegando duplicada ao modelo.
+ * @param {number[]} [opts.excludeMessageIds] - Mensagens a ignorar. As
+ *   mensagens que estão sendo respondidas agora já foram gravadas pelo
+ *   webhook antes de chegar aqui; sem excluí-las elas entrariam no histórico
+ *   E seriam enviadas de novo como mensagem atual, chegando duplicadas ao
+ *   modelo. São VÁRIAS desde que o webhook passou a agrupar mensagens
+ *   picotadas antes de responder.
  */
-async function loadConversationHistory(conversationId, { limit = 20, excludeMessageId = null } = {}) {
+async function loadConversationHistory(conversationId, { limit = 20, excludeMessageIds = [] } = {}) {
   if (!conversationId) return [];
 
   // Ordena DESC para pegar as mensagens mais RECENTES (com ASC pegaríamos as
@@ -186,7 +224,9 @@ async function loadConversationHistory(conversationId, { limit = 20, excludeMess
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (excludeMessageId) query = query.neq('id', excludeMessageId);
+  const ignorar = excludeMessageIds.filter(Boolean);
+  if (ignorar.length === 1) query = query.neq('id', ignorar[0]);
+  else if (ignorar.length > 1) query = query.not('id', 'in', `(${ignorar.join(',')})`);
 
   const { data, error } = await query;
   if (error || !data) return [];
@@ -277,20 +317,48 @@ function buildDynamicContext(contactInfo = {}) {
 }
 
 /**
+ * Monta o `system` da requisição.
+ *
+ * Vai em DOIS blocos por causa do prompt caching.
+ *
+ * O primeiro bloco (prompt do banco + base de conhecimento) é byte-a-byte
+ * idêntico para todo cliente que estiver com os MESMOS módulos carregados —
+ * ele leva o breakpoint e passa a custar ~10% na leitura. O segundo muda a
+ * cada conversa E a cada minuto, então fica DEPOIS do breakpoint: se a hora
+ * viesse antes, invalidaria o cache a cada minuto e nunca haveria acerto.
+ *
+ * O conjunto de módulos é, na prática, o nome da entrada de cache. Por isso
+ * `montarKnowledge` os concatena sempre na mesma ordem: "nucleo+adulto" tem
+ * que gerar os mesmos bytes na conversa de agora e na de daqui a uma hora.
+ */
+async function buildSystem(systemPrompt, modulos, dynamicContext) {
+  const knowledge = await montarKnowledge(modulos);
+  return [
+    {
+      type: 'text',
+      text: systemPrompt + knowledge,
+      cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
+    },
+    { type: 'text', text: dynamicContext },
+  ];
+}
+
+/**
  * Processa uma mensagem do usuário com o agente IA.
  *
  * O prompt é composto por 3 camadas:
  * 1. Prompt do banco (editável no admin, define persona e regras)
- * 2. Knowledge files (editáveis na pasta, dados da academia)
+ * 2. Base de conhecimento, nos módulos que esta conversa precisa
  * 3. Contexto do contato (dinâmico, dados da conversa atual)
  *
  * @param {object} params
  * @param {string} params.message - Texto da mensagem recebida
  * @param {number} [params.conversationId] - ID da conversa (para contexto)
- * @param {number} [params.excludeMessageId] - ID da mensagem atual já gravada,
- *   para não duplicá-la no histórico
+ * @param {number|number[]} [params.excludeMessageId] - ID(s) da(s) mensagem(ns)
+ *   atual(is) já gravada(s), para não duplicá-la(s) no histórico
  * @param {object} [params.contactInfo] - Dados do contato (nome, tags, etc.)
  * @param {string} [params.promptSlug] - Slug do prompt a usar
+ * @param {string} [params.origem] - Rótulo para a telemetria
  *
  * @returns {Promise<{text: string, action?: string, toolResults?: object[]}>}
  */
@@ -300,38 +368,37 @@ export async function processMessage({
   excludeMessageId = null,
   contactInfo = {},
   promptSlug = 'vendas',
+  origem = 'webhook',
 }) {
   // Camada 1: Prompt base do banco
   const systemPrompt = await loadPrompt(promptSlug);
 
-  // Camada 2: Knowledge files (planos, horários, FAQ)
-  const knowledge = await loadKnowledgeFiles();
+  // Histórico vem antes do system porque é ele que diz quais módulos da base
+  // esta conversa precisa: quem falou do filho de 4 anos na segunda mensagem
+  // continua precisando do módulo infantil na décima.
+  const excludeMessageIds = Array.isArray(excludeMessageId)
+    ? excludeMessageId
+    : (excludeMessageId ? [excludeMessageId] : []);
+  const history = await loadConversationHistory(conversationId, { excludeMessageIds });
+
+  const fixados = await modulosFixados(conversationId);
+  let modulos = detectarModulos({
+    textos: [...history.map(m => m.content), message],
+    isProspect: contactInfo.is_prospect,
+    fixados,
+  });
 
   // Camada 3: o que muda a cada mensagem — agora e contato.
   const dynamicContext = buildDynamicContext(contactInfo);
 
-  // O system vai em DOIS blocos por causa do prompt caching.
-  //
-  // As camadas 1 e 2 são byte-a-byte idênticas em toda mensagem de todo
-  // cliente — elas levam o breakpoint de cache e passam a custar ~10% na
-  // leitura. A camada 3 muda a cada conversa E a cada minuto, então fica
-  // DEPOIS do breakpoint: se a hora viesse antes, invalidaria o cache a cada
-  // minuto e nunca haveria acerto.
-  const system = [
-    {
-      type: 'text',
-      text: systemPrompt + knowledge,
-      cache_control: { type: 'ephemeral' },
-    },
-    { type: 'text', text: dynamicContext },
-  ];
+  // Camadas 1 + 2, com o breakpoint de cache.
+  let system = await buildSystem(systemPrompt, modulos, dynamicContext);
 
-  // Carrega histórico e acrescenta a mensagem atual
-  const history = await loadConversationHistory(conversationId, { excludeMessageId });
   const messages = [...history, { role: 'user', content: message }];
   const toolResults = [];
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+    const inicio = Date.now();
     const response = await client.beta.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
@@ -348,6 +415,20 @@ export async function processMessage({
       system,
       tools: toolDeclarations,
       messages,
+    });
+
+    // Toda chamada é contabilizada, não só a última do turno. Um turno com
+    // três tools são quatro chamadas pagando o prefixo inteiro cada uma, e
+    // medir só a última é o que fazia o custo parecer 4x menor do que é.
+    aiUsage.registrar({
+      usage: response.usage,
+      modelo: MODEL,
+      conversationId,
+      origem,
+      iteracao: iteration,
+      modulos,
+      stopReason: response.stop_reason,
+      duracaoMs: Date.now() - inicio,
     });
 
     // Precisa vir antes de ler content: numa recusa o array vem vazio.
@@ -371,13 +452,14 @@ export async function processMessage({
         .join('\n')
         .trim();
 
-      logCacheUsage(response.usage);
       return { text: text || FALLBACK_TEXT, toolResults };
     }
 
     messages.push({ role: 'assistant', content: response.content });
 
     const results = [];
+    let recarregarBase = false;
+
     for (const toolUse of toolUses) {
       logger.info(`[ai-agent] Tool call: ${toolUse.name}`);
 
@@ -390,6 +472,7 @@ export async function processMessage({
         conversationId,
         phone: contactInfo.phone ?? null,
         tags: contactInfo.tags ?? [],
+        modulosCarregados: modulos,
       });
       toolResults.push({ tool: toolUse.name, args: toolUse.input, result });
 
@@ -403,6 +486,20 @@ export async function processMessage({
         };
       }
 
+      // O modelo percebeu que precisa de um módulo que não está carregado.
+      // O texto NÃO volta como tool_result de propósito: ali ele ficaria
+      // fora do cache, a preço cheio, em toda chamada seguinte da conversa.
+      // Em vez disso o módulo entra no `system` e passa a ser cacheado como
+      // qualquer outra variante.
+      if (result.action === 'carregar_modulo') {
+        if (!modulos.includes(result.modulo)) {
+          modulos = [...modulos, result.modulo];
+          recarregarBase = true;
+          await fixarModulo(conversationId, result.modulo);
+          logger.info(`[ai-agent] Módulo "${result.modulo}" carregado a pedido do modelo`);
+        }
+      }
+
       results.push({
         type: 'tool_result',
         tool_use_id: toolUse.id,
@@ -411,6 +508,11 @@ export async function processMessage({
     }
 
     messages.push({ role: 'user', content: results });
+
+    if (recarregarBase) {
+      modulos = [...new Set(modulos)];
+      system = await buildSystem(systemPrompt, modulos, dynamicContext);
+    }
   }
 
   logger.warn(`[ai-agent] Limite de ${MAX_TOOL_ITERATIONS} iterações atingido`);
@@ -418,18 +520,97 @@ export async function processMessage({
 }
 
 /**
- * Invalida todos os caches (prompt + knowledge files).
+ * Gera uma mensagem de retomada (follow-up).
+ *
+ * Caminho deliberadamente enxuto: prompt curto de `prompts/followup.md`,
+ * histórico da conversa, e **nada mais**. Sem base de conhecimento e sem
+ * tools.
+ *
+ * Antes disso o worker chamava `processMessage`, o que carregava os ~61.700
+ * tokens do atendimento completo para escrever duas linhas — o trabalho mais
+ * simples do sistema pelo caminho mais caro. Aqui o prefixo fica na casa de
+ * 1.000 tokens, com o mesmo TTL de 1h.
+ *
+ * A contrapartida está escrita no próprio prompt: sem a base, o agente é
+ * proibido de afirmar preço, horário ou regra. Os roteiros de follow-up
+ * fazem perguntas, não afirmações, então isso não tira nada do que ele
+ * precisa — mas se um roteiro novo precisar de um dado da academia, ele tem
+ * que voltar para `processMessage`.
+ *
+ * @param {object} params
+ * @param {string} params.instrucao - Roteiro do follow-up (o que escrever)
+ * @param {number} [params.conversationId]
+ * @param {object} [params.contactInfo]
+ * @returns {Promise<{text: string}>}
+ */
+export async function gerarFollowup({ instrucao, conversationId, contactInfo = {} }) {
+  const systemPrompt = await loadFollowupPrompt();
+  const history = await loadConversationHistory(conversationId);
+
+  const system = [
+    {
+      type: 'text',
+      text: systemPrompt,
+      cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
+    },
+    { type: 'text', text: buildDynamicContext(contactInfo) },
+  ];
+
+  // Sem histórico não há conversa a retomar — e a API exige que a lista
+  // comece com 'user' de qualquer jeito.
+  const messages = [...history, { role: 'user', content: instrucao }];
+
+  const inicio = Date.now();
+  const response = await client.beta.messages.create({
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    output_config: { effort: 'low' },
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    system,
+    messages,
+  });
+
+  aiUsage.registrar({
+    usage: response.usage,
+    modelo: MODEL,
+    conversationId,
+    origem: 'followup',
+    iteracao: 0,
+    modulos: [],
+    stopReason: response.stop_reason,
+    duracaoMs: Date.now() - inicio,
+  });
+
+  if (response.stop_reason === 'refusal') {
+    logger.warn(`[ai-agent] Recusa no follow-up (${response.stop_details?.category || 'sem categoria'})`);
+    return { text: '' };
+  }
+
+  const text = response.content
+    .filter(block => block.type === 'text')
+    .map(block => block.text)
+    .join('\n')
+    .trim();
+
+  return { text };
+}
+
+/**
+ * Invalida todos os caches (prompt do banco + base de conhecimento).
  * Útil quando o admin edita o prompt ou os knowledge files são atualizados.
  */
 export function invalidatePromptCache() {
   cachedPrompt = null;
-  cachedKnowledge = null;
+  cachedFollowupPrompt = null;
   promptLoadedAt = 0;
-  knowledgeLoadedAt = 0;
+  followupLoadedAt = 0;
+  invalidarKnowledge();
   logger.info('[ai-agent] Cache de prompt e knowledge invalidado');
 }
 
 export const aiAgent = {
   processMessage,
+  gerarFollowup,
   invalidatePromptCache,
 };

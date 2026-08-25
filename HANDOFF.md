@@ -608,6 +608,87 @@ Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
 - **Desligue a página quando a rodada de testes acabar** — senha curta em IP
   público não é para ficar no ar indefinidamente.
 
+## O que foi feito em 24/08/2026 — custo de crédito
+
+A pergunta era "como reduzir custo de créditos". A resposta começou por medir,
+com `count_tokens` contra o `claude-opus-5`, o que de fato vai no prompt:
+
+| Camada | Tokens |
+|---|---:|
+| Prompt do banco (`vendas`) | 21.741 |
+| Base de conhecimento (9 arquivos) | 38.038 |
+| Declaração das tools | 1.915 |
+| **Prefixo reenviado em TODA chamada** | **61.694** |
+
+Com isso, ~95% do custo de entrada estava num bloco idêntico em toda conversa de
+todo cliente — e cada volta do loop de tools paga esse bloco de novo.
+
+### O que mudou
+
+1. **TTL do cache de 5 min → 1h** (`CACHE_TTL` em `ai-agent.js`). Era o item
+   mais grave: escrever o cache custa 1,25x o preço de entrada e ler custa 0,1x,
+   contra 1x de não ter cache nenhum. Com 5 minutos e ritmo de WhatsApp, boa
+   parte das conversas só escrevia e nunca lia — ou seja, o cache estava
+   **encarecendo** o sistema. Verificado depois da mudança: 1ª chamada $0,4923
+   (escrita), 2ª chamada **$0,0305** (leitura). 16x.
+
+2. **Agrupamento de mensagens picotadas** (`webhook.js`). Cada balão do
+   WhatsApp disparava um turno completo. Agora o cronômetro reinicia a cada
+   mensagem e só o silêncio dispara a resposta (`AGENTE_DEBOUNCE_SEGUNDOS=12`,
+   teto de 45s). Também impede dois turnos correrem juntos na mesma conversa.
+   Corta o custo do caminho mais movimentado na proporção do quanto o cliente
+   picota — **e melhora a resposta**, que antes saía antes de a pergunta
+   terminar.
+
+3. **Base de conhecimento em módulos** (`services/knowledge.js`). O núcleo vai
+   sempre; `infantil` e `matriculado` entram por sinal da conversa. A
+   detecção erra para o lado de carregar demais de propósito, e quando erra para
+   menos o próprio agente pede o módulo pela tool `carregar_base` — que **não**
+   devolve o texto no `tool_result` (ali ficaria fora do cache, a preço cheio),
+   e sim remonta o `system`.
+
+4. **Follow-up com caminho próprio** (`gerarFollowup` + `prompts/followup.md`).
+   Escrever "como foi a aula?" carregava os 61.694 tokens do atendimento
+   completo. Agora são **844** — sem base e sem tools. O preço: sem a base
+   carregada, o prompt proíbe afirmar qualquer dado da academia. Roteiro novo
+   que precise de um fato tem que voltar para `processMessage`.
+
+5. **Telemetria por chamada** (`services/ai-usage.js` + migration 004). Uma
+   linha em `wa_ai_usage` por chamada à API, não por turno — o `logger.debug`
+   anterior rodava uma vez só, no fim do turno, e em nível que não aparece em
+   produção. A view `wa_ai_usage_diario` dá custo por dia, por origem e por
+   conversa, mais a `taxa_cache`.
+
+### Prefixo depois da mudança
+
+| Combinação | Prefixo | vs. 61.694 |
+|---|---:|---:|
+| `nucleo+adulto` (venda adulto, o caso comum) | 48.875 | **-21%** |
+| `nucleo+adulto+matriculado` | 53.049 | -14% |
+| `nucleo+adulto+infantil` | 58.551 | -5% |
+| Todos os módulos (pior caso) | 62.638 | +2% |
+| Follow-up | 844 | -99% |
+
+O pior caso ficou 2% acima do que era: o índice de módulos no cabeçalho da base
+e a tool `carregar_base` custam ~950 tokens. É o preço de a conversa comum
+pagar 21% a menos.
+
+### ⚠️ Pendências desta mudança
+
+- **Migration 004 NÃO foi aplicada.** Rode `supabase/migrations/004_ai_usage.sql`
+  no SQL Editor. Enquanto não rodar, a telemetria loga um `warn` por chamada e
+  não grava nada — o atendimento segue normal.
+- **`npm run prompt` não é necessário** — nada em `vendas.md` mudou. Mas o
+  prompt ainda **não menciona** `carregar_base`; hoje o agente descobre a tool
+  só pela descrição dela e pelo cabeçalho da base. Se aparecer transferência
+  para humano em assunto de módulo ausente, é aqui que se corrige.
+- **Buffers de agrupamento vivem em memória.** Restart com mensagem pendente
+  perde a resposta daquele turno (a mensagem do cliente já está gravada). Vale
+  enquanto for um processo só.
+- **Modelo não foi trocado.** Segue `claude-opus-5`. Sonnet 5 sai ~40% mais
+  barato e é decisão em aberto — a telemetria da 004 é o que dá base para
+  decidir com número em vez de palpite.
+
 ## O que foi feito em 20/08/2026
 
 Onze commits, de `d07d4df` a `0808af3`. O detalhe de cada achado está nos blocos
