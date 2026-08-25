@@ -446,6 +446,25 @@ router.get('/api/conversas/:id/mensagens', rota(async (req, res) => {
  * declaração explícita de que o humano assumiu, então aqui a decisão é
  * tomada: humano falou, bot cala.
  */
+/**
+ * Primeiro nome, para assinar a mensagem.
+ *
+ * Só o primeiro: "*Shirlei:*" é como o aparelho já assina, e é como se
+ * escreve no WhatsApp. Nome completo numa assinatura soa a formulário.
+ */
+function primeiroNome(nome) {
+  return String(nome || '').trim().split(/\s+/)[0] || 'Atendimento';
+}
+
+/**
+ * Quebra de linha da assinatura.
+ *
+ * Constante em vez de escape dentro do template literal: este arquivo é
+ * CRLF, e um template de várias linhas levaria o retorno de carro junto
+ * para dentro da mensagem enviada ao cliente.
+ */
+const QUEBRA_ASSINATURA = String.fromCharCode(10);
+
 router.post('/api/conversas/:id/responder', rota(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const texto = String(req.body?.mensagem || '').trim();
@@ -462,9 +481,24 @@ router.post('/api/conversas/:id/responder', rota(async (req, res) => {
     return res.status(400).json({ erro: 'Esta é uma conversa do simulador — use a aba Simulador.' });
   }
 
+  // Assinatura do consultor, no mesmo formato que o aparelho já usa.
+  //
+  // Sem isto o cliente recebia do painel uma mensagem sem dono, na mesma
+  // conversa em que as do celular vinham assinadas — e sem saber se estava
+  // falando com uma pessoa ou com a Leia. Numa conversa que passa por bot,
+  // consultor no painel e consultor no celular, saber quem está do outro
+  // lado não é detalhe.
+  //
+  // O texto assinado é o que se envia E o que se grava: o histórico tem de
+  // mostrar exatamente o que a pessoa leu. É também o que mantém a
+  // checagem de eco por conteúdo funcionando em `registrarMensagemDeSaida`.
+  const enviado = config.crm.assinarResposta
+    ? `*${primeiroNome(req.usuario.nome)}:*` + QUEBRA_ASSINATURA + texto
+    : texto;
+
   let evolutionMsgId = null;
   try {
-    const r = await sendText(conversa.contato.phone, texto);
+    const r = await sendText(conversa.contato.phone, enviado);
     evolutionMsgId = r?.key?.id || null;
   } catch (err) {
     logger.error('[crm] Falha ao enviar pelo WhatsApp:', err.message);
@@ -475,7 +509,7 @@ router.post('/api/conversas/:id/responder', rota(async (req, res) => {
     conversationId: id,
     contactId: conversa.contact_id,
     direction: 'outbound',
-    content: texto,
+    content: enviado,
     sentBy: `human:${req.usuario.email}`,
     evolutionMsgId,
     status: 'sent',
@@ -497,7 +531,7 @@ router.post('/api/conversas/:id/responder', rota(async (req, res) => {
     logger.error('[crm] Funil falhou ao registrar resposta do consultor:', err.message);
   }
 
-  res.json({ ok: true, enviado: texto });
+  res.json({ ok: true, enviado });
 }));
 
 /** Devolve a conversa para a Leia. */

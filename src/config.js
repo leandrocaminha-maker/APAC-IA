@@ -154,6 +154,15 @@ export const config = {
     evoWebhookSecret: env('EVO_WEBHOOK_SECRET', ''),
     // URL pública deste serviço, usada para registrar o webhook no EVO.
     urlPublica: env('CRM_URL_PUBLICA', 'https://crm.apacademia.com.br'),
+
+    // Assina a resposta do painel com o primeiro nome do consultor.
+    //
+    // O aparelho já faz isso — as mensagens digitadas no celular chegam
+    // como "*Shirlei:*". Pelo painel não chegavam, e o cliente via a mesma
+    // conversa ora assinada ora não, sem saber se falava com pessoa ou com
+    // a Leia. Numa conversa que passa por bot, consultor no painel e
+    // consultor no celular, saber quem está do outro lado não é detalhe.
+    assinarResposta: env('CRM_ASSINAR_RESPOSTA', 'true') !== 'false',
   },
 
   // Webhook
