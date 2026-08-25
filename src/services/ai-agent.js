@@ -78,6 +78,7 @@ const client = new Anthropic({
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const FOLLOWUP_PROMPT_PATH = join(__dirname, '..', 'prompts', 'followup.md');
+const CAMPANHA_PROMPT_PATH = join(__dirname, '..', 'prompts', 'campanha.md');
 
 // ──────────────────────────────────────────────
 // Cache local (disco/banco → memória)
@@ -85,8 +86,10 @@ const FOLLOWUP_PROMPT_PATH = join(__dirname, '..', 'prompts', 'followup.md');
 
 let cachedPrompt = null;
 let cachedFollowupPrompt = null;
+let cachedCampanhaPrompt = null;
 let promptLoadedAt = 0;
 let followupLoadedAt = 0;
+let campanhaLoadedAt = 0;
 const CACHE_MS = 5 * 60 * 1000; // 5 minutos
 
 /**
@@ -143,6 +146,31 @@ async function loadFollowupPrompt() {
       'Escreva de duas a quatro linhas, uma pergunta só, sem pressão. ' +
       'Você NÃO tem a base de conhecimento carregada: não afirme preço, valor, ' +
       'horário, prazo ou regra de contrato. Devolva apenas o texto da mensagem.';
+  }
+}
+
+/**
+ * Carrega o prompt enxuto de campanha do disco. Mesma convenção de corte
+ * do `loadFollowupPrompt`.
+ */
+async function loadCampanhaPrompt() {
+  const now = Date.now();
+  if (cachedCampanhaPrompt && (now - campanhaLoadedAt) < CACHE_MS) {
+    return cachedCampanhaPrompt;
+  }
+
+  try {
+    const bruto = await readFile(CAMPANHA_PROMPT_PATH, 'utf-8');
+    const inicio = bruto.indexOf('Você é a Leia');
+    cachedCampanhaPrompt = (inicio < 0 ? bruto : bruto.slice(inicio)).trim();
+    campanhaLoadedAt = now;
+    return cachedCampanhaPrompt;
+  } catch (err) {
+    // Diferente do follow-up, aqui NÃO há texto de emergência: sem o
+    // arquivo não se escreve primeira abordagem a contato frio. Melhor a
+    // campanha não sair do que sair sem as regras que a seguram.
+    logger.error('[ai-agent] Erro ao ler campanha.md:', err.message);
+    throw new Error('prompt de campanha indisponível — nada foi gerado');
   }
 }
 
@@ -597,14 +625,113 @@ export async function gerarFollowup({ instrucao, conversationId, contactInfo = {
 }
 
 /**
+ * Gera a primeira mensagem de campanha para uma pessoa.
+ *
+ * Caminho ainda mais enxuto que o follow-up: aqui não há sequer histórico,
+ * porque o contato é frio — a pessoa nunca escreveu para a academia. O
+ * prefixo é só o `campanha.md` (~700 tokens), cacheado com TTL de 1h e
+ * compartilhado por toda a campanha.
+ *
+ * **A oferta é o único fato permitido.** Ela vem escrita por uma pessoa em
+ * `crm_campanhas.oferta` e é passada aqui como dado, não como instrução —
+ * o modelo embrulha, não inventa. Sem base de conhecimento carregada, ele
+ * não teria como conferir preço ou horário nenhum.
+ *
+ * @param {object} params
+ * @param {object} params.alvo - Linha de `crm_campanha_alvos` (nome, contexto)
+ * @param {string} params.oferta - O que a campanha está oferecendo
+ * @param {string} [params.roteiro] - Ângulo/condução, opcional
+ * @param {number} [params.conversationId] - Só para a telemetria
+ * @returns {Promise<{text: string}>}
+ */
+export async function gerarMensagemCampanha({ alvo, oferta, roteiro = null, conversationId = null }) {
+  const systemPrompt = await loadCampanhaPrompt();
+
+  const contexto = alvo?.contexto ?? {};
+  const linhas = [
+    '## QUEM VAI RECEBER',
+    `- Nome: ${alvo?.nome || 'não sabemos o nome — não invente um, escreva sem'}`,
+    `- Segmento: ${contexto.segmento || 'não informado'}`,
+  ];
+
+  if (contexto.meses_inativo != null) {
+    linhas.push(`- Está sem contrato há ${contexto.meses_inativo} meses (já foi aluno)`);
+  }
+  if (contexto.dias_desde_cadastro != null) {
+    linhas.push(`- Pediu informação há ${contexto.dias_desde_cadastro} dias e não fechou`);
+  }
+  if (contexto.interesse) {
+    linhas.push(`- Na época procurava: ${contexto.interesse}`);
+  }
+
+  linhas.push(
+    '',
+    '## OFERTA — o ÚNICO fato que você pode afirmar',
+    'Escrita por um consultor humano. Reescreva com naturalidade, mas não',
+    'acrescente nenhum número, prazo, condição ou benefício que não esteja aqui:',
+    '',
+    oferta,
+  );
+
+  if (roteiro) {
+    linhas.push('', '## COMO CONDUZIR', roteiro);
+  }
+
+  const system = [
+    {
+      type: 'text',
+      text: systemPrompt,
+      cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
+    },
+  ];
+
+  const inicio = Date.now();
+  const response = await client.beta.messages.create({
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    output_config: { effort: 'low' },
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    system,
+    messages: [{ role: 'user', content: linhas.join('\n') }],
+  });
+
+  aiUsage.registrar({
+    usage: response.usage,
+    modelo: MODEL,
+    conversationId,
+    origem: 'campanha',
+    iteracao: 0,
+    modulos: [],
+    stopReason: response.stop_reason,
+    duracaoMs: Date.now() - inicio,
+  });
+
+  if (response.stop_reason === 'refusal') {
+    logger.warn(`[ai-agent] Recusa na campanha (${response.stop_details?.category || 'sem categoria'})`);
+    return { text: '' };
+  }
+
+  const text = response.content
+    .filter(block => block.type === 'text')
+    .map(block => block.text)
+    .join('\n')
+    .trim();
+
+  return { text };
+}
+
+/**
  * Invalida todos os caches (prompt do banco + base de conhecimento).
  * Útil quando o admin edita o prompt ou os knowledge files são atualizados.
  */
 export function invalidatePromptCache() {
   cachedPrompt = null;
   cachedFollowupPrompt = null;
+  cachedCampanhaPrompt = null;
   promptLoadedAt = 0;
   followupLoadedAt = 0;
+  campanhaLoadedAt = 0;
   invalidarKnowledge();
   logger.info('[ai-agent] Cache de prompt e knowledge invalidado');
 }
@@ -612,5 +739,6 @@ export function invalidatePromptCache() {
 export const aiAgent = {
   processMessage,
   gerarFollowup,
+  gerarMensagemCampanha,
   invalidatePromptCache,
 };

@@ -11,7 +11,8 @@
     "conversas": "node scripts/exportar-conversas.js",
     "prompt": "node scripts/publicar-prompt.js",
     "test": "node --test src/**/*.test.js",
-    "consultor": "node scripts/criar-consultor.js"
+    "consultor": "node scripts/criar-consultor.js",
+    "campanha": "node scripts/campanha.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

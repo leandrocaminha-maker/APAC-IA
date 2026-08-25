@@ -608,6 +608,77 @@ Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
 - **Desligue a página quando a rodada de testes acabar** — senha curta em IP
   público não é para ficar no ar indefinidamente.
 
+## O que foi feito em 25/08/2026 — campanha ativa (Fase 1)
+
+Primeira vez que o sistema **começa** uma conversa. Até aqui era tudo
+reativo: os 71 leads de `crm_leads` têm todos `source: whatsapp`, ou seja,
+cada um escreveu primeiro.
+
+### O que o levantamento mostrou
+
+- O webhook do EVO está vivo (70 eventos), mas **não entrega segmento**: os 6
+  eventos assinados são todos de conversão. Dizem quem comprou, não quem é
+  alvo. Coorte se monta puxando estado pela API.
+- Os 43 `NewSale` recebidos **não batem com nenhum lead** (`sale_at` nulo nos
+  71). São da base do EVO — que é grande, ativa, e não estava neste sistema.
+- **Não existia opt-out.** Nenhuma tag, nenhuma coluna.
+- `wa_message_queue` já era um disparador agendado, com `scheduled_for`,
+  retry e rate limit. A campanha não precisava de remetente — precisava de
+  **regulagem**.
+
+### Desenho
+
+`campanhas.js` **não envia**. Ele decide QUANDO cada mensagem sai e grava uma
+linha em `wa_message_queue` com `scheduled_for` no futuro; quem envia é o
+`queue-processor`, que já existia. Como não há caminho daqui até a Evolution,
+não há caminho para um disparo em rajada — nem por bug.
+
+`distribuirHorarios()` espalha as mensagens pelo que sobra da janela de hoje,
+com folga aleatória. Vinte mensagens em 9h–20h30 dão uma a cada ~34 minutos.
+
+### Três armadilhas do EVO, descobertas batendo nelas
+
+Vale registrar, porque nenhuma aparece na documentação e as três produzem
+falha silenciosa:
+
+1. **A API limita 40 requisições/minuto** por CONTA. Descoberto ao montar o
+   primeiro segmento. O freio em `segmentos.js` usa 25/min de propósito: a
+   cota é compartilhada com o `evo-sync-worker` e com as tools do agente, e
+   uma varredura de campanha que consumisse tudo faria o cadastro de um
+   prospect real falhar no meio de um atendimento.
+2. **`membershipStatus` vem VAZIO na listagem** de `/api/v2/members`. O campo
+   que carrega o dado é `status` ('Active'/'Inactive'). `membershipStatus` só
+   é preenchido em `buscarMembroPorId` — que é a chamada cara que o
+   pré-filtro existe para evitar.
+3. **O celular não é um campo.** Vem em `contacts[]`, com `contactType`
+   ('Cellphone'/'Telephone'/'E-mail') e o número em `description`, formatado.
+   A primeira versão lia `membro.cellphone`, que não existe: o efeito era
+   coorte sempre vazia, sem erro nenhum no log.
+
+### Freios
+
+- `CAMPANHA_HABILITADA` (padrão **false**) — o worker nem inicia.
+- `CAMPANHA_DRY_RUN` (padrão **true**) — gera e grava os textos, não envia.
+- `teto_diario` por campanha, padrão 20.
+- **Pausa automática** acima de 3% de supressão (após 30 contatos).
+- **Opt-out**: "SAIR", "PARAR", "descadastrar" e variantes são detectados na
+  entrada, ANTES do funil e do agente. A supressão apaga o que já estava
+  agendado na fila — receber mensagem depois de pedir para sair é o que
+  transforma pedido em denúncia.
+
+A oferta é escrita por uma PESSOA, em `crm_campanhas.oferta`. O modelo
+embrulha, não inventa: este caminho não carrega a base de conhecimento, então
+preço e prazo só existem se estiverem escritos ali.
+
+### ⚠️ Pendências
+
+- **Migration 005 não aplicada.** Rode `supabase/migrations/005_campanhas.sql`.
+- **Nada foi disparado ainda.** O piloto é: ensaio → ler os textos → decidir.
+- **Fase 2 não foi feita**: tela no painel, campanhas por gatilho ligadas em
+  `processarEventoWebhook`, e segunda instância na Evolution.
+- **O piloto vai rodar no número principal**, por decisão registrada. Se ele
+  for bloqueado, cai junto o atendimento e o follow-up.
+
 ## O que foi feito em 24/08/2026 — custo de crédito
 
 A pergunta era "como reduzir custo de créditos". A resposta começou por medir,

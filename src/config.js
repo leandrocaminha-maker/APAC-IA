@@ -72,6 +72,29 @@ export const config = {
     syncMinutos: parseInt(env('EVO_SYNC_MINUTOS', '15'), 10),
   },
 
+  // Campanha ativa de vendas.
+  //
+  // Aqui a academia é quem começa a conversa, com gente da base do EVO que
+  // nunca falou com a Leia. Isso inverte o risco: disparo ativo por
+  // WhatsApp não-oficial é o padrão que mais gera bloqueio de número, e o
+  // número é um só — o principal da academia.
+  //
+  // Por isso os dois interruptores abaixo nascem no modo seguro. Ligar a
+  // campanha é uma decisão consciente, não um efeito colateral de deploy.
+  campanha: {
+    // Chave geral. Com false, o worker nem inicia.
+    habilitada: env('CAMPANHA_HABILITADA', 'false') === 'true',
+
+    // Ensaio: gera o texto de cada mensagem e grava no alvo, mas NÃO
+    // enfileira nada. Serve para ler o que sairia e conferir a distribuição
+    // dos horários antes de qualquer coisa chegar a um cliente. Mesmo
+    // espírito do EVO_DRY_RUN.
+    dryRun: env('CAMPANHA_DRY_RUN', 'true') === 'true',
+
+    // Intervalo do worker que agenda os disparos do dia. 0 desliga.
+    minutos: parseInt(env('CAMPANHA_MINUTOS', '10'), 10),
+  },
+
   // Agente — agrupamento de mensagens antes de responder.
   //
   // No WhatsApp ninguém escreve um parágrafo: escreve "oi", "quero saber de

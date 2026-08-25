@@ -1,0 +1,598 @@
+/**
+ * src/services/campanhas.js
+ * Campanha ativa: alvos, supressão e a regulagem de disparo.
+ *
+ * ## O que este arquivo NÃO faz
+ *
+ * Não envia. Quem envia é o `queue-processor`, que já existia e já tem
+ * retry, rate limit e gravação no histórico. Aqui se decide **quando** cada
+ * mensagem deve sair, e isso vira uma linha em `wa_message_queue` com
+ * `scheduled_for` no futuro.
+ *
+ * Essa separação é o desenho, não uma conveniência: como não existe caminho
+ * daqui até a Evolution, não existe caminho para um disparo em rajada. O
+ * pior que um erro de código aqui pode fazer é agendar demais para o mesmo
+ * minuto — e o teto diário, que é conferido antes de agendar, limita
+ * inclusive isso.
+ *
+ * ## A regulagem
+ *
+ * `distribuirHorarios()` é o coração. Ela pega N mensagens e espalha pelo
+ * que sobra da janela de hoje, com folga aleatória entre elas. Vinte
+ * mensagens em 9h–20h30 dão uma a cada ~34 minutos. Não é lentidão por
+ * cautela vaga: cadência regular e apertada é o que distingue robô de
+ * pessoa para quem analisa o comportamento do número.
+ */
+import { supabase } from '../lib/supabase.js';
+import { logger } from '../lib/logger.js';
+import { config } from '../config.js';
+import { dentroDaJanela } from './followup.js';
+import { montarSegmento } from './segmentos.js';
+import { normalizePhone } from './evolution.js';
+
+// Fim da janela de contato ativo, em minutos desde a meia-noite (20h30).
+// Espelha a JANELA de followup.js, que não a exporta.
+const FIM_JANELA_MIN = 20 * 60 + 30;
+const INICIO_JANELA_MIN = 9 * 60;
+
+const TIMEZONE = 'America/Sao_Paulo';
+
+/** Partes da data no fuso de São Paulo. O container roda em UTC. */
+function partesSP(data = new Date()) {
+  const fmt = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(data);
+  const pega = (t) => Number(fmt.find(p => p.type === t)?.value ?? 0);
+  return { hora: pega('hour'), minuto: pega('minute') };
+}
+
+/** Data de hoje em São Paulo, como 'AAAA-MM-DD'. */
+export function hojeSP(data = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(data);
+}
+
+// ──────────────────────────────────────────────
+// Supressão
+// ──────────────────────────────────────────────
+
+/**
+ * Frases que significam "pare de me mandar mensagem".
+ *
+ * A lista é curta e ancorada no INÍCIO da mensagem de propósito. "Não
+ * quero" solto pega "não quero musculação, quero natação", que é uma
+ * objeção de venda e não um pedido de descadastro — suprimir essa pessoa
+ * seria perder um lead por erro de leitura.
+ */
+const PEDIDOS_DE_SAIDA = [
+  /^sair\b/, /^parar?\b/, /^pare\b/, /^stop\b/, /^cancelar? inscri/,
+  /^descadastr/, /^remover?\b/, /^me (tira|remove|descadastr)/,
+  /^n[aã]o (quero|desejo) (mais )?receber/, /^para de (me )?mandar/,
+  /^n[aã]o me (mande|envie|perturbe)/,
+];
+
+/** Normaliza para comparação: sem acento, minúsculo, sem pontuação nas bordas. */
+function normalizar(texto) {
+  return String(texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/[^\p{L}\p{N}]+$/u, '');
+}
+
+/**
+ * A mensagem é um pedido para sair da lista?
+ *
+ * Só olha mensagens curtas. Quem escreve um parágrafo está conversando, e
+ * "parar" no meio de uma frase longa quase nunca é descadastro — mas
+ * "PARAR" sozinho sempre é.
+ *
+ * @param {string} texto
+ * @returns {boolean}
+ */
+export function ehPedidoDeSaida(texto) {
+  const limpo = normalizar(texto);
+  if (!limpo || limpo.length > 60) return false;
+  return PEDIDOS_DE_SAIDA.some(re => re.test(limpo));
+}
+
+/**
+ * Registra a supressão e desfaz o que já estava a caminho.
+ *
+ * As duas metades importam. Só gravar na lista deixaria sair a mensagem
+ * que já estava agendada em `wa_message_queue` — e receber mais uma
+ * mensagem DEPOIS de pedir para sair é o que transforma um pedido em
+ * denúncia.
+ *
+ * @param {string} phone
+ * @param {object} [opts]
+ * @param {string} [opts.motivo]
+ * @param {string} [opts.origem]
+ * @param {string} [opts.detalhe] - O que a pessoa escreveu.
+ * @returns {Promise<{novo:boolean, canceladas:number}>}
+ */
+export async function suprimir(phone, { motivo = 'pediu_para_sair', origem = 'whatsapp', detalhe = null } = {}) {
+  const numero = normalizePhone(phone);
+
+  const { error } = await supabase
+    .from('crm_supressoes')
+    .insert({ phone: numero, motivo, origem, detalhe: detalhe?.slice(0, 500) ?? null });
+
+  const novo = !error;
+  if (error && error.code !== '23505') {
+    logger.error('[campanhas] Falha ao gravar supressão:', error.message);
+  }
+
+  // Apaga o que ainda não saiu. `delete` e não update: a fila é transporte,
+  // e o razão de quem recebeu o quê é `crm_campanha_alvos`.
+  const { data: apagadas } = await supabase
+    .from('wa_message_queue')
+    .delete()
+    .eq('phone', numero)
+    .eq('status', 'pending')
+    .select('id');
+
+  const canceladas = apagadas?.length ?? 0;
+
+  await supabase
+    .from('crm_campanha_alvos')
+    .update({ status: 'suprimido', queue_id: null, scheduled_for: null })
+    .eq('phone', numero)
+    .in('status', ['pendente', 'agendado']);
+
+  logger.info(
+    `[campanhas] Supressão de ${numero} (${motivo})` +
+    `${canceladas ? ` — ${canceladas} mensagem(ns) agendada(s) cancelada(s)` : ''}`
+  );
+
+  return { novo, canceladas };
+}
+
+/** Está na lista de supressão? */
+export async function estaSuprimido(phone) {
+  const { data } = await supabase
+    .from('crm_supressoes')
+    .select('id')
+    .eq('phone', normalizePhone(phone))
+    .maybeSingle();
+  return Boolean(data);
+}
+
+/** Telefones suprimidos, dentro de uma lista. Uma consulta em vez de N. */
+async function suprimidosEntre(telefones) {
+  if (!telefones.length) return new Set();
+  const { data } = await supabase
+    .from('crm_supressoes')
+    .select('phone')
+    .in('phone', telefones);
+  return new Set((data ?? []).map(r => r.phone));
+}
+
+// ──────────────────────────────────────────────
+// Alvos
+// ──────────────────────────────────────────────
+
+/**
+ * Monta a coorte do segmento e grava os alvos da campanha.
+ *
+ * Idempotente pela UNIQUE `(campanha_id, phone)`: rodar duas vezes não
+ * duplica ninguém, e quem já foi contatado não volta para 'pendente'.
+ *
+ * @param {number} campanhaId
+ * @returns {Promise<{inseridos:number, jaExistiam:number, suprimidos:number, total:number}>}
+ */
+export async function montarAlvos(campanhaId) {
+  const campanha = await buscarCampanha(campanhaId);
+  if (!campanha) throw new Error(`Campanha ${campanhaId} não encontrada`);
+
+  const lista = await montarSegmento(campanha.segmento, campanha.segmento_args ?? {});
+  if (!lista.length) return { inseridos: 0, jaExistiam: 0, suprimidos: 0, total: 0 };
+
+  // Quem já pediu para sair nem entra como alvo — não é filtro de envio, é
+  // filtro de entrada. Assim a pessoa não aparece nas contagens da campanha
+  // como se fosse público dela.
+  const suprimidos = await suprimidosEntre(lista.map(l => l.phone));
+  const elegiveis = lista.filter(l => !suprimidos.has(l.phone));
+
+  const linhas = elegiveis.map(l => ({
+    campanha_id: campanhaId,
+    phone: l.phone,
+    nome: l.nome,
+    evo_id_member: l.evo_id_member,
+    evo_id_prospect: l.evo_id_prospect,
+    contexto: l.contexto,
+    status: 'pendente',
+  }));
+
+  let inseridos = 0;
+  // Em lotes: um insert de 500 linhas estoura o limite de payload do PostgREST.
+  for (let i = 0; i < linhas.length; i += 100) {
+    const lote = linhas.slice(i, i + 100);
+    const { data, error } = await supabase
+      .from('crm_campanha_alvos')
+      .upsert(lote, { onConflict: 'campanha_id,phone', ignoreDuplicates: true })
+      .select('id');
+
+    if (error) {
+      logger.error('[campanhas] Falha ao gravar alvos:', error.message);
+      continue;
+    }
+    inseridos += data?.length ?? 0;
+  }
+
+  const resultado = {
+    inseridos,
+    jaExistiam: elegiveis.length - inseridos,
+    suprimidos: lista.length - elegiveis.length,
+    total: lista.length,
+  };
+  logger.info(`[campanhas] Alvos de "${campanha.slug}": ${JSON.stringify(resultado)}`);
+  return resultado;
+}
+
+/**
+ * Marca que a pessoa respondeu, encerrando a campanha para ela.
+ *
+ * Chamado quando chega mensagem de entrada. Quem respondeu vira conversa
+ * normal — é para isso que a Leia existe — e continuar mandando campanha
+ * por cima de uma conversa em andamento seria falar duas vezes ao mesmo
+ * tempo.
+ *
+ * @param {string} phone
+ * @returns {Promise<number>} Quantos alvos foram encerrados.
+ */
+export async function registrarResposta(phone) {
+  const numero = normalizePhone(phone);
+
+  const { data } = await supabase
+    .from('crm_campanha_alvos')
+    .update({ status: 'respondeu', replied_at: new Date().toISOString() })
+    .eq('phone', numero)
+    .in('status', ['agendado', 'enviado'])
+    .select('id, campanha_id');
+
+  const n = data?.length ?? 0;
+  if (n) logger.info(`[campanhas] ${numero} respondeu — ${n} alvo(s) encerrado(s)`);
+  return n;
+}
+
+// ──────────────────────────────────────────────
+// Regulagem de disparo
+// ──────────────────────────────────────────────
+
+/**
+ * Espalha N horários pelo que sobra da janela de contato de hoje.
+ *
+ * O intervalo base é o tempo restante dividido pela quantidade; cada
+ * horário recebe uma folga aleatória de ±`jitter` sobre isso. Sem o jitter
+ * a régua seria perfeita — 34, 68, 102 minutos — e cadência perfeita é
+ * assinatura de automação.
+ *
+ * Devolve menos horários que o pedido quando o dia não cabe: o resto fica
+ * `pendente` e o worker retoma amanhã. É por isso que o teto diário é um
+ * teto e não uma meta.
+ *
+ * @param {number} quantidade
+ * @param {object} [opts]
+ * @param {Date} [opts.agora]
+ * @param {number} [opts.intervaloMinimoMin] - Piso entre duas mensagens. Oito
+ *   minutos, e não menos: quando a janela está acabando, o piso é o que
+ *   decide se o resto do teto vira uma rajada agora ou espera amanhã. Com 3
+ *   minutos, ativar uma campanha às 19h45 produzia 14 mensagens em 45
+ *   minutos — o padrão que se está tentando evitar. Com 8, cabem 5 e o
+ *   resto fica para o dia seguinte.
+ * @param {number} [opts.jitter] - Fração de variação (0.4 = ±40%).
+ * @returns {Date[]} Em ordem crescente, todos dentro da janela.
+ */
+export function distribuirHorarios(quantidade, { agora = new Date(), intervaloMinimoMin = 8, jitter = 0.4 } = {}) {
+  if (quantidade <= 0) return [];
+
+  const { hora, minuto } = partesSP(agora);
+  const agoraMin = hora * 60 + minuto;
+
+  // Antes da janela: começa às 9h. Depois dela: nada hoje.
+  const inicioMin = Math.max(agoraMin, INICIO_JANELA_MIN);
+  if (inicioMin >= FIM_JANELA_MIN) return [];
+
+  const restanteMin = FIM_JANELA_MIN - inicioMin;
+  const intervaloBase = Math.max(intervaloMinimoMin, restanteMin / quantidade);
+
+  const horarios = [];
+  let deslocamento = 0;
+
+  for (let i = 0; i < quantidade; i++) {
+    // A primeira não sai imediatamente: um minuto de folga evita que uma
+    // remontagem de alvos vire uma saraivada no mesmo instante.
+    const variacao = 1 + (Math.random() * 2 - 1) * jitter;
+    deslocamento += Math.max(intervaloMinimoMin, intervaloBase * variacao);
+
+    const minutoAlvo = inicioMin + deslocamento;
+    if (minutoAlvo >= FIM_JANELA_MIN) break;
+
+    const quando = new Date(agora.getTime() + (minutoAlvo - agoraMin) * 60_000);
+    horarios.push(quando);
+  }
+
+  return horarios;
+}
+
+/**
+ * Quantas mensagens desta campanha já saíram hoje.
+ *
+ * Conta 'agendado' junto com 'enviado': o que está agendado para hoje já
+ * consumiu o teto, mesmo sem ter saído ainda. Contar só o enviado faria o
+ * worker reagendar por cima do próprio agendamento a cada ciclo de 10
+ * minutos, e o teto viraria decoração.
+ */
+export async function enviadosHoje(campanhaId) {
+  const inicioDoDia = new Date(`${hojeSP()}T00:00:00-03:00`).toISOString();
+
+  const { count } = await supabase
+    .from('crm_campanha_alvos')
+    .select('*', { count: 'exact', head: true })
+    .eq('campanha_id', campanhaId)
+    .in('status', ['agendado', 'enviado', 'respondeu'])
+    .gte('scheduled_for', inicioDoDia);
+
+  return count ?? 0;
+}
+
+/**
+ * Enfileira uma mensagem já gerada.
+ *
+ * O `source_app` carrega o slug da campanha: é o que faz a mensagem
+ * aparecer no histórico como `app:campanha:<slug>` e permite separar, meses
+ * depois, o que foi atendimento do que foi prospecção.
+ *
+ * @returns {Promise<number|null>} id da linha na fila
+ */
+async function enfileirar({ phone, texto, quando, slug }) {
+  const { data, error } = await supabase
+    .from('wa_message_queue')
+    .insert({
+      phone,
+      content: texto,
+      content_type: 'text',
+      source_app: `campanha:${slug}`,
+      scheduled_for: quando.toISOString(),
+      status: 'pending',
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    logger.error('[campanhas] Falha ao enfileirar:', error.message);
+    return null;
+  }
+  return data.id;
+}
+
+/**
+ * Confere a guarda de supressão e pausa a campanha se ela estourou.
+ *
+ * É a realimentação que protege o número: se a lista estava errada, quem
+ * avisa são as próprias pessoas, e a campanha para antes de a conta do
+ * WhatsApp reagir. Sem isto o sinal só chegaria como bloqueio.
+ *
+ * @returns {Promise<boolean>} true se pausou agora
+ */
+export async function conferirGuarda(campanha) {
+  const { data } = await supabase
+    .from('crm_campanhas_resumo')
+    .select('enviados, responderam, suprimidos, taxa_supressao')
+    .eq('id', campanha.id)
+    .single();
+
+  if (!data) return false;
+
+  const avaliados = (data.enviados ?? 0) + (data.responderam ?? 0) + (data.suprimidos ?? 0);
+  if (avaliados < campanha.minimo_para_avaliar) return false;
+
+  const taxa = Number(data.taxa_supressao ?? 0);
+  if (taxa <= Number(campanha.limiar_supressao)) return false;
+
+  const motivo =
+    `Pausada automaticamente: ${(taxa * 100).toFixed(1)}% de supressão em ${avaliados} ` +
+    `contatos, acima do limiar de ${(Number(campanha.limiar_supressao) * 100).toFixed(1)}%.`;
+
+  await supabase
+    .from('crm_campanhas')
+    .update({ status: 'pausada', pausada_motivo: motivo })
+    .eq('id', campanha.id);
+
+  logger.warn(`[campanhas] "${campanha.slug}" — ${motivo}`);
+  return true;
+}
+
+/**
+ * Um ciclo de uma campanha: decide quantas cabem hoje, gera e agenda.
+ *
+ * @param {object} campanha
+ * @param {(alvo:object, campanha:object) => Promise<string>} gerarTexto
+ * @returns {Promise<{agendados:number, motivo?:string}>}
+ */
+export async function processarCampanha(campanha, gerarTexto) {
+  if (await conferirGuarda(campanha)) {
+    return { agendados: 0, motivo: 'guarda de supressão' };
+  }
+
+  const { hora, minuto } = partesSP();
+  const agoraMin = hora * 60 + minuto;
+  if (agoraMin >= FIM_JANELA_MIN) {
+    return { agendados: 0, motivo: 'fora da janela de contato' };
+  }
+
+  const jaHoje = await enviadosHoje(campanha.id);
+  const restante = campanha.teto_diario - jaHoje;
+  if (restante <= 0) {
+    return { agendados: 0, motivo: `teto diário de ${campanha.teto_diario} atingido` };
+  }
+
+  const { data: alvos } = await supabase
+    .from('crm_campanha_alvos')
+    .select('*')
+    .eq('campanha_id', campanha.id)
+    .eq('status', 'pendente')
+    .order('id', { ascending: true })
+    .limit(restante);
+
+  if (!alvos?.length) {
+    // Sem pendente e sem agendado: a campanha cumpriu o que tinha.
+    const { count } = await supabase
+      .from('crm_campanha_alvos')
+      .select('*', { count: 'exact', head: true })
+      .eq('campanha_id', campanha.id)
+      .in('status', ['pendente', 'agendado']);
+
+    if (!count) {
+      await supabase.from('crm_campanhas').update({ status: 'concluida' }).eq('id', campanha.id);
+      logger.info(`[campanhas] "${campanha.slug}" concluída`);
+    }
+    return { agendados: 0, motivo: 'sem alvos pendentes' };
+  }
+
+  // Reconfere a supressão agora, não na montagem: a coorte é um retrato
+  // datado, e alguém pode ter pedido para sair no intervalo.
+  const suprimidos = await suprimidosEntre(alvos.map(a => a.phone));
+  const elegiveis = alvos.filter(a => !suprimidos.has(a.phone));
+
+  if (suprimidos.size) {
+    await supabase
+      .from('crm_campanha_alvos')
+      .update({ status: 'suprimido' })
+      .eq('campanha_id', campanha.id)
+      .in('phone', [...suprimidos]);
+  }
+
+  if (!elegiveis.length) return { agendados: 0, motivo: 'todos os pendentes estão suprimidos' };
+
+  const horarios = distribuirHorarios(elegiveis.length);
+  let agendados = 0;
+
+  for (let i = 0; i < horarios.length; i++) {
+    const alvo = elegiveis[i];
+    const quando = dentroDaJanela(horarios[i]);
+
+    try {
+      const texto = await gerarTexto(alvo, campanha);
+      if (!texto?.trim()) {
+        await marcarErro(alvo.id, 'o gerador não produziu texto');
+        continue;
+      }
+
+      if (config.campanha.dryRun) {
+        logger.info(
+          `[campanhas] ENSAIO ${campanha.slug} → ${alvo.phone} ` +
+          `(${quando.toISOString()}): ${texto.replace(/\n/g, ' | ')}`
+        );
+        // Marca 'agendado' mesmo em ensaio, com `queue_id` nulo.
+        //
+        // Deixá-lo 'pendente' parecia mais honesto e era um ralo: o alvo
+        // não entraria na conta de `enviadosHoje`, o teto nunca seria
+        // atingido, e a cada 10 minutos o worker geraria o texto de novo
+        // para a mesma pessoa — gastando crédito de API para sempre, sem
+        // nunca convergir.
+        //
+        // `queue_id` nulo é o que distingue ensaio de envio real, e é por
+        // ele que o `reset` do scripts/campanha.js sabe o que pode voltar
+        // para 'pendente'.
+        await supabase
+          .from('crm_campanha_alvos')
+          .update({
+            status: 'agendado',
+            mensagem: texto,
+            queue_id: null,
+            scheduled_for: quando.toISOString(),
+          })
+          .eq('id', alvo.id);
+        agendados++;
+        continue;
+      }
+
+      const queueId = await enfileirar({
+        phone: alvo.phone, texto, quando, slug: campanha.slug,
+      });
+      if (!queueId) {
+        await marcarErro(alvo.id, 'falha ao enfileirar');
+        continue;
+      }
+
+      await supabase
+        .from('crm_campanha_alvos')
+        .update({
+          status: 'agendado',
+          mensagem: texto,
+          queue_id: queueId,
+          scheduled_for: quando.toISOString(),
+        })
+        .eq('id', alvo.id);
+
+      agendados++;
+    } catch (err) {
+      logger.error(`[campanhas] Alvo ${alvo.id} falhou:`, err.message);
+      await marcarErro(alvo.id, err.message?.slice(0, 300));
+    }
+  }
+
+  if (agendados) {
+    const primeiro = horarios[0];
+    const ultimo = horarios[Math.min(agendados, horarios.length) - 1];
+    logger.info(
+      `[campanhas] "${campanha.slug}": ${agendados} agendada(s) entre ` +
+      `${primeiro?.toISOString()} e ${ultimo?.toISOString()}` +
+      `${config.campanha.dryRun ? ' (ENSAIO — nada foi enfileirado)' : ''}`
+    );
+  }
+
+  return { agendados };
+}
+
+async function marcarErro(alvoId, erro) {
+  await supabase
+    .from('crm_campanha_alvos')
+    .update({ status: 'erro', erro })
+    .eq('id', alvoId);
+}
+
+// ──────────────────────────────────────────────
+// Consultas
+// ──────────────────────────────────────────────
+
+export async function buscarCampanha(idOuSlug) {
+  const coluna = typeof idOuSlug === 'number' || /^\d+$/.test(String(idOuSlug)) ? 'id' : 'slug';
+  const { data } = await supabase
+    .from('crm_campanhas')
+    .select('*')
+    .eq(coluna, idOuSlug)
+    .maybeSingle();
+  return data;
+}
+
+export async function campanhasAtivas() {
+  const { data } = await supabase
+    .from('crm_campanhas')
+    .select('*')
+    .eq('status', 'ativa')
+    .order('id', { ascending: true });
+  return data ?? [];
+}
+
+export async function resumo(idOuSlug = null) {
+  let query = supabase.from('crm_campanhas_resumo').select('*');
+  if (idOuSlug) {
+    const coluna = /^\d+$/.test(String(idOuSlug)) ? 'id' : 'slug';
+    query = query.eq(coluna, idOuSlug);
+  }
+  const { data } = await query;
+  return data ?? [];
+}
+
+export const campanhas = {
+  ehPedidoDeSaida, suprimir, estaSuprimido,
+  montarAlvos, registrarResposta,
+  distribuirHorarios, enviadosHoje, processarCampanha, conferirGuarda,
+  buscarCampanha, campanhasAtivas, resumo, hojeSP,
+};

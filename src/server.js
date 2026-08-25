@@ -20,6 +20,7 @@ import crmRouter from './routes/crm.js';
 import { startQueueProcessor } from './workers/queue-processor.js';
 import { startEvoSyncWorker } from './workers/evo-sync-worker.js';
 import { startFollowupWorker } from './workers/followup-worker.js';
+import { startCampanhaWorker } from './workers/campanha-worker.js';
 
 const app = express();
 
@@ -143,6 +144,9 @@ app.listen(config.port, () => {
 
   // Follow-up de venda: o turno que o agente não tem sozinho
   startFollowupWorker();
+
+  // Campanha ativa: nasce desligada, ver config.campanha
+  startCampanhaWorker();
 });
 
 /**

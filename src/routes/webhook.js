@@ -11,6 +11,7 @@ import { aiAgent } from '../services/ai-agent.js';
 import { sendText } from '../services/evolution.js';
 import { funil } from '../services/funil.js';
 import { evoSync } from '../services/evo-sync.js';
+import { campanhas } from '../services/campanhas.js';
 
 const router = Router();
 
@@ -218,6 +219,40 @@ async function handleIncomingMessage(event) {
     metadata: { pushName, remoteJid },
     status: 'delivered',
   });
+
+  // "SAIR" encerra tudo, e encerra ANTES de qualquer outra coisa.
+  //
+  // Vem antes do funil, do agente e até da checagem de modo humano: quem
+  // pediu para parar de receber mensagem não pode ter o pedido processado
+  // como se fosse conversa. A supressão também apaga o que já estava
+  // agendado na fila — receber mais uma mensagem depois de pedir para sair
+  // é o que transforma um pedido em denúncia, e denúncia em bloqueio do
+  // número.
+  if (campanhas.ehPedidoDeSaida(content)) {
+    const { canceladas } = await campanhas.suprimir(phone, {
+      motivo: 'pediu_para_sair',
+      origem: 'whatsapp',
+      detalhe: content,
+    });
+
+    logger.info(`[webhook] ${phone} pediu para sair (${canceladas} agendada(s) cancelada(s))`);
+
+    await sendAndSave(
+      phone,
+      'Prontinho, não te mando mais mensagem por aqui 👍\n\n' +
+      'Se um dia quiser falar com a gente, é só chamar neste mesmo número.',
+      conversation.id,
+      contact.id,
+      { opt_out: true },
+    );
+    return;
+  }
+
+  // Respondeu a uma campanha: ela para para essa pessoa, e a conversa segue
+  // pelo caminho normal do agente. Falar campanha por cima de conversa em
+  // andamento seria falar duas vezes ao mesmo tempo.
+  await campanhas.registrarResposta(phone).catch(err =>
+    logger.warn('[webhook] Não consegui encerrar o alvo de campanha:', err.message));
 
   // O lead entra no funil na primeira mensagem, e volta para "em conversa"
   // a cada resposta — sem retroceder quem já avançou.
