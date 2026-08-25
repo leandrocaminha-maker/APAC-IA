@@ -12,6 +12,7 @@ import { sendText, normalizePhone } from '../services/evolution.js';
 import { funil } from '../services/funil.js';
 import { evoSync } from '../services/evo-sync.js';
 import { campanhas } from '../services/campanhas.js';
+import { transcreverAudio } from '../services/transcricao.js';
 
 const router = Router();
 
@@ -246,6 +247,43 @@ async function handleIncomingMessage(event) {
     status: 'delivered',
   });
 
+  // Áudio: transcreve e segue como se fosse texto.
+  //
+  // O Claude não aceita áudio, então a transcrição acontece fora dele
+  // (ver `transcricao.js`). Dando certo, a mensagem entra no MESMO caminho
+  // do texto — agrupamento, funil, agente, base de conhecimento. Não há
+  // fluxo separado para quem prefere falar.
+  //
+  // A mensagem gravada é atualizada com o texto: o histórico que o agente
+  // lê precisa do conteúdo, não de "[áudio]". A marca fica no começo para
+  // que ele saiba que a pessoa falou em vez de escrever — muda o registro
+  // da resposta — e para que o consultor entenda o histórico no painel.
+  if (contentType === 'audio') {
+    const texto = await transcreverAudio(savedMessage?.evolution_msg_id || key.id);
+
+    if (!texto) {
+      await sendAndSave(
+        phone,
+        'Desculpe, não consegui ouvir esse áudio 🙁 Poderia me mandar por texto?',
+        conversation.id,
+        contact.id,
+      );
+      return;
+    }
+
+    content = `[áudio] ${texto}`;
+    contentType = 'text';
+
+    if (savedMessage?.id) {
+      await supabase
+        .from('wa_messages')
+        .update({ content, metadata: { ...(savedMessage.metadata || {}), transcrito: true } })
+        .eq('id', savedMessage.id);
+    }
+
+    logger.info(`[webhook] 🎙 ${phone}: ${texto.slice(0, 100)}`);
+  }
+
   // "SAIR" encerra tudo, e encerra ANTES de qualquer outra coisa.
   //
   // Vem antes do funil, do agente e até da checagem de modo humano: quem
@@ -312,20 +350,9 @@ async function handleIncomingMessage(event) {
     return;
   }
 
-  // Se a mensagem é de tipo não-textual, responde genericamente
-  if (contentType !== 'text' && contentType !== 'unknown') {
-    if (contentType === 'audio') {
-      await sendAndSave(
-        phone,
-        'Desculpe, ainda não consigo ouvir áudios 🙁 Poderia me enviar por texto?',
-        conversation.id,
-        contact.id
-      );
-      return;
-    }
-    // Imagens, documentos, vídeos → registra mas não processa com IA
-    return;
-  }
+  // Imagem, documento, vídeo: registra e não responde. Só o áudio tem
+  // caminho de volta, porque só ele carrega o que a pessoa quis dizer.
+  if (contentType !== 'text' && contentType !== 'unknown') return;
 
   // Não responde agora: enfileira e espera os próximos balões. Ver
   // `agendarResposta`.

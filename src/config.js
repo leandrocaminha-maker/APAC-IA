@@ -112,6 +112,27 @@ export const config = {
     minutos: parseInt(env('CAMPANHA_MINUTOS', '10'), 10),
   },
 
+  // Transcrição de áudio recebido no WhatsApp.
+  //
+  // O Claude não aceita áudio, então isto exige um serviço de fora — não é
+  // escolha, é a única via. O Groq foi escolhido por velocidade: transcreve
+  // 30s de áudio em 1 a 2 segundos, o que cabe dentro da conversa. A opção
+  // local foi medida e descartada (20 a 40s nesta VPS, disputando RAM com
+  // o container que atende).
+  //
+  // SEM a chave, a transcrição fica desligada e o áudio recebe a mesma
+  // resposta de sempre: pedir que a pessoa escreva. Nada quebra.
+  transcricao: {
+    apiKey: env('GROQ_API_KEY', ''),
+    modelo: env('GROQ_MODELO_AUDIO', 'whisper-large-v3-turbo'),
+    // Teto de tamanho. Áudio muito longo quase sempre é gravação acidental,
+    // e é o que mais custa tempo. 8 MB de Opus são ~25 minutos de fala.
+    maxBytes: parseInt(env('TRANSCRICAO_MAX_MB', '8'), 10) * 1024 * 1024,
+    // Curto de propósito: se passar disto, é melhor pedir texto do que
+    // deixar a pessoa esperando sem resposta.
+    timeoutMs: parseInt(env('TRANSCRICAO_TIMEOUT_MS', '25000'), 10),
+  },
+
   // Agente — agrupamento de mensagens antes de responder.
   //
   // No WhatsApp ninguém escreve um parágrafo: escreve "oi", "quero saber de
