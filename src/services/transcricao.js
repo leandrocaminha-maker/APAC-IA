@@ -101,10 +101,20 @@ export async function transcreverAudio(evolutionMsgId) {
     return null;
   }
 
+  // A Groq valida pela EXTENSÃO do nome do arquivo, e o WhatsApp entrega
+  // `.oga` — que não está na lista aceita, embora `ogg` e `opus` estejam.
+  // O conteúdo é o mesmo; só o nome reprovava, com 400 "file must be one of
+  // the following types". Descoberto testando com os áudios reais.
+  //
+  // O mimetype vem como "audio/ogg; codecs=opus"; o parâmetro é cortado
+  // pelo mesmo motivo — o servidor compara a string inteira.
+  const nomeParaEnvio = midia.fileName.replace(/\.oga$/i, '.ogg');
+  const tipoParaEnvio = midia.mimetype.split(';')[0].trim();
+
   const inicio = Date.now();
   try {
     const form = new FormData();
-    form.append('file', new Blob([bytes], { type: midia.mimetype }), midia.fileName);
+    form.append('file', new Blob([bytes], { type: tipoParaEnvio }), nomeParaEnvio);
     form.append('model', config.transcricao.modelo);
     // Dizer o idioma melhora a precisão e evita que um "oi" solto seja
     // interpretado como outra língua.
