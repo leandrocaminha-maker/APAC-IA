@@ -494,6 +494,10 @@ async function responderBuffer(chave) {
  */
 async function responderTurno({ phone, contact, conversation, content, savedIds }) {
   try {
+    // A campanha que trouxe esta pessoa, se houver. É o que impede o agente
+    // de oferecer plano da tabela comum a quem recebeu condição especial.
+    const campanha = await campanhas.campanhaDoContato(phone);
+
     const aiResponse = await aiAgent.processMessage({
       message: content,
       conversationId: conversation.id,
@@ -506,6 +510,7 @@ async function responderTurno({ phone, contact, conversation, content, savedIds 
         tags: contact.tags,
       },
       origem: 'webhook',
+      campanha,
     });
 
     // Se IA solicitou handoff

@@ -811,6 +811,46 @@ export async function marcarEtapaConversa(alvoId, etapa) {
     .eq('id', alvoId);
 }
 
+/**
+ * A campanha que trouxe esta pessoa, se houver.
+ *
+ * Devolve a oferta e o link de checkout DELA, para o agente completo saber
+ * o que foi prometido. Sem isso ele lê a própria mensagem de campanha no
+ * histórico — "montamos uma condição para quem já foi aluno" — e não faz
+ * ideia de qual condição é, porque a oferta vive aqui e não no prompt.
+ *
+ * Aconteceu com a Paula Ferreira em 25/08/2026: a campanha prometia AQUA
+ * anual 10x264, ela perguntou "como funciona", e o agente ofereceu Performa
+ * 12x199. Coisas diferentes, na mesma conversa.
+ *
+ * Só vale enquanto a campanha está viva para ela. Quem recusou ou foi
+ * suprimido não deve ter a oferta ressuscitada por uma pergunta solta meses
+ * depois.
+ *
+ * @param {string} phone
+ * @returns {Promise<{oferta:string, roteiro:string|null, link_checkout:string|null, slug:string}|null>}
+ */
+export async function campanhaDoContato(phone) {
+  const { data } = await supabase
+    .from('crm_campanha_alvos')
+    .select('link_checkout, etapa_conversa, campanha:crm_campanhas(slug, oferta, roteiro)')
+    .eq('phone', normalizePhone(phone))
+    .in('status', ['agendado', 'enviado', 'respondeu'])
+    .in('etapa_conversa', ['aguardando_consentimento', 'aceitou', 'conversando'])
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data?.campanha?.oferta) return null;
+
+  return {
+    slug: data.campanha.slug,
+    oferta: data.campanha.oferta,
+    roteiro: data.campanha.roteiro ?? null,
+    link_checkout: data.link_checkout ?? null,
+  };
+}
+
 // ──────────────────────────────────────────────
 // Consultas
 // ──────────────────────────────────────────────
@@ -847,6 +887,7 @@ export async function resumo(idOuSlug = null) {
 export const campanhas = {
   ehPedidoDeSaida, suprimir, estaSuprimido,
   absorverSegmentacao, lerConsentimento, alvoAguardandoConsentimento, marcarEtapaConversa,
+  campanhaDoContato,
   reconciliarEnviados,
   montarAlvos, registrarResposta,
   distribuirHorarios, enviadosHoje, processarCampanha, conferirGuarda,

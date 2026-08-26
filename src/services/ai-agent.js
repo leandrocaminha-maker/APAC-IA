@@ -383,6 +383,44 @@ async function buildSystem(systemPrompt, modulos, dynamicContext) {
 }
 
 /**
+ * Contexto da campanha que trouxe esta pessoa.
+ *
+ * O agente precisa saber DUAS coisas que só existem em crm_campanhas: o que
+ * foi prometido, e que ele mesmo já se apresentou. Sem a primeira ele
+ * oferece outra coisa; sem a segunda ele se reapresenta numa conversa que
+ * abriu meia hora antes.
+ */
+function montarContextoCampanha(campanha) {
+  const linhas = [
+    '',
+    '## CAMPANHA EM CURSO COM ESTA PESSOA',
+    'Você JÁ escreveu para ela — a primeira mensagem desta conversa é sua.',
+    'Não se apresente de novo e não trate como primeiro contato.',
+    '',
+    'O que você ofereceu, e o ÚNICO conjunto de condições que vale para ela:',
+    '',
+    campanha.oferta,
+  ];
+
+  if (campanha.link_checkout) {
+    linhas.push(
+      '',
+      'Link de contratação DESTA pessoa (cole exatamente, sem encurtar):',
+      campanha.link_checkout,
+    );
+  }
+
+  linhas.push(
+    '',
+    'Se ela perguntar de outro plano, responda sobre ele normalmente — mas',
+    'não substitua a condição acima por uma da tabela comum sem que ela peça.',
+    'Foi esta que ela recebeu, e é por ela que ela respondeu.',
+  );
+
+  return SEPARADOR + linhas.join(SEPARADOR);
+}
+
+/**
  * Processa uma mensagem do usuário com o agente IA.
  *
  * O prompt é composto por 3 camadas:
@@ -408,6 +446,7 @@ export async function processMessage({
   contactInfo = {},
   promptSlug = 'vendas',
   origem = 'webhook',
+  campanha = null,
 }) {
   // Camada 1: Prompt base do banco
   const systemPrompt = await loadPrompt(promptSlug);
@@ -428,7 +467,21 @@ export async function processMessage({
   });
 
   // Camada 3: o que muda a cada mensagem — agora e contato.
-  const dynamicContext = buildDynamicContext(contactInfo);
+  let dynamicContext = buildDynamicContext(contactInfo);
+
+  // A campanha que trouxe esta pessoa, quando houver.
+  //
+  // Sem isto o agente lê a própria mensagem de campanha no histórico
+  // dizendo "montamos uma condição para quem já foi aluno" e não faz ideia
+  // de qual condição é — a oferta vive em crm_campanhas.oferta, não no
+  // prompt. Aconteceu com a Paula Ferreira em 25/08/2026: a campanha
+  // prometia AQUA anual 10x264, e o agente ofereceu Performa 12x199.
+  //
+  // Vai na camada 3, DEPOIS do breakpoint de cache: é por conversa, e no
+  // bloco estável invalidaria o prefixo de todo mundo.
+  if (campanha?.oferta) {
+    dynamicContext += montarContextoCampanha(campanha);
+  }
 
   // Camadas 1 + 2, com o breakpoint de cache.
   let system = await buildSystem(systemPrompt, modulos, dynamicContext);
