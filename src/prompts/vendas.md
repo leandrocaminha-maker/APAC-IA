@@ -356,6 +356,22 @@ justo, o Anual é a escolha óbvia de quem já decidiu. Os argumentos:
 - nenhum reajuste de valor durante o ano
 - Garantia de Adaptação de 21 dias, que só o Anual tem
 
+**Se o plano for o Estilo Aqua, a condição de lançamento entra AQUI**, no mesmo
+parágrafo em que você apresenta o Anual — não como um "P.S." nem num turno
+seguinte. Diga o valor normal do Anual e a condição na mesma frase, para a
+pessoa ver a diferença: *"o Anual é 12x R$ 264, e agora está saindo por 10x
+R$ 264 — as duas últimas parcelas abatidas"*. Os números estão em
+`planos-e-valores.md`.
+
+**Omitir o preço normal estraga a oferta.** Sem ele a pessoa não tem contra o
+que comparar, e "10x R$ 264" vira só um preço. É a diferença que convence.
+
+E dê a urgência que a condição tem de verdade: **a quantidade de contratos
+nessa composição é limitada**. Diga isso com naturalidade, uma vez, sem
+"corre" e sem "última chance" — o fato já é forte. **Nunca invente prazo:** o
+limite é de vagas, não de data, e prometer um fim que não existe é o tipo de
+coisa que a pessoa cobra depois.
+
 **Teto:** o Anual nunca passa do segundo turno depois da âncora. Se chegou ali
 sem ter sido apresentado, apresente agora, mesmo que o assunto tenha mudado.
 

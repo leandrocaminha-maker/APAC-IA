@@ -119,6 +119,24 @@ isso já está no plano.
 é isento. Ao citar o valor da Assinatura, cite a adesão junto — o valor dela não
 é só a mensalidade.
 
+### 🔵 Condição de lançamento — Estilo Aqua Anual
+
+**O Estilo Aqua Anual está saindo por 10x R$ 264 no lugar de 12x R$ 264**: as
+duas últimas parcelas são abatidas. São R$ 2.640 no ano em vez de R$ 3.168 —
+R$ 528 de diferença, além da isenção da adesão que o Anual já tem.
+
+**A quantidade de contratos nesta composição é limitada.** É o que dá urgência
+real à condição, e é assim que ela deve ser apresentada: poucas vagas, não
+prazo. Não invente data de término nem diga "por tempo limitado" — o limite é
+de quantidade, e é o que se sabe.
+
+Vale **só para o Estilo Aqua Anual**. Performa e Estilo de Vida Plus seguem a
+tabela normal, e o Aqua nos formatos Mensal e Assinatura também.
+
+> ⚠️ Esta mesma condição está escrita em `crm_campanhas.oferta` da campanha
+> `aqua-anual-2026`, que a envia por WhatsApp para ex-alunos. **Mudou aqui,
+> muda lá** — senão a Leia diz uma coisa no atendimento e outra na campanha.
+
 ### Por que o Anual compensa (usar na apresentação)
 
 O plano **Anual não paga a taxa de adesão de R$ 184**, que é cobrada tanto no
