@@ -1,0 +1,23 @@
+# Fim de linha, igual em qualquer máquina.
+#
+# Sem este arquivo a normalização depende do `core.autocrlf` de cada
+# clone. Quem tem `true` (o padrão do instalador do Git for Windows) e
+# quem tem `false` produzem diffs de arquivo inteiro sem mudança
+# real — e o aviso "LF will be replaced by CRLF" a cada commit vem daí.
+#
+# `eol=lf` em vez de só `text=auto`: o repositório inteiro é Node,
+# Docker e uma VPS Linux. Guardar LF e ENTREGAR LF deixa a árvore de
+# trabalho idêntica ao que está commitado, em vez de convertida na ida e na
+# volta. Nenhum editor usado aqui se incomoda com LF no Windows.
+#
+# O caso que morde de verdade é `setup-vps.sh`: um .sh com CRLF não roda
+# no Linux — o shell lê o \r como parte do comando e responde
+# "$'\r': command not found". O mesmo vale para o que o Dockerfile copia
+# para dentro da imagem.
+#
+# Não há binário versionado neste repositório (conferido em 26/08/2026: só
+# js, md, sql, json, html, yml, sh, csv e o Dockerfile). Se algum entrar —
+# imagem, PDF, fonte —, marque explicitamente com `-text` ou `binary`,
+# senão a normalização corrompe o arquivo.
+
+* text=auto eol=lf
