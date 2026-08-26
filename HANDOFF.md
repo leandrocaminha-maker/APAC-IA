@@ -11,6 +11,7 @@
 **Tem campanha ativa mandando mensagem para cliente real, agora.**
 
 `aqua-anual-2026`: 46 alvos da base do EVO, teto de 20/dia, `CAMPANHA_DRY_RUN=false`.
+Em 25/08 saíram 11 e **9 responderam (82%)**. Restam 26 pendentes.
 As mensagens saem sozinhas dentro da janela de 9h–20h30, agendadas pelo worker.
 
 ```bash
@@ -761,6 +762,72 @@ Os 8 áudios antigos foram transcritos e gravados. Dois eram intenção de
 compra perdida: **Ma Prof Barbara** pedindo aula experimental e **Tassia
 Santos** dizendo que ia fechar o anual. As duas em `human`, esperando
 consultor.
+
+### Fim de noite: dois defeitos que a campanha revelou
+
+A campanha rodando com gente real achou o que teste nenhum tinha achado.
+
+**Números às 22h:** 11 enviadas, **9 responderam (82%)**, 0 supressões
+legítimas, 26 alvos pendentes.
+
+#### 1. A preposição "para" virava pedido de descadastro (`cb86080`)
+
+`/^parar?/` casava com **"Para mim"**, "Para minha filha", "para
+academia". O `r` opcional mais a fronteira de palavra transformavam a
+palavra mais comum do português em opt-out.
+
+E o pior é de onde a frase vem: "Para mim" é a resposta à pergunta que **a
+própria Leia faz** na qualificação — *"é para você ou está pesquisando para
+outra pessoa?"*. O roteiro de vendas provocava a supressão do lead que
+estava respondendo direito.
+
+Aconteceu com **Paula Ferreira** e **Taís Lira**. A Paula conversou uma hora,
+respondeu "Para mim" e recebeu *"Prontinho, não te mando mais mensagem por
+aqui"*. Ela respondeu *"Não entendi"*. As duas supressões foram removidas.
+
+A mesma família de erro estava na porta de consentimento: `/^n[aã]o/`
+casava com **"Não entendi"**, "Não sei", "Não tenho certeza" — pedidos de
+ajuda de quem ficou confuso. Encerrar a campanha neles perde exatamente
+quem estava interessado.
+
+> ⚠️ **A lição, e vale para todo código novo:** âncora curta demais numa
+> língua em que a palavra continua. `para` → `para mim`; `não` → `não
+> entendi`. Desconfie de qualquer `/^palavra/` em português.
+
+Agora "parar" e "pare" exigem a forma verbal completa, "para" só vale
+sozinho, e "não" precisa estar sozinho ou seguido de palavra de recusa.
+Conferido em 39 casos.
+
+#### 2. O agente não sabia o que a campanha prometeu (`05b735f`)
+
+A Paula perguntou "Gostaria de saber como funciona" — 44 caracteres, acima
+do limite de 40, então a porta de consentimento devolveu `outro` e passou
+ao agente completo. Correto por desenho.
+
+Mas o agente **não recebia a oferta**. Ela vive em `crm_campanhas.oferta`, e
+ele só tem o prompt de vendas e a base. Leu a própria mensagem de campanha
+no histórico — *"montamos uma condição pensada para quem já foi aluno"* — e
+não fazia ideia de qual era. Improvisou com a tabela comum: ofereceu
+**Performa 12x R$ 199** onde a campanha prometia **AQUA anual 10x R$ 264**.
+
+Pelo mesmo motivo se reapresentou ("Sou a Leia, consultora virtual") numa
+conversa que ele mesmo abriu meia hora antes.
+
+`campanhaDoContato()` agora devolve a oferta e o link de checkout daquela
+pessoa, e isso entra na **camada 3** do system — depois do breakpoint de
+cache, porque é por conversa e no bloco estável invalidaria o prefixo de
+todo mundo. Só vale enquanto a campanha está viva para ela.
+
+#### A correção do consultor está funcionando
+
+Reportaram a Elisangela Castello como recaída. Não era: as três intromissões
+da Leia são de **24/08**, antes do conserto de 25/08 19:32. Depois dele,
+**zero** mensagens do bot naquela conversa — inclusive quando ela mandou
+áudio às 23:47, que foi transcrito em tempo real para a consultora ler sem
+a Leia se meter.
+
+Ao investigar caso reportado, conferir o **horário do deploy** antes de
+concluir que a correção falhou.
 
 ### Pendências
 
