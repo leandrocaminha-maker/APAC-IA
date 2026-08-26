@@ -17,11 +17,8 @@
 
 ### Natação Adulto
 
-- **O que é:** aprendizado e aperfeiçoamento dos nados, em turmas por nível — de
-  quem nunca nadou a quem quer refinar técnica e condicionamento.
-- **Para quem costuma fechar:** quem quer atividade de baixo impacto nas
-  articulações, quem tem histórico de dor ao correr, e quem se entedia na
-  esteira.
+- **O que é:** aprendizado e prática da modalidade, seja para iniciar ou para treinar com qualidade.
+- **Para quem costuma fechar:** quem quer atividade na piscina.
 - **Diferencial na AP:** há um cuidado especial para adultos que não sabem nadar, com um ambiente seguro e progressão que respeita o tempo de cada um. Para quem é praticante ou avançado, o treino é muito mais do que contar chegadas, A programação se divide em clínicas técnicas e séries de controle da semana de acordo com o objetivo do mês.
 - **Níveis / como o adulto é alocado na turma:** Cada sessão recebe alunos de qualquer nível, organizados nas raias de acordo com a velocidade e distância que pretendem nadar. Iniciantes são orientados individualmente pelo professor, e com o tempo migram para raias com maior volume de treino.
 
@@ -67,7 +64,11 @@
   mais comum.
 - **Diferencial na AP:** a sessão agendada tem limite de alunos, então a sala
   não lota e o professor consegue acompanhar de fato. É o contraponto direto às
-  redes low-cost, onde se paga para usar a máquina sem ninguém acompanhando. O espaço possui aparelhos de alto desempenhbo em conjunto com unidades bem adaptáveis para todos os níveis de alunos. O espaço funcional possui kit de LPO, kettlebells, TRX, medicine ball, cordas, caixas, bosu. Além disso é oferecido treinamento de grupos especiais, como hipertensos, idosos, gestantes e pessoas com limitações de saúde, com acompanhamento presencial do professor. Temos o equilibrio entre treinar para ficar no shape e treinar para saúde e desenvolver capacidades.
+  redes low-cost, onde se paga para usar a máquina sem ninguém acompanhando.
+  Há treinamento de **grupos especiais** — hipertensos, idosos, gestantes e
+  pessoas com limitações de saúde — com acompanhamento presencial do professor,
+  e o equilíbrio entre treinar para ficar no shape e treinar para saúde e
+  capacidades físicas. Os equipamentos da sala estão em `informacoes-gerais.md`.
 - **A partir de 11 anos** em horários específicos (9h30–11h30 e 15h15–18h).
 
 ## Pilates Fit Studio

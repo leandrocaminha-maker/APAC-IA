@@ -35,12 +35,11 @@ consultor.
 | Mensagem do app | O que ela quer dizer |
 |---|---|
 | **Agendamento restrito** — "Esta atividade poderá ser agendada somente a partir de uma compra de um plano ou serviço" | A atividade **não está incluída no plano** que a pessoa tem. Não é falha nem bloqueio: é escopo de plano. |
-| "Você só pode se agendar em no máximo **1 atividade(s)** do seu contrato ao mesmo tempo" | Limite **por modalidade**: não dá para ter duas sessões da mesma atividade pendentes ao mesmo tempo — duas de musculação, duas de natação. |
-| "Você só pode se agendar em **3 aula(s)** do seu contrato ao mesmo tempo" | Limite **total**: 3 agendamentos pendentes somando todas as modalidades. |
+| "Você só pode se agendar em no máximo **N aula(s)** do seu contrato ao mesmo tempo" | Limite de agendamentos **em aberto**: são **4**, somando todas as modalidades. Realizada a sessão, a vaga libera e a pessoa agenda outra. |
 
-As duas últimas são a mesma regra vista de dois ângulos: **até 3 agendamentos
-pendentes ao mesmo tempo, no máximo 1 por modalidade.** Realizada a sessão, a
-vaga libera e a pessoa agenda outra.
+**Não existe limite por modalidade.** Dá para deixar duas sessões de musculação,
+ou duas de natação, em aberto ao mesmo tempo — a restrição de 1 por modalidade
+foi retirada. Se o app recusar por esse motivo, é caso para o consultor.
 
 ## Bloqueios e pendências
 

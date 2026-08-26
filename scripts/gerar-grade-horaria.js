@@ -1,8 +1,15 @@
 /**
- * Gera src/prompts/knowledge/grade-horaria.md a partir de data/grade-aulas.csv.
+ * Gera DOIS arquivos de grade a partir de data/grade-aulas.csv:
+ *
+ * - `grade-horaria.md` — módulo `nucleo`, vai em toda conversa.
+ * - `grade-horaria-infantil.md` — módulo `infantil`, só com sinal de criança.
  *
  * O CSV é a exportação da grade do sistema (Hora;Dia;Atividade;Capacidade;Professor).
- * O .md é o que o agente de IA lê como base de conhecimento.
+ * Os .md são o que o agente de IA lê como base de conhecimento.
+ *
+ * A divisão é de 26/08/2026 e tem uma razão só: a grade infantil eram 1.892
+ * tokens indo em 100% das conversas, inclusive na de quem só quer musculação.
+ * Quem decide o arquivo de cada seção é o campo `publico` em `SECOES`.
  *
  * A exportação é uma lista de sessões soltas, mas não é assim que se compra uma
  * vaga: na natação infantil a matrícula é sempre um PAR de dias (Seg+Qua ou
@@ -20,7 +27,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CSV = join(ROOT, 'data', 'grade-aulas.csv');
-const OUT = join(ROOT, 'src', 'prompts', 'knowledge', 'grade-horaria.md');
+const KNOWLEDGE = join(ROOT, 'src', 'prompts', 'knowledge');
+const OUT_GERAL = join(KNOWLEDGE, 'grade-horaria.md');
+const OUT_INFANTIL = join(KNOWLEDGE, 'grade-horaria-infantil.md');
 
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
 const DIA_LABEL = { Seg: 'Seg', Ter: 'Ter', Qua: 'Qua', Qui: 'Qui', Sex: 'Sex', Sab: 'Sáb' };
@@ -31,11 +40,18 @@ const PARES = [['Seg', 'Qua'], ['Ter', 'Qui']];
 const avisos = [];
 
 // Agrupamento das atividades em seções, na ordem em que aparecem no arquivo.
-// A ordem segue o funil de vendas: infantil primeiro, depois adulto.
-// regime 'par' = natação infantil (matrícula em par de dias).
+//
+// `regime: 'par'` = natação infantil (matrícula em par de dias).
+//
+// `publico` decide em QUAL ARQUIVO a seção sai, e é o motivo de este gerador
+// escrever dois .md desde 26/08/2026. A grade infantil eram 1.892 tokens
+// viajando em 100% das conversas, inclusive na de quem só quer musculação —
+// o mesmo problema que a modularização da base já tinha resolvido. Agora ela
+// sai em `grade-horaria-infantil.md`, que só entra com o módulo `infantil`.
 const SECOES = [
   {
     titulo: 'Escola de Natação Infantil — trilha 3 a 5 anos',
+    publico: 'infantil',
     regime: 'par',
     nota:
       'Níveis da trilha 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → ' +
@@ -50,6 +66,7 @@ const SECOES = [
   },
   {
     titulo: 'Escola de Natação Infantil — trilha 6 a 12 anos',
+    publico: 'infantil',
     regime: 'par',
     nota:
       'Níveis da trilha 6 a 12 anos, na ordem: N1 Branca → N2 Branca → N3 e N4 ' +
@@ -65,6 +82,7 @@ const SECOES = [
   },
   {
     titulo: 'Natação Bebê',
+    publico: 'infantil',
     nota:
       'De **12 meses até entre 3 anos e meio e 4 anos**, **1x na semana** — cada ' +
       'horário abaixo é uma turma independente. A regra de matrícula em par de dias ' +
@@ -73,11 +91,13 @@ const SECOES = [
   },
   {
     titulo: 'Natação Adulto',
+    publico: 'geral',
     nota: 'A partir de 13 anos. Inclusa nos planos Estilo Aqua e Estilo de Vida Plus.',
     atividades: [['Natação Adulto', null]],
   },
   {
     titulo: 'Hidroginástica',
+    publico: 'geral',
     nota: 'Inclusa nos planos Estilo Aqua e Estilo de Vida Plus.',
     atividades: [
       ['Hidroginástica', null],
@@ -86,6 +106,7 @@ const SECOES = [
   },
   {
     titulo: 'Pilates Fit Studio',
+    publico: 'geral',
     nota:
       'Estúdio com 8 lugares por sessão. Liberado no Estilo de Vida Plus; ' +
       'no Estilo Aqua são 8 sessões para vivenciar; não incluso no Performa.',
@@ -93,6 +114,7 @@ const SECOES = [
   },
   {
     titulo: 'Aulas coletivas (inclusas em todos os planos adulto)',
+    publico: 'geral',
     nota: null,
     atividades: [
       ['Mat Pilates', null],
@@ -108,6 +130,7 @@ const SECOES = [
   },
   {
     titulo: 'Funcional Kids',
+    publico: 'infantil',
     nota:
       'Atividade terrestre infantil, 6 a 12 anos. Entra como combo da Escola de ' +
       'Natação (+R$ 27) ou como atividade avulsa (ver `planos-e-valores.md`).',
@@ -115,6 +138,7 @@ const SECOES = [
   },
   {
     titulo: 'Avaliação e Consultoria',
+    publico: 'geral',
     nota:
       'Atendimento individual (1 aluno por horário), incluso no acompanhamento ' +
       'técnico de todos os planos adulto.',
@@ -269,10 +293,39 @@ function resumoMusculacao(aulas) {
   return { linhas, min: caps[0], max: caps[caps.length - 1] };
 }
 
-function gerar() {
-  const aulas = lerCsv();
-  const hoje = new Date().toLocaleDateString('pt-BR');
-  const conhecidas = new Set([MUSCULACAO]);
+/** Renderiza as seções de um público, na ordem em que estão em `SECOES`. */
+function renderSecoes(aulas, publico, conhecidas) {
+  const out = [];
+  for (const secao of SECOES.filter((s) => s.publico === publico)) {
+    const corpo = [];
+    for (const [atividade, descricao] of secao.atividades) {
+      conhecidas.add(atividade);
+      const linhas = secao.regime === 'par'
+        ? linhasEmPares(aulas, atividade)
+        : linhasSoltas(aulas, atividade);
+      if (!linhas.length) continue;
+      corpo.push(descricao ? `### ${atividade} — ${descricao}` : `### ${atividade}`);
+      corpo.push('');
+      corpo.push(...linhas);
+      corpo.push('');
+    }
+    if (!corpo.length) continue;
+    out.push(`## ${secao.titulo}`, '');
+    if (secao.nota) out.push(`> ${secao.nota}`, '');
+    out.push(...corpo);
+  }
+  return out;
+}
+
+/**
+ * `grade-horaria.md` — vai no núcleo, em toda conversa.
+ *
+ * Fica aqui só o que qualquer conversa pode precisar: como ler a grade, o
+ * recorte de funcionamento e as atividades de 13 anos ou mais. As regras de
+ * leitura que só valem para a infantil (tamanho de turma, par de dias, níveis
+ * por horário) saem no outro arquivo, junto da grade que elas governam.
+ */
+function montarGeral(aulas, hoje, conhecidas) {
   const out = [];
 
   out.push('# Grade Horária — AP Academia');
@@ -280,6 +333,10 @@ function gerar() {
   out.push('> **Arquivo gerado automaticamente** a partir de `data/grade-aulas.csv`');
   out.push('> (exportação da grade do sistema). Não edite este `.md` à mão: atualize o');
   out.push('> CSV e rode `npm run grade`, senão a próxima geração desfaz a edição.');
+  out.push('>');
+  out.push('> **A grade da Escola de Natação Infantil e da Natação Bebê está em');
+  out.push('> `grade-horaria-infantil.md`**, no módulo `infantil`. Aqui estão as');
+  out.push('> atividades a partir de 13 anos e as regras gerais de leitura.');
   out.push(`> Última geração: ${hoje}.`);
   out.push('');
   out.push('## Como usar esta grade no atendimento');
@@ -292,24 +349,14 @@ function gerar() {
   out.push('   vazio**: esta grade não registra movimento nem ocupação. Nunca diga que');
   out.push('   um horário "é o pico", "costuma lotar" ou "é mais tranquilo" — isso é');
   out.push('   invenção, mesmo quando parece óbvio.');
-  out.push('3. **Esse número também não é o tamanho da turma.** No mesmo horário a');
-  out.push('   piscina recebe mais de uma turma, divididas por nível. Os tamanhos de');
-  out.push('   turma da natação infantil (até 5 iniciantes de 3 a 5 anos, até 6');
-  out.push('   iniciantes de 6 a 12, até 10 nos demais níveis) estão em');
-  out.push('   `base-conhecimento-natacao-infantil.md` — **use esses** ao falar de');
-  out.push('   turma reduzida, nunca o número de vagas do horário.');
-  out.push('4. Se o cliente pedir um dia/horário que não está listado aqui, esse horário');
+  out.push('3. Se o cliente pedir um dia/horário que não está listado aqui, esse horário');
   out.push('   **não existe na grade** — diga isso e ofereça as opções próximas que existem.');
-  out.push('5. Na natação infantil, **nunca ofereça um dia solto da semana**: a matrícula');
-  out.push('   é o par (ver a regra na próxima seção).');
-  out.push('6. Dois horários seguidos da mesma modalidade (ex.: 19:00 e 19:40) são turmas');
+  out.push('4. Dois horários seguidos da mesma modalidade (ex.: 19:00 e 19:40) são turmas');
   out.push('   diferentes, não uma aula longa.');
-  out.push('7. **Nem todo horário infantil lista os níveis que atende.** Quando o horário');
-  out.push('   não especificar os níveis, assuma que **todos os níveis daquele grupo');
-  out.push('   etário estão inclusos** — não diga que o nível da criança não é atendido');
-  out.push('   ali, e não transfira por causa disso. A confirmação do nível na turma é');
-  out.push('   do consultor, junto com a vaga.');
-  out.push('8. A grade pode mudar; ao fechar a matrícula, o horário é confirmado pelo consultor.');
+  out.push('5. A grade pode mudar; ao fechar a matrícula, o horário é confirmado pelo consultor.');
+  out.push('');
+  out.push('**Duração das aulas adultas e coletivas: 45 minutos.** É dado confirmado —');
+  out.push('responda direto, não transfira.');
   out.push('');
   out.push('## Aulas x funcionamento');
   out.push('');
@@ -321,6 +368,64 @@ function gerar() {
   out.push('  e não há nenhuma aula entre 11:20 e 15:00.');
   out.push('- **Sábado:** primeira aula 08:40, última aula começa 12:20.');
   out.push('- **Domingo:** fechado.');
+  out.push('');
+  out.push('---');
+  out.push('');
+  out.push(...renderSecoes(aulas, 'geral', conhecidas));
+
+  const musc = resumoMusculacao(aulas);
+  out.push('## Musculação');
+  out.push('');
+  out.push('> Inclusa em todos os planos adulto. Cada sessão tem hora de início e um');
+  out.push(`> limite de alunos — de ${musc.min} a ${musc.max}, conforme o horário. O diferencial de`);
+  out.push('> a musculação ser por sessão agendada está em `atividades.md`; as regras de');
+  out.push('> agendamento, em `operacional-adulto.md`.');
+  out.push('');
+  out.push('Sessões (início de cada uma):');
+  out.push('');
+  out.push(...musc.linhas);
+  out.push('');
+
+  return out;
+}
+
+/**
+ * `grade-horaria-infantil.md` — módulo `infantil`.
+ *
+ * Carrega junto as regras de leitura que só fazem sentido com esta grade na
+ * frente: o par de dias, o tamanho da turma pedagógica e o que fazer quando o
+ * horário não lista os níveis que atende.
+ */
+function montarInfantil(aulas, hoje, conhecidas) {
+  const out = [];
+
+  out.push('# Grade Horária — Escola de Natação Infantil e Bebês');
+  out.push('');
+  out.push('> **Arquivo gerado automaticamente** a partir de `data/grade-aulas.csv`.');
+  out.push('> Não edite este `.md` à mão: atualize o CSV e rode `npm run grade`.');
+  out.push('>');
+  out.push('> **Módulo `infantil`.** As atividades a partir de 13 anos e as regras');
+  out.push('> gerais de leitura da grade estão em `grade-horaria.md`, que vai em toda');
+  out.push('> conversa. O que está aqui vale por cima daquilo, não no lugar.');
+  out.push(`> Última geração: ${hoje}.`);
+  out.push('');
+  out.push('## Como ler a grade infantil');
+  out.push('');
+  out.push('1. **"até N vagas" não é o tamanho da turma.** No mesmo horário a piscina');
+  out.push('   recebe mais de uma turma, divididas por nível. Os tamanhos de turma');
+  out.push('   (até 5 iniciantes de 3 a 5 anos, até 6 iniciantes de 6 a 12, até 10 nos');
+  out.push('   demais níveis) estão em `base-conhecimento-natacao-infantil.md` —');
+  out.push('   **use esses** ao falar de turma reduzida, nunca o número de vagas.');
+  out.push('2. **Nunca ofereça um dia solto da semana:** a matrícula é o par de dias');
+  out.push('   (regra na próxima seção).');
+  out.push('3. **Nem todo horário lista os níveis que atende.** Quando o horário não');
+  out.push('   especificar, assuma que **todos os níveis daquele grupo etário estão');
+  out.push('   inclusos** — não diga que o nível da criança não é atendido ali, e não');
+  out.push('   transfira por causa disso. A confirmação do nível na turma é do');
+  out.push('   consultor, junto com a vaga.');
+  out.push('');
+  out.push('**Duração:** bebê 30 minutos; 3–5 e 6–12 anos 45 minutos. É dado');
+  out.push('confirmado — responda direto, não transfira.');
   out.push('');
   out.push('## Como funciona a matrícula da natação infantil');
   out.push('');
@@ -343,85 +448,53 @@ function gerar() {
   out.push('');
   out.push('---');
   out.push('');
+  out.push(...renderSecoes(aulas, 'infantil', conhecidas));
 
-  for (const secao of SECOES) {
-    out.push(`## ${secao.titulo}`);
-    out.push('');
-    if (secao.nota) {
-      out.push(`> ${secao.nota}`);
-      out.push('');
-    }
-    for (const [atividade, descricao] of secao.atividades) {
-      conhecidas.add(atividade);
-      const linhas = secao.regime === 'par'
-        ? linhasEmPares(aulas, atividade)
-        : linhasSoltas(aulas, atividade);
-      if (!linhas.length) continue;
-      out.push(descricao ? `### ${atividade} — ${descricao}` : `### ${atividade}`);
-      out.push('');
-      out.push(...linhas);
-      out.push('');
-    }
-  }
+  return out;
+}
 
-  const musc = resumoMusculacao(aulas);
-  out.push('## Musculação');
-  out.push('');
-  out.push('> Inclusa em todos os planos adulto.');
-  out.push('');
-  out.push('**A musculação aqui é por sessão agendada, e isso é um diferencial —');
-  out.push('use na conversa.** Não é o modelo da maioria das academias, onde o aluno');
-  out.push('entra a qualquer momento e a sala lota. Aqui cada sessão tem hora de início');
-  out.push(`e um limite de alunos (de ${musc.min} a ${musc.max}, conforme o horário), então o aluno`);
-  out.push('sempre treina com relação aluno/professor confortável — que é o que permite o');
-  out.push('acompanhamento técnico incluso no plano (ver `planos-e-valores.md`).');
-  out.push('O agendamento é feito no app FITI, sem limite de sessões por dia. O aluno');
-  out.push('mantém até 3 agendamentos pendentes ao mesmo tempo, no máximo 1 por');
-  out.push('modalidade — ver `operacional-adulto.md` e `suporte-fiti.md`.');
-  out.push('');
-  out.push('Sessões (início de cada uma):');
-  out.push('');
-  out.push(...musc.linhas);
-  out.push('');
+function gerar() {
+  const aulas = lerCsv();
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const conhecidas = new Set([MUSCULACAO]);
 
+  const geral = montarGeral(aulas, hoje, conhecidas);
+  const infantil = montarInfantil(aulas, hoje, conhecidas);
+
+  // Atividade nova no CSV que ninguém classificou vai para o arquivo do
+  // núcleo de propósito: lá ela é vista em toda conversa, e o objetivo é
+  // que alguém a classifique — não que ela fique escondida num módulo.
   const orfas = [...new Set(aulas.map((a) => a.atividade))].filter((a) => !conhecidas.has(a));
   if (orfas.length) {
-    out.push('## Atividades ainda não classificadas');
-    out.push('');
-    out.push('> Apareceram no CSV mas não estão em nenhuma seção acima. Classificar em');
-    out.push('> `scripts/gerar-grade-horaria.js`.');
-    out.push('');
+    geral.push('## Atividades ainda não classificadas');
+    geral.push('');
+    geral.push('> Apareceram no CSV mas não estão em nenhuma seção acima. Classificar em');
+    geral.push('> `scripts/gerar-grade-horaria.js`.');
+    geral.push('');
     for (const atividade of orfas) {
-      out.push(`### ${atividade}`);
-      out.push('');
-      out.push(...linhasSoltas(aulas, atividade));
-      out.push('');
+      geral.push(`### ${atividade}`);
+      geral.push('');
+      geral.push(...linhasSoltas(aulas, atividade));
+      geral.push('');
     }
   }
 
-  out.push('---');
-  out.push('');
-  out.push('## Duração das aulas');
-  out.push('');
-  out.push('- **Adultas e coletivas:** 45 minutos (`atividades.md`).');
-  out.push('- **Infantis:** bebê 30 minutos; 3–5 e 6–12 anos 45 minutos');
-  out.push('  (`base-conhecimento-natacao-infantil.md`).');
-  out.push('');
-  out.push('Isto é dado confirmado — responda direto, não transfira.');
-  out.push('');
-  out.push('---');
-  out.push('');
-  out.push('## Pendências desta grade (não invente estes dados)');
-  out.push('');
-  out.push('- **Horário de feriados:** ver `informacoes-gerais.md`.');
-  out.push('- **Vagas livres por turma** não existem nesta base — só a lotação máxima.');
-  out.push('- **Musculação a partir de 11 anos** existe em horários específicos');
-  out.push('  (9h30–11h30 e 15h15–18h, conforme a base de natação infantil), mas a');
-  out.push('  exportação não marca quais sessões são essas.');
-  out.push('');
+  geral.push('---');
+  geral.push('');
+  geral.push('## Pendências desta grade (não invente estes dados)');
+  geral.push('');
+  geral.push('- **Horário de feriados:** ver `informacoes-gerais.md`.');
+  geral.push('- **Vagas livres por turma** não existem nesta base — só a lotação máxima.');
+  geral.push('- **Musculação a partir de 11 anos** existe em horários específicos');
+  geral.push('  (9h30–11h30 e 15h15–18h, conforme a base de natação infantil), mas a');
+  geral.push('  exportação não marca quais sessões são essas.');
+  geral.push('');
 
-  writeFileSync(OUT, out.join('\n'), 'utf-8');
-  console.log(`grade-horaria.md gerado: ${aulas.length} aulas, ${out.length} linhas`);
+  writeFileSync(OUT_GERAL, geral.join('\n'), 'utf-8');
+  writeFileSync(OUT_INFANTIL, infantil.join('\n'), 'utf-8');
+  console.log(`grade-horaria.md: ${geral.length} linhas`);
+  console.log(`grade-horaria-infantil.md: ${infantil.length} linhas`);
+  console.log(`${aulas.length} aulas lidas do CSV`);
   for (const aviso of avisos) console.log(`atenção: ${aviso}`);
   if (orfas.length) console.log(`atenção: atividades não classificadas -> ${orfas.join(', ')}`);
 }

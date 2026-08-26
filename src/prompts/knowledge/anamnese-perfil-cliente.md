@@ -59,11 +59,8 @@ O formulário pede para ordenar 4 objetivos de 1 a 4. Na conversa, basta captar
 | Melhorar dor, tratar doença, reabilitação | Adaptação da prática ao quadro — existe protocolo em qualquer modalidade | **Depende da afinidade**, ver seção 7 |
 | Desempenho / preparação esportiva | Acompanhamento técnico, testes específicos, programação semanal | Conforme a modalidade-alvo |
 
-**Regra de conflito:** quando objetivo e restrição divergem (quer emagrecer mas
-relata dor no joelho), a restrição **não troca a modalidade** — ela entra como
-cuidado dentro da atividade que a pessoa já quer fazer. Pilates Fit Studio e
-atividades aquáticas só entram na conversa se houver afinidade com elas.
-Ver seção 7.
+**Regra de conflito:** quando objetivo e restrição divergem, a restrição **não
+troca a modalidade** — ver seção 7.
 
 ---
 
@@ -140,29 +137,14 @@ O formulário mapeia dor persistente por região (pescoço, tórax, lombar, ombr
 cotovelos, punhos, quadris, joelhos, tornozelos) e a intensidade de 0 a 10.
 
 Na venda, basta saber **se existe dor e se ela limita**. Nunca peça o mapa
-completo nem a nota.
-
-### A regra central: dor não escolhe a modalidade, a afinidade escolhe
-
-Dor é motivo para **adaptar** a prática, não para redirecionar a pessoa a uma
-atividade que ela não quer fazer. Quem chegou querendo musculação e relata dor
-no ombro continua na musculação, com os cuidados certos.
+completo nem a nota. Qual modalidade oferecer nesse caso é regra de condução e
+está no prompt: **a dor adapta a prática, não redireciona a pessoa.**
 
 **Na musculação existe protocolo — diga isso, é o que a maioria não sabe.**
-O professor trabalha com a restrição: seleção de exercícios, ajuste de amplitude
-e de carga, progressão mais lenta. E vai além de evitar a dor — monta rotinas
-que fortalecem a musculatura de suporte e ajudam a minimizar o quadro ao longo
-do tempo.
 
 > Dor no joelho não te tira da musculação 😊 O professor ajusta os exercícios e
 > ainda monta uma rotina que fortalece a região — em geral é isso que vai
 > aliviando com o tempo.
-
-**Pilates Fit Studio e atividades aquáticas** entram como argumento **somente
-quando a pessoa demonstra interesse ou abertura** a elas. Você pode sondar uma
-vez — *"já pensou em experimentar pilates ou natação?"* — mas se ela não se
-identificar, volte para a modalidade dela. Empurrar modalidade por causa da dor
-soa a consultório e queima a venda.
 
 - **Dor leve ou pontual** → segue normal, reforce que a avaliação física ajusta
   a prescrição
@@ -173,9 +155,8 @@ soa a consultório e queima a venda.
   deficiência** → acolha, diga que a avaliação física define o caminho seguro e
   **use `transferir_para_humano`**
 
-**PAR-Q na matrícula:** qualquer resposta "sim" leva a pessoa a assinar termo de
-responsabilidade e trazer atestado médico de aptidão. Informar isso é
-tranquilizador, não burocrático — mostra que a academia leva segurança a sério.
+O **PAR-Q da matrícula** está em `operacional-adulto.md`; citá-lo é
+tranquilizador, não burocrático.
 
 <!-- CONFERIR: os cortes de conduta por intensidade de dor acima são critério
      comercial sugerido, não protocolo clínico da academia. Validar com a

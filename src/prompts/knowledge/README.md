@@ -14,9 +14,28 @@ perguntou o preço da musculação. Agora a composição é esta (definida em
 | Módulo | Arquivos | Quando entra |
 |---|---|---|
 | `nucleo` | `informacoes-gerais`, `planos-e-valores`, `atividades`, `grade-horaria` | **Sempre** |
-| `adulto` | `anamnese-perfil-cliente`, `operacional-adulto` | **Sempre** (material 13+) |
-| `infantil` | `base-conhecimento-natacao-infantil` | Sinal de criança na conversa |
-| `matriculado` | `contrato-resumo`, `suporte-fiti` | Sinal de aluno/suporte, ou `is_prospect = false` |
+| `adulto` | `anamnese-perfil-cliente`, `operacional-adulto` | Por padrão — **menos** na conversa exclusivamente infantil |
+| `infantil` | `base-conhecimento-natacao-infantil`, `grade-horaria-infantil` | Sinal de criança na conversa |
+| `infantil-tecnico` | `natacao-infantil-tecnico` | **Só pela tool `carregar_base`** |
+| `matriculado` | `conducao-matriculado`, `suporte-fiti` | Sinal de aluno/suporte, ou `is_prospect = false` |
+
+Em 26/08/2026 duas coisas mudaram, ambas para tirar peso de quem não precisa
+dele:
+
+- O `adulto` deixou de ser incondicional. Ele carrega 7.225 tokens de
+  qualificação e regras de público 13+ — e a própria `anamnese-perfil-cliente`
+  abre dizendo que vale "a partir de 13 anos". Quem só falou do filho de 4 anos
+  não recebe mais isso. Basta um sinal adulto na conversa (`SINAIS_ADULTO`, ou
+  uma idade de 13 para cima) para ele voltar.
+- A base infantil, que era um arquivo de 9.647 tokens, virou dois: o que a
+  venda usa (turmas, ponto de entrada, objetivo de cada nível, objeções) e o
+  embasamento da metodologia, que só entra quando o responsável pergunta como o
+  programa funciona por dentro.
+- Pelo mesmo motivo, a **grade** virou dois arquivos: `grade-horaria.md` no
+  núcleo, com as atividades 13+, e `grade-horaria-infantil.md` no módulo
+  `infantil`. Eram 1.892 tokens de horário de criança em toda conversa. Quem
+  decide o arquivo de cada seção é o campo `publico` em
+  [`scripts/gerar-grade-horaria.js`](../../../scripts/gerar-grade-horaria.js).
 
 A detecção lê a conversa inteira que está na janela de histórico, não só a
 última mensagem — e erra para o lado de **carregar demais** de propósito.
@@ -43,11 +62,13 @@ dos dois vira mentira — por isso o prompt referencia a base em vez de repeti-l
 |---|---|
 | `informacoes-gerais.md` | Nome, endereço, contatos, horário de funcionamento, estrutura, matrícula, políticas do dia a dia, FAQ |
 | `planos-e-valores.md` | Planos, preços, o que cada um inclui, taxa de adesão, Clube Sábado |
-| `operacional-adulto.md` | Regras de uso do plano adulto: agendamento FITI, PAR-Q, suspensão, devolução em 21 dias, cancelamento |
-| `contrato-resumo.md` | Síntese do contrato: cancelamento, rescisão, transferência, férias, atestado, vestuário, uso de imagem, convivência |
+| `operacional-adulto.md` | Regras de uso do plano adulto: agendamento FITI, PAR-Q, suspensão, devolução em 21 dias |
+| `conducao-matriculado.md` | Como conduzir o aluno matriculado, mais os fatos do contrato: rescisão, transferência, uso de imagem, convivência, canais |
 | `atividades.md` | O que é cada aula e qual o diferencial dela |
-| `grade-horaria.md` | Dias e horários das turmas — **gerado automaticamente** |
-| `base-conhecimento-natacao-infantil.md` | Metodologia, níveis e objeções da Escola de Natação Infantil e Bebês |
+| `grade-horaria.md` | Dias e horários das turmas 13+ — **gerado automaticamente** |
+| `grade-horaria-infantil.md` | Dias e horários das turmas infantis e de bebê, e a regra do par de dias — **gerado automaticamente** |
+| `base-conhecimento-natacao-infantil.md` | Turmas, ponto de entrada, objetivo de cada nível e objeções da Escola de Natação Infantil e Bebês |
+| `natacao-infantil-tecnico.md` | O embasamento da metodologia infantil: fases, conteúdo por nível, metas de promoção, glossário |
 | `anamnese-perfil-cliente.md` | Qualificação: as perguntas que mudam a recomendação e a leitura de cada resposta |
 
 ## Como editar
@@ -63,10 +84,12 @@ dos dois vira mentira — por isso o prompt referencia a base em vez de repeti-l
 > Isto vale para os knowledge files. O **prompt** (`src/prompts/vendas.md`) vive
 > no banco e segue outro caminho: `npm run prompt`, sem deploy. Ver `HANDOFF.md`.
 
-**Exceção: `grade-horaria.md` não se edita à mão.** Ele é gerado de
-`data/grade-aulas.csv`. Para atualizar a grade, substitua o CSV pela nova
-exportação do sistema e rode `npm run grade`; qualquer edição manual no `.md` é
-desfeita na próxima geração.
+**Exceção: os dois `grade-horaria*.md` não se editam à mão.** Ambos são gerados
+de `data/grade-aulas.csv` pelo mesmo script. Para atualizar a grade, substitua o
+CSV pela nova exportação do sistema e rode `npm run grade`; qualquer edição
+manual nos `.md` é desfeita na próxima geração. Para mudar em qual arquivo uma
+atividade sai, mexa no campo `publico` da seção dela em
+`scripts/gerar-grade-horaria.js`.
 
 ## A marcação `PENDENTE`
 

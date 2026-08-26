@@ -194,7 +194,22 @@ grade inteira do plano à disposição.
 
 ---
 
-## 4. Descontos
+## 4. Formas de pagamento
+
+Valem para **qualquer plano** — adulto, infantil, bebê e Clube Sábado.
+
+- **Aceitas:** cartão de **crédito** ou **débito**, **PIX à vista**, **cheque** e
+  **dinheiro**.
+- **As formas podem ser combinadas** — dividir o valor entre dois cartões, ou dar
+  uma entrada no PIX e parcelar o saldo no cartão, por exemplo. É o argumento
+  para quem trava no limite do cartão. Quem fecha a combinação é o consultor.
+- **PIX é sempre à vista**: não existe PIX automático/recorrente aqui. A
+  **Assinatura** é débito recorrente **no cartão de crédito**, autorizado em
+  contrato — nunca prometa Assinatura no PIX.
+
+---
+
+## 5. Descontos
 
 Estes são os **únicos descontos que existem**. Valem sobre qualquer plano, e quem
 confirma o enquadramento e aplica é o consultor.
@@ -219,5 +234,5 @@ houver campanha escrita aqui, não há campanha em vigor.
 **Os descontos não acumulam.** Quem se enquadra nos dois — 65 anos ou mais e
 núcleo familiar de 3 ou mais — tem **10%, não 20%**. É um desconto só.
 
-Lembrete de `contrato-resumo.md`: **atraso no pagamento cancela os descontos
-concedidos.**
+Lembrete do contrato (`conducao-matriculado.md`): **atraso no pagamento cancela
+os descontos concedidos.**

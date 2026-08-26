@@ -14,9 +14,11 @@
   início e limite de alunos, então a sala não lota e a relação aluno/professor
   fica confortável. É isso que viabiliza o acompanhamento técnico incluso.
 - A agenda **abre 48h antes** do início da sessão.
-- **Sem limite de sessões por dia.** O aluno mantém até **4 agendamentos
-  simultâneos**. Realizada e finalizada a sessão, a vaga libera e ele pode agendar outra. É esta segunda regra que produz a
-  mensagem "no máximo 4 atividade" no FITI (`suporte-fiti.md`).
+- **Sem limite de sessões por dia.** O aluno mantém até **4 agendamentos em
+  aberto ao mesmo tempo**, e **não há restrição por modalidade** — pode deixar
+  duas sessões de musculação, ou duas de natação, em aberto juntas. Realizada e
+  finalizada a sessão, a vaga libera e ele agenda outra. É esta regra que produz
+  a mensagem de limite no FITI (`suporte-fiti.md`).
 - **Cancelamento sem consequência até 1h antes** da sessão.
 - **Falta não justificada** (não compareceu e não cancelou): o aluno pode ficar
   **2 dias sem poder agendar** pelo app. Atualmente este bloqueio está desativado.
@@ -29,7 +31,8 @@
   de responsabilidade e se compromete a trazer atestado médico de aptidão.
 - **Regras de atestado (para quem, com que prazo, de quanto em quanto tempo):**
   quem informa é o **consultor humano**, na matrícula. Diga isso e continue a
-  conversa — não é motivo de transferência (`contrato-resumo.md`).
+  conversa — não é motivo de transferência, e não cite prazos nem faixas de
+  idade de memória.
 - Avaliação, testes específicos, plano de treino, sugestão de agenda semanal e
   as reavaliações periódicas **não são vendidos à parte** — já estão no valor do
   plano (detalhe em `planos-e-valores.md`).
@@ -64,41 +67,30 @@ for medo de se comprometer com 12 parcelas. Apresente as duas condições junto
 com a garantia, nunca só a devolução: prometer devolução sem condição gera
 frustração depois.
 
-**Como o contrato descreve:** os 21 dias contam **da matrícula** e a devolução
-é **total** dos valores do contrato (a taxa de adesão não entra na conta — o
-Anual é isento dela). Texto integral em `contrato-resumo.md`.
+Os 21 dias contam **da matrícula** e a devolução é **total** dos valores do
+contrato (a taxa de adesão não entra na conta — o Anual é isento dela).
 
 ## Suspensão e afastamento
 
 - **Suspensão de até 30 dias:** benefício exclusivo do **Plano Anual**. É pausa
   do plano — não confundir com a devolução acima. Divisível em até **3 pedidos**,
-  cada um com **7 dias de antecedência** (`contrato-resumo.md`).
+  cada um com **7 dias de antecedência**.
 - **Afastamento médico:** vale para **qualquer plano**, inclusive Assinatura,
   mediante **atestado**. Não é pausa: o pagamento continua e os dias parados são
-  **acrescentados ao fim do plano** (`contrato-resumo.md`). O desejável é
-  apresentar o atestado assim que souber do afastamento, mas **também é aceito
-  depois do retorno, desde que não tenha frequentado no período**. O atestado
-  pode ser enviado por **foto na própria conversa do WhatsApp** — quem lança é o
-  consultor, e o **original é entregue no retorno**.
+  **acrescentados ao fim do plano**. Como conduzir o pedido está em
+  `conducao-matriculado.md`.
 - **Congelamento do plano, ou lançamento de dias além do previsto acima:** casos
   fora dessas regras são tratados com os gestores — transferir para humano.
 
-## Contrato e pagamento
+## Contrato
 
 - **Taxa de adesão:** cobrada no Mensal e na Assinatura; o **Anual é isento**.
-  Valores em `planos-e-valores.md`.
+  Valores e formas de pagamento em `planos-e-valores.md`.
 - **Assinatura:** permanência mínima de 2 meses; cancelamento com 30 dias de
-  aviso por e-mail, sem multa (`contrato-resumo.md`).
-- **Formas de pagamento aceitas:** cartão de **crédito** ou **débito**, **PIX à
-  vista**, **cheque** e **dinheiro**.
-- **As formas podem ser combinadas** — dividir o valor entre dois cartões, ou dar
-  uma entrada no PIX e parcelar o saldo no cartão, por exemplo. É o argumento
-  para quem trava no limite do cartão. Quem fecha a combinação é o consultor.
-- **PIX é sempre à vista**: não existe PIX automático/recorrente aqui. A
-  **Assinatura** é débito recorrente **no cartão de crédito**, autorizado em
-  contrato — nunca prometa Assinatura no PIX.
-- **Cancelamento, rescisão e transferência de plano:** ver `contrato-resumo.md`.
-  Cálculo de saldo ou valor a devolver em caso concreto: transferir para humano.
+  aviso por e-mail, sem multa.
+- **Cancelamento, rescisão e transferência de plano:** ver
+  `conducao-matriculado.md`. Cálculo de saldo ou valor a devolver em caso
+  concreto: transferir para humano.
 
 ## Idade
 

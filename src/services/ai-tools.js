@@ -162,7 +162,14 @@ const allToolDeclarations = [
       'O cabeçalho da sua BASE DE CONHECIMENTO diz quais módulos estão e quais NÃO estão. ' +
       'Use assim que perceber que o assunto do cliente é de um módulo ausente — ANTES de responder, ' +
       'e antes de cogitar `transferir_para_humano`. ' +
-      'Módulo `infantil`: metodologia, níveis, turmas e objeções da escola de natação infantil e de bebês. ' +
+      'Módulo `infantil`: turmas, idades, níveis e objeções da escola de natação infantil e de bebês. ' +
+      'Módulo `infantil-tecnico`: a metodologia infantil por dentro — as fases do programa, o conteúdo ' +
+      'de cada nível, as metas objetivas de promoção e o glossário. Peça quando o responsável quiser ' +
+      'entender COMO o programa funciona ("por que ele ainda não nada crawl?", "como vocês decidem que ' +
+      'ele mudou de nível?", "o que é palmateio?"), não para dizer em que nível a criança começa. ' +
+      'Módulo `adulto`: qualificação do público 13+ e regras de uso do plano adulto — agendamento pelo ' +
+      'FITI, avaliação física, suspensão, devolução em 21 dias. Peça quando uma conversa que começou ' +
+      'sobre criança passar a tratar de plano para um adulto. ' +
       'Módulo `matriculado`: contrato, férias, atestado, afastamento, cancelamento e app FITI. ' +
       'Não custa nada ao cliente e não aparece para ele: se estiver em dúvida, carregue. ' +
       'Nunca responda de memória sobre um assunto cujo módulo está ausente.',
@@ -172,7 +179,7 @@ const allToolDeclarations = [
         modulo: {
           type: 'string',
           description: 'Qual módulo carregar.',
-          enum: ['infantil', 'matriculado'],
+          enum: ['infantil', 'infantil-tecnico', 'adulto', 'matriculado'],
         },
       },
       required: ['modulo'],
@@ -270,14 +277,16 @@ const handlers = {
   async carregar_base(args, contexto) {
     const modulo = String(args.modulo || '').trim();
 
-    // `nucleo` e `adulto` vão sempre; pedi-los é sinal de que o modelo não
-    // leu o cabeçalho, e recarregá-los não faria nada.
-    if (!MODULOS[modulo] || modulo === 'nucleo' || modulo === 'adulto') {
+    // `nucleo` vai sempre; pedi-lo é sinal de que o modelo não leu o
+    // cabeçalho, e recarregá-lo não faria nada. `adulto` saiu desta lista em
+    // 26/08/2026: ele deixou de ser incondicional, então agora é pedível.
+    if (!MODULOS[modulo] || modulo === 'nucleo') {
       return {
         success: false,
         mensagem: `Não existe módulo "${modulo}" para carregar. Os que se pode pedir são ` +
-          '`infantil` e `matriculado`. Se o que você procura não é nenhum dos dois, ' +
-          'o dado não está na base — nesse caso vale `transferir_para_humano`.',
+          '`infantil`, `infantil-tecnico`, `adulto` e `matriculado`. Se o que você procura ' +
+          'não é nenhum deles, o dado não está na base — nesse caso vale ' +
+          '`transferir_para_humano`.',
       };
     }
 
