@@ -66,8 +66,22 @@ export function hojeSP(data = new Date()) {
  * seria perder um lead por erro de leitura.
  */
 const PEDIDOS_DE_SAIDA = [
-  /^sair\b/, /^parar?\b/, /^pare\b/, /^stop\b/, /^cancelar? inscri/,
-  /^descadastr/, /^remover?\b/, /^me (tira|remove|descadastr)/,
+  /^sair$/, /^sair (da|do) (lista|cadastro|grupo)/,
+  // "parar" e "pare" exigem a forma verbal COMPLETA, e "para" só vale
+  // sozinho.
+  //
+  // A versão anterior era /^parar?\b/, que parecia inofensiva e casava com
+  // a PREPOSIÇÃO: "Para mim", "Para minha filha", "para academia" — tudo
+  // virava pedido de descadastro. Aconteceu duas vezes em 25/08/2026, com
+  // gente da campanha.
+  //
+  // E o pior: "Para mim" é a resposta à pergunta que a própria Leia faz na
+  // qualificação ("é para você ou está pesquisando para outra pessoa?"). O
+  // roteiro de vendas provocava a própria supressão do lead.
+  /^parar\b/, /^pare\b/, /^para$/,
+  /^stop\b/, /^cancelar? inscri/,
+  /^descadastr/, /^remover? (meu|me d|da lista)/,
+  /^me (tira|remove|descadastr)/,
   /^n[aã]o (quero|desejo) (mais )?receber/, /^para de (me )?mandar/,
   /^n[aã]o me (mande|envie|perturbe)/,
 ];
@@ -732,8 +746,18 @@ const SIM = [
  * antes disto em `ehPedidoDeSaida` e com efeito permanente.
  */
 const NAO = [
-  /^n[aã]o\b/, /^n\b/, /^nao tenho interesse\b/, /^sem interesse\b/,
-  /^agora n[aã]o\b/, /^obrigad[oa]\b/, /^dispenso\b/, /^negativo\b/,
+  // "não" sozinho é recusa; "não" seguido de qualquer coisa, não
+  // necessariamente.
+  //
+  // A versão anterior era /^n[aã]o\b/, que casava com "Não entendi", "Não
+  // sei", "Não tenho certeza" — pedidos de ajuda de quem ficou confuso.
+  // Encerrar a campanha neles é perder exatamente quem estava interessado.
+  // Mesma família de erro do "Para mim" em PEDIDOS_DE_SAIDA: âncora curta
+  // demais numa língua em que a palavra continua.
+  /^n[aã]o$/, /^n$/, /^nn$/,
+  /^n[aã]o,? (obrigad|quero|tenho interesse|preciso|me interessa)/,
+  /^n[aã]o tenho interesse\b/, /^sem interesse\b/,
+  /^agora n[aã]o\b/, /^obrigad[oa]$/, /^dispenso\b/, /^negativo\b/,
 ];
 
 /**
