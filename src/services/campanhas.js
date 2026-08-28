@@ -177,6 +177,36 @@ export async function estaSuprimido(phone) {
   return Boolean(data);
 }
 
+/**
+ * Telefones em carência: receberam campanha há pouco e não responderam.
+ *
+ * Distinto de supressão, e a diferença não é de grau. Supressão é a pessoa
+ * pedindo para sair, e é permanente. Carência é o silêncio dela, que não
+ * quer dizer recusa — quer dizer "agora não". Tratar os dois igual perderia
+ * público de verdade; ignorar o segundo transforma oferta em perseguição.
+ *
+ * O filtro é `status = 'enviado'` porque os status dos alvos são exclusivos:
+ * quem respondeu virou `respondeu` e sai desta conta sozinho. Ou seja, a
+ * consulta já significa exatamente "recebeu e ficou calado".
+ */
+async function emCarencia(telefones, dias = config.campanha.carenciaDias) {
+  if (!telefones.length || dias <= 0) return new Set();
+
+  const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('crm_campanha_alvos')
+    .select('phone')
+    .in('phone', telefones)
+    .eq('status', 'enviado')
+    .gte('sent_at', desde);
+
+  if (error) {
+    logger.error('[campanhas] Falha ao conferir carência:', error.message);
+    return new Set();
+  }
+  return new Set((data ?? []).map(r => r.phone));
+}
+
 /** Telefones suprimidos, dentro de uma lista. Uma consulta em vez de N. */
 async function suprimidosEntre(telefones) {
   if (!telefones.length) return new Set();
@@ -211,7 +241,14 @@ export async function montarAlvos(campanhaId) {
   // filtro de entrada. Assim a pessoa não aparece nas contagens da campanha
   // como se fosse público dela.
   const suprimidos = await suprimidosEntre(lista.map(l => l.phone));
-  const elegiveis = lista.filter(l => !suprimidos.has(l.phone));
+
+  // Carência pelo mesmo motivo da supressão: é filtro de ENTRADA, não de
+  // envio. Quem está em carência não deve nem aparecer nas contagens desta
+  // campanha, senão a taxa de resposta passa a ter no denominador gente que
+  // nunca teve chance de responder.
+  const carencia = await emCarencia(lista.map(l => l.phone));
+
+  const elegiveis = lista.filter(l => !suprimidos.has(l.phone) && !carencia.has(l.phone));
 
   const linhas = elegiveis.map(l => ({
     campanha_id: campanhaId,
@@ -242,7 +279,8 @@ export async function montarAlvos(campanhaId) {
   const resultado = {
     inseridos,
     jaExistiam: elegiveis.length - inseridos,
-    suprimidos: lista.length - elegiveis.length,
+    suprimidos: suprimidos.size,
+    emCarencia: carencia.size,
     total: lista.length,
   };
   logger.info(`[campanhas] Alvos de "${campanha.slug}": ${JSON.stringify(resultado)}`);
@@ -691,6 +729,17 @@ export async function absorverSegmentacao(payload) {
 
   if (await estaSuprimido(phone)) {
     return { ok: false, motivo: 'telefone na lista de supressão' };
+  }
+
+  // A carência vale nos DOIS caminhos de entrada. Aplicá-la só em
+  // `montarAlvos` deixaria o portão aberto justamente por onde a coorte real
+  // entra: a automação do EVO dispara um POST por pessoa e nunca passa por
+  // lá — foi assim que as 47 chegaram.
+  if ((await emCarencia([phone])).size) {
+    return {
+      ok: false,
+      motivo: `em carência (recebeu campanha nos últimos ${config.campanha.carenciaDias} dias sem responder)`,
+    };
   }
 
   const { data, error } = await supabase

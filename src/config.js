@@ -110,6 +110,17 @@ export const config = {
 
     // Intervalo do worker que agenda os disparos do dia. 0 desliga.
     minutos: parseInt(env('CAMPANHA_MINUTOS', '10'), 10),
+
+    // Carência entre campanhas, em dias, para quem recebeu e não respondeu.
+    //
+    // Não responder não é recusa — quem recusa entra em `crm_supressoes`, e
+    // isso é permanente. É outra coisa: a pessoa viu e não quis agora, e
+    // insistir cedo demais transforma oferta em incômodo. A carência deixa
+    // ela voltar a ser público, só que não na semana seguinte.
+    //
+    // 0 desliga (todo mundo volta a ser elegível assim que a campanha
+    // anterior encerra).
+    carenciaDias: parseInt(env('CAMPANHA_CARENCIA_DIAS', '30'), 10),
   },
 
   // Transcrição de áudio recebido no WhatsApp.

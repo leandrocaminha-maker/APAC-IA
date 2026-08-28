@@ -14,6 +14,7 @@ import { logger } from '../lib/logger.js';
 import { registrarEvento } from './funil.js';
 // Sem ciclo: `evolution.js` só importa config e logger.
 import { telefoneValido } from './evolution.js';
+import { evoClient } from './evo-client.js';
 
 /**
  * Janela de contato ativo, em horário de São Paulo.
@@ -377,6 +378,64 @@ async function estadoDoSilencio(contactId) {
 }
 
 /**
+ * Este "lead" é, na verdade, um aluno com contrato em dia?
+ *
+ * ## Por que a pergunta precisa ser feita
+ *
+ * `garantirLeadDoContato` abre um lead para **todo** contato que escreve no
+ * WhatsApp, e o número é o principal da academia. Aluno matriculado
+ * perguntando o horário da natação vira lead em `em_conversa` exatamente
+ * como quem nunca pisou aqui. Se ele não responder à última mensagem, a
+ * régua do silêncio o cutuca com "o que falta para você decidir?" — para
+ * quem já decidiu, já pagou e está treinando.
+ *
+ * ## Por que não dá para usar `is_prospect`
+ *
+ * Porque ele não significa nada: nasce `true` em `contacts.js` e em
+ * `teste.js`, e **nenhum código o coloca em false**. O mesmo vale para
+ * `wa_contacts.evo_member_id`. Isso já estava documentado em `ai-agent.js`,
+ * onde a conclusão foi não afirmar nada ao agente — aqui a conclusão é
+ * outra, porque aqui dá para perguntar ao EVO.
+ *
+ * ## O que conta como aluno
+ *
+ * Só quem tem contrato ATIVO. Ex-aluno parado há mais de
+ * `EVO_MESES_REATIVACAO` (3) é oportunidade, não cliente — é a mesma regra
+ * que `situacaoDoMembro` já aplica para liberar aula experimental, e usar
+ * outra aqui criaria duas definições de "aluno" no mesmo sistema.
+ *
+ * ## Falha fechada
+ *
+ * EVO fora do ar devolve `indefinido`, e o chamador **não** envia. É a
+ * escolha certa entre os dois erros possíveis: adiar a cutucada de um lead
+ * custa uma hora, porque a varredura repete; cutucar um aluno pagante custa
+ * a relação com ele.
+ *
+ * @returns {Promise<'lead'|'aluno'|'indefinido'>}
+ */
+async function situacaoComercial(lead) {
+  try {
+    let idMember = lead.evo_id_member || null;
+
+    // Sem vínculo gravado, procura pelo telefone: o `evo_id_member` do lead
+    // só é preenchido quando a tool de identificação da Leia rodou, e ela
+    // não roda em toda conversa.
+    if (!idMember) {
+      const { cellphone } = evoClient.separarDdi(lead.phone);
+      const membros = await evoClient.buscarMembros({ phone: cellphone, take: 5 });
+      if (!membros?.length) return 'lead';       // não há cadastro de aluno
+      idMember = membros[0].idMember;
+    }
+
+    const situacao = await evoClient.situacaoDoMembro(idMember);
+    return situacao.reativavel ? 'lead' : 'aluno';
+  } catch (err) {
+    logger.warn(`[followup] Lead ${lead.id}: não deu para consultar o EVO (${err.message})`);
+    return 'indefinido';
+  }
+}
+
+/**
  * Decide qual rodada de silêncio cabe a um lead, olhando o que já correu.
  *
  * Devolve `null` — isto é, "não mexa" — em três situações:
@@ -519,6 +578,7 @@ export async function varrerSilenciosos(opcoes = {}) {
   const comConversa = new Set((conversas || []).map(c => c.contact_id));
 
   const selecionados = [];
+  const ignorados = {};
   let examinados = 0;
 
   for (const lead of leads) {
@@ -542,6 +602,16 @@ export async function varrerSilenciosos(opcoes = {}) {
     const silencio = await estadoDoSilencio(lead.contact_id);
     if (!silencio) continue;
     if (silencio.desde.getTime() > agora - dias * DIA_MS) continue;
+
+    // A pergunta cara fica por último de propósito: é a única que sai para
+    // a rede, e só vale a pena para quem já passou por todo o resto.
+    const situacao = await situacaoComercial(lead);
+    if (situacao !== 'lead') {
+      logger.info(`[followup] Lead ${lead.id} fora da varredura: ${situacao === 'aluno'
+        ? 'é aluno com contrato ativo' : 'situação indefinida (EVO não respondeu)'}`);
+      ignorados[situacao] = (ignorados[situacao] || 0) + 1;
+      continue;
+    }
 
     selecionados.push({
       lead_id: lead.id,
@@ -582,9 +652,15 @@ export async function varrerSilenciosos(opcoes = {}) {
   // foram olhados, quantos tinham rodada aberta, e quantos estavam mesmo
   // calados. `candidatos > 0` com `elegiveis = 0` é operação normal;
   // `candidatos = 0` é sinal de que o filtro ou a janela estão errados.
+  const descartes = [
+    ignorados.aluno ? `${ignorados.aluno} aluno(s) ativo(s)` : null,
+    ignorados.indefinido ? `${ignorados.indefinido} sem resposta do EVO` : null,
+  ].filter(Boolean).join(', ');
+
   const resumo =
     `${leads.length} candidato(s) na janela de ${janelaDias}d, ` +
-    `${examinados} com rodada aberta, ${selecionados.length} em silêncio há ${dias}d ou mais`;
+    `${examinados} com rodada aberta, ${selecionados.length} em silêncio há ${dias}d ou mais` +
+    (descartes ? ` (fora: ${descartes})` : '');
 
   if (simular) {
     logger.info(`[followup] Varredura (SIMULAÇÃO): ${resumo} — nada gravado`);

@@ -556,6 +556,54 @@ Cancelar, e não apagar, é o que **devolve a rodada**: a varredura só é bloqu
 por `pendente` e `enviado`, então quem respondeu e sumiu de novo volta a ser
 elegível — partindo da rodada em que parou.
 
+### A régua de silêncio não fala com aluno matriculado
+
+`garantirLeadDoContato` abre um lead para **todo** contato que escreve no
+WhatsApp, e o número é o principal da academia. Aluno perguntando o horário da
+natação vira lead em `em_conversa` igual a quem nunca pisou aqui — e se parasse
+de responder, receberia "o que falta para você decidir?".
+
+`is_prospect` não resolve: nasce `true` em `contacts.js` e em `teste.js`, e
+**nenhum código o coloca em false**. O mesmo vale para `wa_contacts.evo_member_id`
+(0 de 11 contatos em 20/08/2026). Isso já estava documentado em `ai-agent.js`, e
+lá a conclusão foi não afirmar nada ao agente. Aqui a conclusão é outra, porque
+aqui dá para **perguntar ao EVO**: `situacaoComercial()` resolve o `idMember`
+(pelo vínculo do lead ou por telefone) e chama `situacaoDoMembro`.
+
+| Situação | Resultado |
+|---|---|
+| Sem cadastro de aluno | `lead` — cutuca |
+| Contrato ativo | `aluno` — **não** cutuca |
+| Parado há menos de `EVO_MESES_REATIVACAO` (3) | `aluno` — não cutuca |
+| Parado há mais que isso, ou sem contrato nenhum | `lead` — cutuca |
+
+A definição de "aluno" é a mesma que libera aula experimental. Usar outra aqui
+criaria duas definições no mesmo sistema.
+
+⚠️ **Falha fechada.** EVO fora do ar devolve `indefinido` e a cutucada **não**
+sai. É a escolha certa entre os dois erros: adiar um lead custa uma hora, porque
+a varredura repete; cutucar um aluno pagante custa a relação com ele. Como a
+consulta é a única que sai para a rede, ela fica por último — só para quem já
+passou por todos os outros filtros.
+
+### Carência de campanha
+
+Quem **recebeu e não respondeu** fica `CAMPANHA_CARENCIA_DIAS` (30) fora das
+campanhas seguintes. Não é supressão: quem pede para sair vai para
+`crm_supressoes` e não volta. Silêncio quer dizer "agora não", não "nunca".
+
+O filtro é `status = 'enviado'` — como os status dos alvos são exclusivos e quem
+responde vira `respondeu`, a consulta já significa "recebeu e ficou calado".
+
+Vale nos **dois** caminhos de entrada, e isso não é redundância: `montarAlvos` é
+o caminho do segmento montado aqui, mas a coorte real entra por
+`absorverSegmentacao` — a automação do EVO dispara um POST por pessoa e nunca
+passa pelo primeiro. Foi assim que as 47 chegaram.
+
+É filtro de **entrada**, como a supressão: quem está em carência não aparece nas
+contagens da campanha, senão a taxa de resposta passa a ter no denominador gente
+que nunca teve chance de responder.
+
 ### Acionar o acumulado à mão
 
 A varredura enxerga `FOLLOWUP_SILENCIO_JANELA_DIAS` para trás (padrão: 7). O
