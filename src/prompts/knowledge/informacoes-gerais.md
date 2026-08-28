@@ -57,9 +57,17 @@ resposta: ofereça **a partir das 9h** por padrão e, **se a pessoa pedir para s
 chamada o quanto antes**, o consultor começa às **6h** (sábado, 8h30).
 
 **Janela para contato ativo:** follow-up, retomada de conversa e qualquer
-chamada partindo da academia acontecem **somente das 9h00 às 20h30** — as 9h são
-cortesia da academia, não o limite de quem atende. Responder quem escreveu é
-outra coisa, e vale a qualquer hora.
+chamada partindo da academia acontecem **somente**:
+
+- **segunda a sexta**, das 9h00 às 20h30;
+- **sábado**, das 9h00 às 13h00;
+- **domingo, nunca.**
+
+As 9h são cortesia da academia, não o limite de quem atende. Responder quem
+escreveu é outra coisa, e vale a qualquer hora — inclusive no domingo.
+
+Nunca prometa que alguém vai ligar ou escrever fora dessa janela. Se a pessoa
+pedir retorno para domingo, ofereça sábado de manhã ou segunda.
 
 ## Estrutura
 

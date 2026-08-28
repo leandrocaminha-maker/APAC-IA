@@ -16,12 +16,34 @@ import { registrarEvento } from './funil.js';
 import { telefoneValido } from './evolution.js';
 
 /**
- * Janela de contato ativo: 9h00 às 20h30, horário de São Paulo.
+ * Janela de contato ativo, em horário de São Paulo.
  *
  * Vale para toda mensagem que **parte** da academia. Responder quem
  * escreveu é outra coisa e vale a qualquer hora.
+ *
+ *   segunda a sexta   9h00 – 20h30
+ *   sábado            9h00 – 13h00
+ *   domingo           sem contato
+ *
+ * Domingo era dia normal até 28/08/2026, com a justificativa de que "mandar
+ * WhatsApp no domingo de manhã não incomoda ninguém". A regra da academia é
+ * outra: domingo não se aborda. Sábado à tarde também não — a janela fecha
+ * junto com a recepção, e mensagem que a pessoa responde às 16h de sábado
+ * não tem quem atenda.
  */
-export const JANELA = { inicioMin: 9 * 60, fimMin: 20 * 60 + 30 };
+const SEMANA = { inicioMin: 9 * 60, fimMin: 20 * 60 + 30 };
+const SABADO = { inicioMin: 9 * 60, fimMin: 13 * 60 };
+
+/** Indexado pelo dia da semana do `Date` (0 = domingo). `null` = sem contato. */
+export const JANELAS = [null, SEMANA, SEMANA, SEMANA, SEMANA, SEMANA, SABADO];
+
+/**
+ * Mantida por compatibilidade: é a janela de dia útil.
+ *
+ * Quem precisa decidir se PODE falar agora deve usar `janelaDoDia`, que
+ * sabe do sábado e do domingo. Esta constante só descreve o dia comum.
+ */
+export const JANELA = SEMANA;
 
 // O Brasil aboliu o horário de verão em 2019, então São Paulo é UTC-3 o
 // ano todo. Se algum dia voltar, esta constante vira uma conversão por
@@ -46,26 +68,106 @@ function deSP({ ano, mes, dia, hora, minuto = 0 }) {
   return new Date(Date.UTC(ano, mes, dia, hora, minuto) - OFFSET_SP_MS);
 }
 
+/** A janela de contato do dia em que `data` cai, ou `null` se for domingo. */
+export function janelaDoDia(data) {
+  return JANELAS[partesSP(data).diaSemana];
+}
+
+/**
+ * Abertura do primeiro dia com contato a partir de `desloc` dias adiante.
+ *
+ * O laço vai até 7 porque com um único dia fechado na semana ele nunca dá
+ * mais de dois passos — mas escrito assim ele continua correto se o
+ * domingo virar dois dias, ou se um feriado entrar em `JANELAS`.
+ */
+function proximaAbertura(p, desloc = 1) {
+  for (let i = desloc; i < desloc + 7; i++) {
+    const janela = JANELAS[(p.diaSemana + i) % 7];
+    if (janela) return deSP({ ...p, dia: p.dia + i, hora: 0, minuto: janela.inicioMin });
+  }
+  return deSP({ ...p, dia: p.dia + desloc, hora: 9, minuto: 0 });   // inalcançável
+}
+
 /**
  * Empurra um horário para dentro da janela de contato ativo.
  *
- * Antes das 9h → 9h do mesmo dia. Depois das 20h30 → 9h do dia seguinte.
- * Domingo é dia normal para mensagem: a academia não abre, mas mandar
- * WhatsApp no domingo de manhã não incomoda ninguém e o lead responde.
+ * Antes de abrir, num dia que abre → a abertura do mesmo dia. Fechado, ou
+ * já encerrado → a abertura do próximo dia com contato, o que faz sábado à
+ * tarde saltar o domingo inteiro e cair na segunda.
+ *
+ * `hora: 0, minuto: <minutos do dia>` não é gambiarra: `Date.UTC` normaliza
+ * o excesso, então 570 minutos viram 9h30 e o dia 32 vira o dia 1º do mês
+ * seguinte. É o que dispensa aritmética de calendário aqui.
  */
 export function dentroDaJanela(data) {
   const p = partesSP(data);
   const minutos = p.hora * 60 + p.minuto;
+  const hoje = JANELAS[p.diaSemana];
 
-  if (minutos < JANELA.inicioMin) {
-    return deSP({ ...p, hora: 9, minuto: 0 });
+  if (hoje && minutos >= hoje.inicioMin && minutos <= hoje.fimMin) return data;
+  if (hoje && minutos < hoje.inicioMin) {
+    return deSP({ ...p, hora: 0, minuto: hoje.inicioMin });
   }
-  if (minutos > JANELA.fimMin) {
-    const amanha = new Date(data.getTime() + 24 * 60 * 60 * 1000);
-    const pa = partesSP(amanha);
-    return deSP({ ...pa, hora: 9, minuto: 0 });
+  return proximaAbertura(p);
+}
+
+/**
+ * Antecedência mínima que faz um lembrete valer a pena.
+ *
+ * Seis horas é o que reproduz a regra da academia — "aula de segunda a
+ * partir das 15h, aviso na segunda de manhã" — sem precisar escrever as
+ * 15h em lugar nenhum: o dia abre às 9h, e 9h + 6h = 15h. Escrito como
+ * antecedência em vez de hora de corte, a regra continua valendo se a
+ * janela de abertura mudar, e passa a cobrir sozinha casos que a hora de
+ * corte não cobria — aula de domingo à tarde, entre eles.
+ */
+const LEMBRETE_ANTECEDENCIA_MIN_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Quando mandar o lembrete de uma aula experimental.
+ *
+ * O padrão é 24h antes. O caso que quebra é a aula de segunda: 24h antes é
+ * domingo, e domingo não tem contato. Empurrar para a frente resolveria no
+ * papel e falharia na prática — para a aula de segunda às 9h, a "próxima
+ * abertura" é segunda às 9h, quando a pessoa já deveria estar lá.
+ *
+ * Então a decisão não é "o ideal caiu em dia sem contato?", e sim **"o
+ * horário ajustado ainda avisa a tempo?"**:
+ *
+ *  - **Sim** → usa o ajuste normal. Aula de segunda às 15h vira aviso na
+ *    segunda de manhã, com seis horas de folga.
+ *  - **Não** → recua para o último dia com contato antes do ideal, na
+ *    mesma hora, presa à janela daquele dia. Aula de segunda cedo vira
+ *    aviso no sábado: 48h de antecedência em vez de 24, pior do que o
+ *    ideal e muito melhor do que um aviso que chega junto com a aula.
+ *
+ * A primeira versão perguntava pelo dia sem contato e deixava passar a
+ * aula de domingo à tarde — o ideal caía no sábado, que TEM janela, mas
+ * fora dela, e o ajuste jogava o lembrete para a segunda, depois da aula.
+ * Perguntar pela antecedência fecha os dois casos com uma regra só.
+ */
+export function horarioDoLembrete(aula) {
+  const ideal = new Date(aula.getTime() - 24 * 60 * 60 * 1000);
+  const candidato = dentroDaJanela(ideal);
+
+  if (candidato.getTime() <= aula.getTime() - LEMBRETE_ANTECEDENCIA_MIN_MS) {
+    return candidato;
   }
-  return data;
+
+  // O laço começa no próprio dia do ideal (i = 0), e não no anterior: para
+  // a aula de domingo à tarde, o ideal é sábado à tarde — o dia certo, só
+  // que fora da janela. Prender às 13h resolve sem sair do sábado.
+  const pi = partesSP(ideal);
+  const minutosIdeal = pi.hora * 60 + pi.minuto;
+
+  for (let i = 0; i <= 7; i++) {
+    const janela = JANELAS[(pi.diaSemana - i + 7) % 7];
+    if (!janela) continue;
+    const minuto = Math.min(Math.max(minutosIdeal, janela.inicioMin), janela.fimMin);
+    const recuado = deSP({ ...pi, dia: pi.dia - i, hora: 0, minuto });
+    if (recuado.getTime() < aula.getTime()) return recuado;
+  }
+  return candidato;   // inalcançável com JANELAS de um dia fechado só
 }
 
 /**
@@ -152,15 +254,18 @@ export async function aoAgendarExperimental(lead, { dataHora, atividade }) {
 
   const contexto = { aula: aula.toISOString(), atividade: atividade || null };
 
-  const lembrete = new Date(aula.getTime() - 24 * 60 * 60 * 1000);
+  // 24h antes, exceto quando isso cai em domingo — ver `horarioDoLembrete`.
+  const lembrete = horarioDoLembrete(aula);
 
-  // Aula marcada para daqui a menos de 24h não recebe lembrete: ele
-  // chegaria depois da aula, ou junto com a confirmação que a pessoa
-  // acabou de receber.
+  // Aula perto demais não recebe lembrete: ele chegaria depois da aula, ou
+  // junto com a confirmação que a pessoa acabou de receber. A conta é feita
+  // sobre o horário já ajustado, e não sobre as 24h cruas, porque é o
+  // ajustado que vai sair — o recuo para sábado pode deixá-lo no passado
+  // quando a aula de segunda é marcada no próprio domingo.
   if (lembrete.getTime() > Date.now() + 30 * 60 * 1000) {
     await agendar(lead.id, 'ae_lembrete_24h', lembrete, contexto);
   } else {
-    logger.info(`[followup] Lead ${lead.id}: aula em menos de 24h, sem lembrete`);
+    logger.info(`[followup] Lead ${lead.id}: aula perto demais (ou lembrete no passado), sem lembrete`);
   }
 
   await agendar(lead.id, 'ae_pos_aula', new Date(aula.getTime() + 4 * 60 * 60 * 1000), contexto);
@@ -559,7 +664,7 @@ export async function registrarNoFunil(leadId, tipo, resumo, payload = {}) {
 }
 
 export const followup = {
-  JANELA, dentroDaJanela, TIPOS_SILENCIO,
+  JANELA, JANELAS, janelaDoDia, dentroDaJanela, horarioDoLembrete, TIPOS_SILENCIO,
   agendar, cancelar, aoAgendarExperimental, proximaSondagem, varrerSilenciosos,
   vencidos, registrarEnvio, registrarTentativa, registrarNoFunil,
 };

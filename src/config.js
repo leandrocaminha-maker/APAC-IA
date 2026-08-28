@@ -154,7 +154,8 @@ export const config = {
   //
   // O agente só roda quando chega mensagem, então sem este worker quem
   // para de responder some em silêncio: não existe turno em que o modelo
-  // possa agir. Todo envio respeita a janela de 9h–20h30.
+  // possa agir. Todo envio respeita a janela de contato: 9h–20h30 em dia
+  // útil, 9h–13h no sábado, e nada no domingo.
   followup: {
     // Ciclo da FILA (o que já venceu). Não custa token nenhum: é só
     // Postgres. O que ele compra é pontualidade — o `ae_lembrete_24h` sai

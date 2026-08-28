@@ -26,14 +26,16 @@
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
-import { dentroDaJanela } from './followup.js';
+import { dentroDaJanela, janelaDoDia } from './followup.js';
 import { montarSegmento } from './segmentos.js';
 import { normalizePhone, telefoneValido } from './evolution.js';
 
-// Fim da janela de contato ativo, em minutos desde a meia-noite (20h30).
-// Espelha a JANELA de followup.js, que não a exporta.
-const FIM_JANELA_MIN = 20 * 60 + 30;
-const INICIO_JANELA_MIN = 9 * 60;
+// As constantes espelhadas saíram em 28/08/2026, quando a janela deixou de
+// ser 9h–20h30 todo dia: sábado fecha às 13h e domingo não tem contato.
+// Espelho de regra que muda vira divergência — a campanha espalharia até
+// 20h30 num sábado e `dentroDaJanela` empurraria o excedente todo para as
+// 9h de segunda, amontoando na abertura justamente o que o espalhamento
+// existe para evitar. Agora a janela do dia vem de `janelaDoDia`.
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -304,14 +306,18 @@ export async function registrarResposta(phone) {
 export function distribuirHorarios(quantidade, { agora = new Date(), intervaloMinimoMin = 8, jitter = 0.4 } = {}) {
   if (quantidade <= 0) return [];
 
+  // Domingo não tem contato, e sábado fecha às 13h: a janela é a do dia.
+  const janela = janelaDoDia(agora);
+  if (!janela) return [];
+
   const { hora, minuto } = partesSP(agora);
   const agoraMin = hora * 60 + minuto;
 
-  // Antes da janela: começa às 9h. Depois dela: nada hoje.
-  const inicioMin = Math.max(agoraMin, INICIO_JANELA_MIN);
-  if (inicioMin >= FIM_JANELA_MIN) return [];
+  // Antes da janela: começa na abertura. Depois dela: nada hoje.
+  const inicioMin = Math.max(agoraMin, janela.inicioMin);
+  if (inicioMin >= janela.fimMin) return [];
 
-  const restanteMin = FIM_JANELA_MIN - inicioMin;
+  const restanteMin = janela.fimMin - inicioMin;
   const intervaloBase = Math.max(intervaloMinimoMin, restanteMin / quantidade);
 
   const horarios = [];
@@ -324,7 +330,7 @@ export function distribuirHorarios(quantidade, { agora = new Date(), intervaloMi
     deslocamento += Math.max(intervaloMinimoMin, intervaloBase * variacao);
 
     const minutoAlvo = inicioMin + deslocamento;
-    if (minutoAlvo >= FIM_JANELA_MIN) break;
+    if (minutoAlvo >= janela.fimMin) break;
 
     const quando = new Date(agora.getTime() + (minutoAlvo - agoraMin) * 60_000);
     horarios.push(quando);
@@ -433,9 +439,14 @@ export async function processarCampanha(campanha, gerarTexto) {
     return { agendados: 0, motivo: 'guarda de supressão' };
   }
 
+  const janelaHoje = janelaDoDia(new Date());
+  if (!janelaHoje) {
+    return { agendados: 0, motivo: 'domingo — sem contato ativo' };
+  }
+
   const { hora, minuto } = partesSP();
   const agoraMin = hora * 60 + minuto;
-  if (agoraMin >= FIM_JANELA_MIN) {
+  if (agoraMin >= janelaHoje.fimMin) {
     return { agendados: 0, motivo: 'fora da janela de contato' };
   }
 

@@ -12,7 +12,8 @@
 
 `aqua-anual-2026`: 46 alvos da base do EVO, teto de 20/dia, `CAMPANHA_DRY_RUN=false`.
 Em 25/08 saíram 11 e **9 responderam (82%)**. Restam 26 pendentes.
-As mensagens saem sozinhas dentro da janela de 9h–20h30, agendadas pelo worker.
+As mensagens saem sozinhas dentro da janela de contato (9h–20h30 em dia útil,
+9h–13h no sábado, nunca no domingo), agendadas pelo worker.
 
 ```bash
 docker compose exec backend npm run campanha -- status aqua-anual-2026   # ver
@@ -577,14 +578,54 @@ Não existe rotina separada de recuperação porque o critério de dias é um **
 (`>= dias`), não uma igualdade: um lead parado há 5 dias que nunca foi cutucado
 entra normalmente. É a mesma função, com a janela aberta.
 
-### A janela de 9h–20h30
+### A janela de contato ativo
 
-Toda mensagem que parte da academia respeita a janela. `dentroDaJanela()` empurra
-o que cai fora: antes das 9h vai para as 9h do mesmo dia; depois das 20h30 vai
-para as 9h do dia seguinte. Testado em virada de dia e de mês.
+Toda mensagem que parte da academia respeita a janela, que **depende do dia**:
 
-Efeito visível: aula na segunda às 6h45 teria lembrete no domingo às 6h45 — ele
-sai domingo às 9h.
+| Dia | Janela |
+|---|---|
+| Segunda a sexta | 9h00 – 20h30 |
+| Sábado | 9h00 – 13h00 |
+| Domingo | **sem contato** |
+
+`dentroDaJanela()` empurra o que cai fora: antes de abrir, num dia que abre, vai
+para a abertura do mesmo dia; fechado ou já encerrado, vai para a abertura do
+**próximo dia com contato** — o que faz sábado à tarde saltar o domingo inteiro
+e cair na segunda. Testado em virada de dia e de mês.
+
+Sábado e domingo entraram em 28/08/2026. Até então domingo era dia normal, com a
+justificativa de que "mandar WhatsApp no domingo de manhã não incomoda ninguém".
+A regra da academia é outra, e a janela agora reflete o horário da recepção:
+mensagem que a pessoa responde às 16h de sábado não tem quem atenda.
+
+⚠️ A mesma janela vale para a **campanha**. Ela espelhava as constantes num
+arquivo próprio; o espelho saiu junto, porque espelho de regra que muda vira
+divergência — a campanha espalharia até 20h30 num sábado e o excedente
+desabaria todo nas 9h de segunda.
+
+### O lembrete que anda para trás
+
+A regra dos outros follow-ups é empurrar para a frente. O `ae_lembrete_24h` é a
+exceção, e precisa ser: 24h antes de uma aula de segunda cai no domingo, e
+empurrar para a frente daria "próxima abertura = segunda às 9h" para uma aula
+das 9h — o aviso chegando quando a pessoa já deveria estar lá.
+
+A decisão não é "o ideal caiu em dia sem contato?", e sim **"o horário ajustado
+ainda avisa com pelo menos 6h de antecedência?"**:
+
+| Aula | Lembrete |
+|---|---|
+| Segunda, antes das 15h | **Sábado**, na mesma hora (preso a 13h) |
+| Segunda, 15h ou depois | Segunda de manhã, 9h |
+| Qualquer outro dia | 24h antes, como sempre |
+
+As 6h reproduzem a regra da academia — "segunda a partir das 15h, aviso na
+segunda de manhã" — sem escrever as 15h em lugar nenhum: o dia abre às 9h, e
+9h + 6h = 15h. Escrita como antecedência em vez de hora de corte, a regra
+sobrevive a uma mudança de abertura e cobre sozinha o caso que a hora de corte
+deixava passar: aula de **domingo à tarde**, cujo ideal cai no sábado à tarde —
+dia com janela, mas fora dela — e que a primeira versão jogava para a segunda,
+depois da aula.
 
 ### O que ainda não existe
 

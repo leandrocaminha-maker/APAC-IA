@@ -169,7 +169,7 @@ const comandos = {
     } else if (!config.campanha.habilitada) {
       console.log('\n⚠️  CAMPANHA_HABILITADA=false: o worker nem inicia. Nada vai sair.');
     } else {
-      console.log('\n⚠️  As mensagens VÃO SAIR para clientes reais dentro da janela de 9h–20h30.');
+      console.log('\n⚠️  As mensagens VÃO SAIR para clientes reais dentro da janela de contato (9h–20h30 em dia útil, 9h–13h no sábado, nunca no domingo).');
     }
   },
 
