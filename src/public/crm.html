@@ -73,6 +73,14 @@
   .fita-dryrun { background: #78350f; color: #fde68a; padding: 7px 16px; font-size: 13px;
     border-bottom: 1px solid #92400e; }
 
+  /* Vermelho, e não âmbar como o ensaio: ensaio é um modo escolhido, isto
+     é a academia inteira muda. A pulsação existe para o painel esquecido
+     aberto num canto chamar o olho de quem passa. */
+  .fita-wa { background: #7f1d1d; color: #fecaca; padding: 9px 16px; font-size: 13px;
+    border-bottom: 1px solid #b91c1c; animation: pulsa-wa 2.4s ease-in-out infinite; }
+  @keyframes pulsa-wa { 50% { background: #991b1b; } }
+  @media (prefers-reduced-motion: reduce) { .fita-wa { animation: none; } }
+
   main { flex: 1; min-height: 0; overflow: auto; }
   .vista { display: none; padding: 18px; }
   .vista.ativa { display: block; }
@@ -313,6 +321,10 @@
 
 <!-- ══ APP ════════════════════════════════════════════ -->
 <div id="app">
+  <!-- Acima da fita de ensaio de propósito: sessão fora do ar é a única
+       coisa que torna todo o resto irrelevante. -->
+  <div class="fita-wa" id="aviso-whatsapp" style="display:none"></div>
+
   <div class="fita-dryrun" id="fita-dryrun" style="display:none">
     ⚠️ <b>Modo ensaio (EVO_DRY_RUN)</b> — cadastro, agendamento e venda são simulados e
     <b>não chegam ao EVO</b>. O funil anda normalmente.
@@ -835,9 +847,49 @@ function cartaoPendencia(chave, dado) {
     </div>`;
 }
 
+/**
+ * Faixa de sessão do WhatsApp fora do ar.
+ *
+ * Fica no topo da tela, acima de tudo, porque quando isto acontece nada
+ * mais importa: mensagem de cliente não chega, e o que sair falha. Em
+ * 28/08/2026 a sessão ficou 2h30 fora sem ninguém notar.
+ *
+ * Só aparece quando há problema — faixa permanente de "tudo certo" vira
+ * paisagem e deixa de ser lida.
+ */
+function desenharAvisoWhatsapp(wa) {
+  const el = $('#aviso-whatsapp');
+  if (!el) return;
+
+  // `verificadoEm` nulo é "ainda não sondei", não "está caído". A primeira
+  // sondagem sai 20s depois do boot; alarmar antes dela seria alarmar
+  // sobre algo que ninguém checou.
+  if (!wa || wa.conectado || !wa.verificadoEm) { el.style.display = 'none'; return; }
+
+  const tempo = wa.foraHaMin > 0
+    ? ` há ${wa.foraHaMin < 60
+        ? `${wa.foraHaMin} min`
+        : `${Math.floor(wa.foraHaMin / 60)}h${String(wa.foraHaMin % 60).padStart(2, '0')}`}`
+    : '';
+
+  // "desconhecido" é outro problema que "close": a Evolution não respondeu.
+  // Dizer "caiu" nesse caso mandaria alguém parear um QR à toa.
+  const texto = wa.estado === 'desconhecido'
+    ? `Não deu para saber o estado do WhatsApp${tempo}. A Evolution não respondeu` +
+      `${wa.ultimoErro ? ` (${esc(wa.ultimoErro)})` : ''}.`
+    : `WhatsApp DESCONECTADO${tempo} — nenhuma mensagem entra nem sai.`;
+
+  el.innerHTML = `<strong>⚠️ ${texto}</strong>
+    <span style="margin-left:8px">Ajustes → WhatsApp → Gerar QR code, e escaneie
+    com o celular da academia.</span>`;
+  el.style.display = 'block';
+}
+
 function desenharPendencias() {
   const p = estado.pendencias;
   if (!p) return;
+
+  desenharAvisoWhatsapp(p.whatsapp);
 
   // Fila que esvaziou não fica aberta embaixo do cartão.
   if (estado.filaAberta && !p[FILAS[estado.filaAberta].campo]?.total) estado.filaAberta = null;
@@ -1455,12 +1507,14 @@ $('#sim-texto').addEventListener('keydown', e => {
 async function carregarAjustes() {
   carregarUsuarios();
 
-  if (estado.usuario?.papel !== 'admin') {
-    $('#wa-status').textContent = 'Só administradores.';
-    return;
-  }
+  const ehAdministrador = estado.usuario?.papel === 'admin';
 
-  $('#form-usuario').style.display = '';
+  // Ver a sessão e gerar QR valem para qualquer consultor desde
+  // 28/08/2026: com a sessão caída a academia inteira fica muda, e quem
+  // está na recepção com o celular na mão precisa poder religar sem caçar
+  // um admin. Criar instância continua restrito — ela apaga o pareamento.
+  $('#form-usuario').style.display = ehAdministrador ? '' : 'none';
+  $('#btn-wa-instancia').style.display = ehAdministrador ? '' : 'none';
 
   try {
     const s = await api('/whatsapp/status');

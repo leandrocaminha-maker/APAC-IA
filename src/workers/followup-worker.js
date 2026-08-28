@@ -21,6 +21,7 @@ import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { supabase } from '../lib/supabase.js';
 import { followup } from '../services/followup.js';
+import { controle } from '../services/controle.js';
 import { evoClient } from '../services/evo-client.js';
 import { aiAgent } from '../services/ai-agent.js';
 import { funil } from '../services/funil.js';
@@ -364,10 +365,8 @@ async function encerrarSemResposta() {
   }
 }
 
-/**
- * Última varredura de silêncio, em epoch. Ver `talvezVarrer`.
- */
-let ultimaVarredura = 0;
+/** Chave do marcador da varredura em `crm_controle`. */
+const MARCADOR_VARREDURA = 'followup:ultima_varredura_silencio';
 
 /**
  * Roda a varredura de silêncio no ritmo dela, não no do ciclo.
@@ -379,16 +378,29 @@ let ultimaVarredura = 0;
  * rodar isso a cada ciclo seria pagar o scan seis vezes para descobrir
  * exatamente o mesmo.
  *
- * O relógio é interno de propósito: um `setInterval` próprio poderia
- * disparar a varredura no meio de um ciclo de envio, e as duas mexem nas
- * mesmas linhas.
+ * O relógio fica DENTRO do ciclo, e não num `setInterval` próprio: dois
+ * intervalos independentes disparariam a varredura no meio de um ciclo de
+ * envio, e as duas mexem nas mesmas linhas.
+ *
+ * ## Por que o marcador é persistido
+ *
+ * Ele era `let ultimaVarredura = 0` em memória, e memória zera no boot.
+ * Em 28/08/2026 isso foi medido: três deploys no mesmo dia dispararam três
+ * varreduras, e o teto de "15 por hora" virou "15 por deploy" — 45
+ * mensagens onde a régua promete 15. Com o marcador em `crm_controle`, o
+ * relógio sobrevive ao restart e o teto volta a significar o que diz.
+ *
+ * O carimbo vem ANTES da varredura, não depois. Se ela falhar no meio, o
+ * certo é esperar o próximo intervalo em vez de tentar de novo a cada 10
+ * min — uma varredura que falha costuma falhar de novo, e insistir a cada
+ * ciclo só multiplica o efeito de um EVO fora do ar.
  */
 async function talvezVarrer() {
   const cfg = config.followup.silencio;
   if (!cfg.habilitado || cfg.minutos <= 0) return;
-  if (Date.now() - ultimaVarredura < cfg.minutos * 60_000) return;
+  if (!(await controle.passouDe(MARCADOR_VARREDURA, cfg.minutos))) return;
 
-  ultimaVarredura = Date.now();
+  await controle.carimbarMarcador(MARCADOR_VARREDURA, { iniciada_em: new Date().toISOString() });
   await followup.varrerSilenciosos().catch(err =>
     logger.error('[followup] Varredura de silêncio falhou:', err.message));
 }

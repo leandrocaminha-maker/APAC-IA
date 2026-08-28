@@ -18,6 +18,16 @@ export const config = {
     instance: env('EVOLUTION_INSTANCE', 'apacademia'),
   },
 
+  whatsapp: {
+    // Intervalo (min) do vigia da sessão. 0 desliga.
+    //
+    // O container pode estar de pé e a Evolution responder 200 com a sessão
+    // morta — foi o que aconteceu em 28/08/2026, e ficou 2h30 sem ninguém
+    // notar, com a ENTRADA parada junto. Dois minutos é barato: uma
+    // chamada local a cada sondagem, sem token nenhum.
+    monitorMinutos: parseInt(env('WHATSAPP_MONITOR_MINUTOS', '2'), 10),
+  },
+
   // Anthropic (Claude) — cérebro do agente
   anthropic: {
     apiKey: env('ANTHROPIC_API_KEY', ''),

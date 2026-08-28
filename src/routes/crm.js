@@ -25,6 +25,7 @@ import {
 import { funil } from '../services/funil.js';
 import { followup } from '../services/followup.js';
 import { atendimento } from '../services/atendimento.js';
+import { conexaoWhatsapp } from '../services/whatsapp-monitor.js';
 import { evoSync } from '../services/evo-sync.js';
 import { evoClient } from '../services/evo-client.js';
 import { aiAgent } from '../services/ai-agent.js';
@@ -170,15 +171,28 @@ router.get('/api/funil/metricas', rota(async (req, res) => {
 }));
 
 /**
- * Pendências de atendimento — quem está esperando gente.
+ * Pendências de atendimento — quem está esperando gente —, mais o estado
+ * da sessão do WhatsApp.
  *
  * Fica separado das métricas do funil de propósito: as métricas são
  * fotografia do pipeline e mudam devagar; isto aqui é alarme, o painel
  * repete a chamada a cada minuto e precisa que ela seja barata.
+ *
+ * É por ser esse alarme que o estado da conexão vem pendurado aqui: esta é
+ * a única chamada que todo painel aberto já faz de minuto em minuto, e um
+ * endpoint novo só para isso exigiria um segundo temporizador no front —
+ * para avisar de algo que, quando acontece, é mais urgente que a fila.
+ *
+ * E o aviso PRECISA ser por aqui, não por mensagem: quando a sessão cai, o
+ * WhatsApp é justamente o canal que não funciona. `conexaoWhatsapp()` lê
+ * memória do próprio processo, então não custa chamada nenhuma.
  */
 router.get('/api/atendimento/pendencias', rota(async (req, res) => {
   const limite = Math.min(Math.max(parseInt(req.query.limite || '12', 10) || 12, 1), 50);
-  res.json(await atendimento.pendencias({ limite }));
+  res.json({
+    ...(await atendimento.pendencias({ limite })),
+    whatsapp: conexaoWhatsapp(),
+  });
 }));
 
 router.get('/api/leads/:id', rota(async (req, res) => {
@@ -856,10 +870,21 @@ router.get('/api/evo/grade', rota(async (req, res) => {
 }));
 
 // ──────────────────────────────────────────────
-// Ajustes — admin
+// Ajustes
+//
+// Ver o estado da sessão e gerar QR valem para QUALQUER consultor, desde
+// 28/08/2026. Antes eram `exigirAdmin`, e o incidente de 28/08 mostrou o
+// custo disso: com a sessão caída, nada entra nem sai da academia inteira,
+// e quem estivesse na recepção com o celular na mão não podia religar
+// sozinho — dependia de achar um admin. Restrição que atrasa o conserto de
+// uma parada total protege menos do que custa.
+//
+// Gerar QR não é privilégio perigoso: quem escaneia precisa do celular
+// pareado da academia, que é a credencial de verdade. O que continua
+// admin é criar/recriar instância, que apaga o pareamento existente.
 // ──────────────────────────────────────────────
 
-router.get('/api/whatsapp/status', exigirAdmin, rota(async (req, res) => {
+router.get('/api/whatsapp/status', rota(async (req, res) => {
   try {
     res.json(await getConnectionStatus());
   } catch (err) {
@@ -885,7 +910,8 @@ router.post('/api/whatsapp/instancia', exigirAdmin, rota(async (req, res) => {
  * fechada no loopback: quem alcança a Evolution é o backend, e o
  * navegador do consultor só recebe a imagem já pronta.
  */
-router.get('/api/whatsapp/qrcode', exigirAdmin, rota(async (req, res) => {
+router.get('/api/whatsapp/qrcode', rota(async (req, res) => {
+  logger.info(`[crm] ${req.usuario.email} gerou QR code do WhatsApp`);
   try {
     const qr = await getQrCode();
     res.json({

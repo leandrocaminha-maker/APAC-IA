@@ -20,6 +20,7 @@ import crmRouter from './routes/crm.js';
 import { startQueueProcessor } from './workers/queue-processor.js';
 import { startEvoSyncWorker } from './workers/evo-sync-worker.js';
 import { startFollowupWorker } from './workers/followup-worker.js';
+import { startWhatsappMonitor } from './services/whatsapp-monitor.js';
 import { startCampanhaWorker } from './workers/campanha-worker.js';
 
 const app = express();
@@ -141,6 +142,11 @@ app.listen(config.port, () => {
 
   // Reconcilia o funil com o EVO — cobre o que o webhook do EVO não emite
   startEvoSyncWorker();
+
+  // Vigia da sessão do WhatsApp. Primeiro na lista de propósito: se ela
+  // subiu quebrada, é a primeira coisa que o log deve dizer — nada mais
+  // aqui funciona sem ela.
+  startWhatsappMonitor();
 
   // Follow-up de venda: o turno que o agente não tem sozinho
   startFollowupWorker();

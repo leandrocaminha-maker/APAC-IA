@@ -822,12 +822,13 @@ contato ganhou fim de semana, e a campanha ganhou carência. Commits `3d4703e`,
 
 | | |
 |---|---|
-| Migrations aplicadas | 004, 005, 006 e **007** |
+| Migrations aplicadas | 004, 005, 006, 007 e **008** |
 | Deploy | `c45136b`, VPS igual ao repositório |
 | Régua de silêncio | **ligada** — 2 e 4 dias, teto de 15 por varredura, a cada 60 min |
 | Campanha `aqua-anual-2026` | `concluida` — 46 alvos, 45 entregues, **37,8% de resposta**, 0 supressões |
 | Campanha `aqua-inativos-dez24-jun25` | **ATIVA** — 64 alvos, teto 40/dia, 40 agendados em 28/08 |
 | Janela de contato | seg–sex 9h–20h30, sáb 9h–13h, **domingo nunca** |
+| Monitor de sessão | sonda a cada 2 min; faixa vermelha no painel |
 
 ### As quatro coisas que mudaram
 
@@ -903,13 +904,68 @@ WHERE status = 'active' AND contact_id IN (
 Reversível: se alguma delas escrever meses depois, `getOrCreateConversation` abre
 outra e o fluxo normal — inclusive a criação do lead — acontece.
 
-### Pendência que este dia criou
+### A queda do WhatsApp, às 16:43
 
-**O relógio da varredura é em memória.** `ultimaVarredura` zera no boot, então
-**cada deploy dispara uma varredura nova**. Em 28/08 foram três deploys = três
-varreduras = ~45 cutucadas em vez de 15/hora. Foi aceito de propósito enquanto
-existe o acumulado de 90 leads represados; quando ele acabar, persistir a marca
-(coluna própria ou linha de controle) é o que devolve o teto ao que ele diz ser.
+A sessão caiu e **ficou 2h30 fora sem ninguém notar**. O container estava de pé
+e a Evolution respondia HTTP 200 em 0,29s — o que tinha morrido era o pareamento:
+
+```
+{"instance":{"instanceName":"apacademia","state":"close"}}
+```
+
+⚠️ **O pior não é o envio, é a entrada.** A última mensagem recebida foi às
+19:43:25 UTC, no segundo exato da queda. Por 2h30 ninguém conseguiu falar com a
+academia — e não dá nem para saber quem tentou.
+
+Três coisas saíram disso, todas implementadas:
+
+**Monitor de sessão** (`whatsapp-monitor.js`), sondando de 2 em 2 min. O aviso
+sai no log e numa faixa vermelha no topo do painel. **Não sai por WhatsApp**, de
+propósito: mandar aviso pelo canal que caiu é o erro clássico de monitoração, e
+aqui seria total — a mensagem entraria na fila e falharia com "Connection
+Closed". O estado vai pendurado em `/api/atendimento/pendencias`, que todo painel
+aberto já consulta de minuto em minuto. É pull, mas troca 2h30 por 1 minuto.
+
+`desconhecido` é distinto de `close`: significa que a Evolution não respondeu. O
+painel diz isso em vez de afirmar que o WhatsApp caiu — são problemas diferentes,
+e confundi-los manda alguém parear um QR à toa.
+
+**QR liberado para todo consultor.** Era `exigirAdmin`. Com a sessão caída a
+academia inteira fica muda, e quem está na recepção com o celular na mão não
+podia religar sozinho. Restrição que atrasa o conserto de uma parada total
+protege menos do que custa — e escanear exige o celular pareado, que é a
+credencial de verdade. Criar/recriar instância continua admin: essa apaga o
+pareamento.
+
+**Duas armadilhas de recuperação**, para a próxima vez:
+
+1. `RATE_LIMIT_MS = 1_000` na fila. As mensagens que venceram durante a queda
+   saem **a 1 por segundo no instante da reconexão** — 22 disparos em 22s de um
+   número que acabou de voltar, que é o padrão que mais gera bloqueio.
+   **Reespace a fila ANTES de parear.**
+2. O alvo de campanha guarda o erro genérico `"a fila não conseguiu entregar"`,
+   idêntico para qualquer causa. O erro específico mora na linha de
+   `wa_message_queue`. Devolver à fila filtrando pelo erro do alvo devolve junto
+   quem falhou por `exists: false` — número que não existe no WhatsApp, e que vai
+   falhar de novo. **Filtre pelo erro da fila, não pelo do alvo.**
+
+### O relógio da varredura, agora persistido
+
+`ultimaVarredura` era `let … = 0` em memória, e memória zera no boot: **cada
+deploy disparava uma varredura nova**. Medido no próprio 28/08 — três deploys,
+três varreduras, ~45 cutucadas onde a régua promete 15/hora.
+
+O marcador foi para `crm_controle` (migration **008**), uma tabela chave-valor
+para exatamente este tipo de coisa. O carimbo vem **antes** da varredura, não
+depois: se ela falhar no meio, o certo é esperar o próximo intervalo — varredura
+que falha costuma falhar de novo, e insistir a cada 10 min só multiplica o efeito
+de um EVO fora do ar.
+
+`controle.js` falha **aberta**: se a leitura do marcador não responder, o worker
+roda a varredura em vez de travar. O pior caso é uma varredura a mais, que o teto
+de lote limita; travar a régua inteira porque uma tabela auxiliar não respondeu
+seria pior. Efeito colateral útil: **sem a migration 008, o comportamento é
+exatamente o antigo** — nada quebra, só não persiste.
 
 ## O que foi feito em 25/08/2026
 
