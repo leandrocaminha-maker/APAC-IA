@@ -1,27 +1,46 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 22/08/2026, fim do dia.** Documento de continuidade: descreve
+> **Snapshot de 28/08/2026, fim do dia.** Documento de continuidade: descreve
 > onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
-## ⚠️ Antes de qualquer coisa — 25/08/2026
+## ⚠️ Antes de qualquer coisa — 28/08/2026
 
-**Tem campanha ativa mandando mensagem para cliente real, agora.**
+**Duas coisas mandam mensagem para cliente real sozinhas, agora.**
 
-`aqua-anual-2026`: 46 alvos da base do EVO, teto de 20/dia, `CAMPANHA_DRY_RUN=false`.
-Em 25/08 saíram 11 e **9 responderam (82%)**. Restam 26 pendentes.
-As mensagens saem sozinhas dentro da janela de contato (9h–20h30 em dia útil,
-9h–13h no sábado, nunca no domingo), agendadas pelo worker.
+**1. Campanha `aqua-inativos-dez24-jun25`** — 64 alvos, teto de 40/dia,
+`CAMPANHA_DRY_RUN=false`. Em 28/08 foram 40 agendados; 24 seguem pendentes.
+(A `aqua-anual-2026` está `concluida`: 45 entregues, **37,8% de resposta**, zero
+supressões.)
+
+**2. Régua de silêncio** — cutuca lead que parou de responder, 2 e 4 dias após a
+nossa última fala. Varredura de hora em hora, teto de 15 por varredura.
+
+Tudo respeita a janela de contato: seg–sex 9h–20h30, sáb 9h–13h, **domingo nunca**.
 
 ```bash
-docker compose exec backend npm run campanha -- status aqua-anual-2026   # ver
-docker compose exec backend npm run campanha -- pausar aqua-anual-2026 "motivo"
+# ver
+docker compose exec backend node scripts/campanha.js status
+# parar a campanha
+docker compose exec backend node scripts/campanha.js pausar <slug> "motivo"
 ```
 
 `pausar` impede NOVOS agendamentos mas **não cancela o que já está na fila**.
 Para estancar tudo: `docker compose stop backend` — a fila para junto.
+
+**Parar a régua de silêncio** tem a mesma armadilha, e pior: pôr
+`FOLLOWUP_SILENCIO_HABILITADO=false` só impede varreduras novas — **o que já
+está agendado sai assim mesmo**. Para estancar de verdade:
+
+```sql
+UPDATE crm_followups SET status = 'cancelado', erro = 'parado à mão'
+WHERE tipo IN ('silencio_1','silencio_2') AND status = 'pendente';
+```
+
+Cancelar não queima a rodada: a varredura só é bloqueada por `pendente` e
+`enviado`, então essas pessoas voltam a ser elegíveis quando você quiser.
 
 **Mudança de comportamento que a equipe precisa saber:** desde hoje, consultor
 que escreve pelo **celular** põe a conversa em modo humano e a Leia cala até
@@ -98,23 +117,36 @@ aparelho da academia na mão — não dá para fazer sozinho.
 
 ## Onde estamos
 
-Fases 1 e 2 do plano estão implementadas, revisadas e **validadas ponta a ponta
-contra o banco real**: contato → conversa → mensagem → histórico → resposta da
-IA → handoff → fila, tudo passando.
+> ⚠️ **Esta seção descrevia o projeto em 19/08 e ficou para trás.** Dizia que o
+> agente não escrevia em sistema nenhum e que o WhatsApp nunca tinha sido
+> conectado — as duas coisas deixaram de ser verdade em 22/08. Reescrita em
+> 28/08/2026; o histórico de como se chegou aqui está nas seções "O que foi
+> feito em `<data>`".
 
-O agente é hoje **conversacional + handoff**: não escreve em sistema nenhum, não
-consulta o EVO e não promete voucher. É a superfície certa para escrever e testar
-o prompt sem risco de efeito colateral em produção.
+**O sistema está em produção, atendendo cliente real pelo número principal da
+academia.** WhatsApp conectado, painel do consultor no ar em
+`crm.apacademia.com.br`, e a Leia **escreve no EVO**: cadastra prospect, agenda
+aula experimental e registra venda.
 
-⚠️ **O WhatsApp nunca foi conectado.** A instância `apacademia` não existe na
-Evolution (`webhook/find` devolve *"instance does not exist"*), então o canal real
-está desligado e a `/teste` é a única superfície viva. Foi isso que tornou seguro
-fechar a 3100: não há webhook externo chamando.
+Cinco automações mandam mensagem sozinhas, e todas respeitam a janela de contato:
 
-**Fase atual: rodada de testes.** A base está preenchida, o prompt publicado e a
-página no ar. O foco é o time testar situações variadas; a próxima rodada precisa
-exercitar de propósito o que mudou em 20/08 — pedir desconto, reclamar de preço,
-pedir cancelamento com motivo raso, esquecer um objeto, não conseguir agendar.
+| | |
+|---|---|
+| Atendimento | responde quem escreve, com debounce de 12s |
+| Follow-up da aula | lembrete 24h antes, conversa 4h depois |
+| Régua de silêncio | 2 e 4 dias sem resposta, para lead que sumiu |
+| Campanha ativa | coorte do EVO, teto por campanha |
+| Fila dos apps irmãos | cobrança, nota fiscal |
+
+**Fase atual: operação medida.** O piloto de campanha fechou com 37,8% de
+resposta e zero supressões em 45 disparos. O que falta não é construir, é
+observar: a régua de silêncio rodou pela primeira vez em 28/08 e ninguém leu
+ainda o que a Leia escreveu nessas retomadas.
+
+⚠️ **A bateria de testes de prompt de 20/08 continua pendente** — pedir desconto,
+reclamar de preço, cancelamento com motivo raso, esquecer um objeto, não
+conseguir agendar no FITI, atendimento a PCD. Agora dá para pedir ao time, porque
+o simulador está dentro do painel.
 
 As transcrições **foram lidas duas vezes em 20/08** (blocos 8 e 10 da revisão).
 Para regenerar:
@@ -780,6 +812,105 @@ Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
 - **Desligue a página quando a rodada de testes acabar** — senha curta em IP
   público não é para ficar no ar indefinidamente.
 
+## O que foi feito em 28/08/2026
+
+A régua de follow-up passou a cobrir quem some **antes** da aula, a janela de
+contato ganhou fim de semana, e a campanha ganhou carência. Commits `3d4703e`,
+`5d00601`, `8b93540` e `c45136b`, todos no ar.
+
+### Estado no fim do dia
+
+| | |
+|---|---|
+| Migrations aplicadas | 004, 005, 006 e **007** |
+| Deploy | `c45136b`, VPS igual ao repositório |
+| Régua de silêncio | **ligada** — 2 e 4 dias, teto de 15 por varredura, a cada 60 min |
+| Campanha `aqua-anual-2026` | `concluida` — 46 alvos, 45 entregues, **37,8% de resposta**, 0 supressões |
+| Campanha `aqua-inativos-dez24-jun25` | **ATIVA** — 64 alvos, teto 40/dia, 40 agendados em 28/08 |
+| Janela de contato | seg–sex 9h–20h30, sáb 9h–13h, **domingo nunca** |
+
+### As quatro coisas que mudaram
+
+**1. Régua do silêncio** (`silencio_1` / `silencio_2`). O follow-up só nascia do
+agendamento da experimental; quem parava de responder em qualquer outro ponto
+não tinha turno em que alguém agisse. Seção própria acima.
+
+**2. Telefone conferido antes da chamada ao modelo.** O primeiro envio da régua
+saiu para `136030220984483`, lixo de cadastro que passava pelo filtro de
+`startsWith('teste')`. A mensagem foi gerada e paga antes de a Evolution
+responder `exists: false`. `telefoneValido` subiu de `campanhas.js` para
+`evolution.js` e passou a valer nos dois caminhos.
+
+**3. Janela de fim de semana**, e o lembrete que anda para trás. Seções próprias
+acima. A campanha entrou junto, porque espelhava a janela em constantes próprias.
+
+**4. Guarda de aluno matriculado.** `garantirLeadDoContato` abre lead para todo
+contato que escreve, e o número é o principal da academia — aluno perguntando
+horário virava lead e receberia "o que falta para você decidir?". Seção própria
+acima.
+
+### Campanha: a coorte nova e o que ela ensinou
+
+Os 75 leads mandados do EVO em 28/08 foram **todos rejeitados** no webhook:
+
+```
+Segmentação ignorada: nenhuma campanha com evento_gatilho
+"Alunos inativos aqua de dez24 a jun25 faixa etarua 27 a 48 a…"
+```
+
+O vínculo campanha↔segmento é o **texto da descrição, comparado por igualdade
+exata**. Segmento novo = descrição nova = nada casa. Some-se a isso que a
+campanha antiga estava `concluida`, e `campanhasAtivas()` só pega `ativa`.
+
+⚠️ **Isto vai repetir toda vez que um segmento novo for montado no EVO.** O
+sintoma é mudo do lado de lá: o EVO entrega os POSTs com sucesso e ninguém vê que
+o outro lado descartou. Antes de montar segmento novo, criar a campanha com o
+`evento_gatilho` **idêntico** à descrição — ou conferir o log depois.
+
+O que salvou foi `crm_evo_webhook_events`: os 75 payloads estavam guardados, e
+deu para reprocessá-los por `absorverSegmentacao` sem reenviar nada do EVO. Dos
+75: **64 viraram alvo**, **9 caíram na carência** (receberam a campanha de agosto
+e não responderam — a regra funcionando no primeiro uso real) e **2 tinham
+telefone inutilizável**.
+
+⚠️ Ao copiar uma campanha, **`base_legal` precisa ser reescrita**. A cópia
+trouxe "contrato encerrado entre jul e dez/2025", que é a coorte do piloto e não
+a desta. É o campo que justifica na LGPD falar com a lista — descrever a lista
+errada nele não é detalhe de texto.
+
+### Sobre os 28 da campanha que não responderam
+
+Eles **não estão no funil e não devem entrar**. `campanhas.js` não toca em
+`crm_leads`: o disparo cria contato, conversa e a linha em `crm_campanha_alvos`,
+e o lead só nasce quando a pessoa **responde**. Foi isso que separou os 17 dos 28.
+
+Não crie lead para marcá-los `perdido` — infla o denominador da conversão com
+gente que nunca se engajou, e a taxa passa a medir a qualidade da lista fria em
+vez do atendimento. O registro honesto deles já existe, e está no lugar certo:
+`crm_campanha_alvos.status = 'enviado'` sem nunca ter virado `respondeu`.
+
+O que dá para limpar é a **lista de conversas**, não o funil:
+
+```sql
+UPDATE wa_conversations SET status = 'closed', closed_at = NOW()
+WHERE status = 'active' AND contact_id IN (
+  SELECT c.id FROM wa_contacts c
+  JOIN crm_campanha_alvos a ON a.phone = c.phone
+  WHERE a.status = 'enviado' AND a.campanha_id = 2
+);
+```
+
+Reversível: se alguma delas escrever meses depois, `getOrCreateConversation` abre
+outra e o fluxo normal — inclusive a criação do lead — acontece.
+
+### Pendência que este dia criou
+
+**O relógio da varredura é em memória.** `ultimaVarredura` zera no boot, então
+**cada deploy dispara uma varredura nova**. Em 28/08 foram três deploys = três
+varreduras = ~45 cutucadas em vez de 15/hora. Foi aceito de propósito enquanto
+existe o acumulado de 90 leads represados; quando ele acabar, persistir a marca
+(coluna própria ou linha de controle) é o que devolve o teto ao que ele diz ser.
+
 ## O que foi feito em 25/08/2026
 
 Dia longo. Campanha ativa no ar, dois bugs de produção corrigidos, prompt
@@ -1224,20 +1355,33 @@ da aula experimental do começo ao fim — ver "A integração com o EVO".
 
 ### Onde retomar
 
-Tudo o que foi construído em 22/08 está **no ar e funcionando**: migrations
-aplicadas, prompt publicado, WhatsApp conectado, quatro workers rodando. Não há
-passo de instalação pendente.
+Tudo está **no ar e funcionando**: migrations 001–007 aplicadas, prompt
+publicado, WhatsApp conectado, quatro workers rodando. Não há passo de
+instalação pendente.
 
 O que vale fazer a seguir, em ordem de retorno:
 
-**1. Esvaziar a fila de conversas paradas.** No fim de 22/08, seis das dez
-conversas de WhatsApp estavam em `human` — ou seja, com a Leia pausada. Cada uma
-espera um consultor. No painel: **Conversas → filtro "Com consultor"**, e
-*Devolver para a Leia* nas que já foram resolvidas.
+**1. Ler o que a régua de silêncio escreveu.** É a prioridade do dia seguinte.
+Ela rodou pela primeira vez em 28/08 e mandou ~45 retomadas para gente real, e
+**ninguém leu ainda**. O roteiro proíbe comentar o sumiço e manda retomar o
+assunto onde parou — se isso não estiver acontecendo, é ajuste de roteiro em
+`instrucao()`, no `followup-worker.js`. No painel: **Conversas**, ou
 
-**2. Ver a régua de follow-up rodar pela primeira vez.** Há três leads com aula
-marcada e follow-up agendado. As mensagens saem sozinhas — vale acompanhar a
-primeira leva e ler o que a Leia escreveu.
+```sql
+SELECT tipo, mensagem, sent_at FROM crm_followups
+WHERE tipo LIKE 'silencio%' AND status = 'enviado' ORDER BY sent_at DESC;
+```
+
+**2. Acompanhar a campanha nova.** 24 alvos pendentes em
+`aqua-inativos-dez24-jun25` saem no dia seguinte. Comparar a taxa de resposta com
+os 37,8% do piloto: a coorte é outra (dez24–jun25), e é justamente para poder
+comparar que ela ficou em campanha separada.
+
+**3. Esvaziar a fila de conversas paradas.** Conversas em `human` estão com a
+Leia pausada, cada uma esperando um consultor. No painel: **Conversas → filtro
+"Com consultor"**, e *Devolver para a Leia* nas resolvidas. Com a régua de
+silêncio ligada isto pesa mais do que antes: conversa em `human` **cancela** a
+cutucada, então lead esquecido nessa fila não recebe nem follow-up nem gente.
 
 **3. O aviso ativo de handoff.** Continua sendo pull: alguém precisa abrir o
 painel. O destino (número do consultor, grupo, dono do lead) ficou para o
@@ -1275,12 +1419,18 @@ horário errado.
    loopback; o QR de pareamento passou a sair pelo painel.
 1. **Não existe sinal de lead vs aluno** (bloco 9 da revisão) — `is_prospect`
    nasce `true` e nada o põe em `false`; `evo_member_id` existe no schema e
-   ninguém preenche (0 de 11 contatos). A abertura foi reescrita para não
-   presumir, mas isso é contorno: preencher o `evo_member_id` na criação do
-   contato é o que resolve.
-2. **Follow-up agendado** (bloco 7 da revisão) — `wa_message_queue.scheduled_for`,
-   o worker e a rota já existem e ninguém enfileira mensagem futura. Enquanto
-   isso, quem some depois de ver preço some em silêncio.
+   ninguém preenche (0 de 11 contatos).
+
+   ⚠️ **Resolvido só para o follow-up, em 28/08/2026.** `situacaoComercial()`
+   pergunta ao EVO em vez de adivinhar, e a régua de silêncio não fala mais com
+   aluno de contrato ativo. **O agente continua sem o sinal**: a abertura segue
+   escrita para não presumir. Preencher `evo_member_id` na criação do contato
+   continua sendo o que resolve de verdade — e agora há uma função pronta para
+   isso.
+2. ~~**Follow-up agendado**~~ (bloco 7 da revisão) — **resolvido em 28/08/2026.**
+   Quem some depois de ver preço não some mais em silêncio: `silencio_1` sai em
+   2 dias, `silencio_2` em 4, e depois o lead é encerrado como perdido. Ver a
+   seção de follow-up.
 3. **Follow-up depois do consultor** (bloco 11) — a reativação existe
    (`POST /admin/conversations/:id/reactivate`), e desde 20/08/2026 o que o
    consultor digita no WhatsApp é gravado. Falta o gatilho, a retomada agendada e

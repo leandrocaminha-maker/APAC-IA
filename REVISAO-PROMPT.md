@@ -347,6 +347,14 @@ janela — o `scheduled_for` calculado tem de cair dentro dela, empurrando para 
 9h00 do dia seguinte quando cair fora. Responder quem escreveu é outra coisa, e
 vale a qualquer hora. Também em `informacoes-gerais.md`.
 
+> **Ampliada em 28/08/2026.** A janela passou a depender do dia: seg–sex
+> 9h00–20h30, **sábado 9h00–13h00**, **domingo sem contato**. O que "cair fora"
+> significa mudou junto — agora empurra para a abertura do próximo dia com
+> contato, e sábado à tarde salta o domingo inteiro. O lembrete de aula é a
+> única exceção, e anda para trás: ver "O lembrete que anda para trás" no
+> HANDOFF. A correção deste bloco (retomada de ~24h) foi implementada como a
+> régua de silêncio, com 2 e 4 dias em vez de 24h.
+
 Vale também para o outro buraco conhecido: enquanto o handoff não notifica
 ninguém, o mesmo mecanismo dá o aviso de "ninguém respondeu esta fila".
 
