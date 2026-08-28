@@ -121,6 +121,31 @@ export function normalizePhone(phone) {
 }
 
 /**
+ * Celular brasileiro utilizável para WhatsApp, ou `null`.
+ *
+ * Diferente de `normalizePhone`, que **formata** o que recebe: esta
+ * **recusa** o que não dá para usar. Fixo, número truncado e lixo de
+ * cadastro ficam de fora. No lote real de campanha, 46 dos 47 passaram.
+ *
+ * Nasceu privada em `campanhas.js` e subiu para cá em 28/08/2026, quando a
+ * régua de silêncio precisou da mesma checagem. O que motivou: o primeiro
+ * envio dela foi para `136030220984483`, lixo de cadastro que passou pelo
+ * filtro que existia — só recusava telefone começando com "teste". A
+ * Evolution respondeu `exists: false`, mas a mensagem já tinha sido gerada,
+ * e o modelo já tinha sido pago. Recusar antes é o que evita o gasto.
+ *
+ * Duas validações, não uma: 11 dígitos depois do DDI, e o `9` na terceira
+ * posição, que é o que distingue celular de fixo no plano brasileiro.
+ */
+export function telefoneValido(bruto) {
+  const digitos = String(bruto || '').replace(/\D/g, '');
+  const semDdi = digitos.startsWith('55') && digitos.length > 11 ? digitos.slice(2) : digitos;
+  if (semDdi.length !== 11) return null;
+  if (semDdi[2] !== '9') return null;
+  return `55${semDdi}`;
+}
+
+/**
  * Envia uma mensagem de texto.
  * @param {string} phone - Número do destinatário
  * @param {string} text - Texto da mensagem

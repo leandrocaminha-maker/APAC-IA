@@ -25,7 +25,7 @@ import { evoClient } from '../services/evo-client.js';
 import { aiAgent } from '../services/ai-agent.js';
 import { funil } from '../services/funil.js';
 import { saveMessage } from '../services/contacts.js';
-import { sendText } from '../services/evolution.js';
+import { sendText, telefoneValido } from '../services/evolution.js';
 
 let rodando = false;
 
@@ -192,8 +192,19 @@ async function enviarUm(item) {
     return;
   }
 
-  if (!lead.phone || String(lead.phone).startsWith('teste')) {
-    await followup.registrarEnvio(item.id, { erro: 'lead sem telefone real' });
+  // Telefone utilizável — conferido AQUI, e não só na varredura, porque
+  // esta é a última porta antes de gastar uma chamada ao modelo.
+  //
+  // Foi o que faltou em 28/08/2026: o primeiro envio da régua de silêncio
+  // saiu para `136030220984483`, lixo de cadastro que passava por
+  // `startsWith('teste')`. A mensagem foi gerada e paga, e só então a
+  // Evolution respondeu `exists: false`. O gate de formato recusa antes do
+  // `gerarFollowup`, então o lixo de cadastro deixa de custar dinheiro — e
+  // isso vale também para o que já está agendado, que a varredura não
+  // alcança mais.
+  if (!lead.phone || String(lead.phone).startsWith('teste') || !telefoneValido(lead.phone)) {
+    await followup.registrarEnvio(item.id, { erro: `telefone inutilizável (${lead.phone ?? 'ausente'})` });
+    logger.warn(`[followup] Lead ${lead.id}: telefone inutilizável (${lead.phone ?? 'ausente'}) — nada enviado`);
     return;
   }
 

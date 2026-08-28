@@ -28,7 +28,7 @@ import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
 import { dentroDaJanela } from './followup.js';
 import { montarSegmento } from './segmentos.js';
-import { normalizePhone } from './evolution.js';
+import { normalizePhone, telefoneValido } from './evolution.js';
 
 // Fim da janela de contato ativo, em minutos desde a meia-noite (20h30).
 // Espelha a JANELA de followup.js, que não a exporta.
@@ -710,18 +710,9 @@ export async function absorverSegmentacao(payload) {
   return { ok: true, alvoId: data?.id ?? null, campanha: campanha.slug };
 }
 
-/**
- * Celular utilizável para WhatsApp, a partir do `person.phone` do EVO.
- * Vem com DDI ("+5511943470015"). Fixo e número truncado ficam de fora: no
- * lote real, 46 dos 47 passaram.
- */
-function telefoneValido(bruto) {
-  const digitos = String(bruto || '').replace(/\D/g, '');
-  const semDdi = digitos.startsWith('55') && digitos.length > 11 ? digitos.slice(2) : digitos;
-  if (semDdi.length !== 11) return null;
-  if (semDdi[2] !== '9') return null;
-  return `55${semDdi}`;
-}
+// `telefoneValido` mudou-se para `evolution.js` em 28/08/2026: a régua de
+// silêncio precisou da mesma checagem, e duas cópias divergiriam. O
+// comportamento é idêntico — a função foi movida, não reescrita.
 
 // ──────────────────────────────────────────────
 // Porta de consentimento

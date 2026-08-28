@@ -12,6 +12,8 @@ import { config } from '../config.js';
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { registrarEvento } from './funil.js';
+// Sem ciclo: `evolution.js` só importa config e logger.
+import { telefoneValido } from './evolution.js';
 
 /**
  * Janela de contato ativo: 9h00 às 20h30, horário de São Paulo.
@@ -374,7 +376,13 @@ export async function varrerSilenciosos(opcoes = {}) {
     logger.error('[followup] Varredura de silêncio falhou:', error.message);
     return { agendados: 0, leads: [], examinados: 0 };
   }
-  if (!leads?.length) return { agendados: 0, leads: [], examinados: 0 };
+  // Também loga: este é justamente o caso que ficava mudo e virava dúvida
+  // sobre o worker estar vivo. Zero candidato na janela não é normal com
+  // movimento — é sinal de filtro ou janela errados.
+  if (!leads?.length) {
+    logger.info(`[followup] Varredura de silêncio: nenhum lead na janela de ${janelaDias}d`);
+    return { agendados: 0, leads: [], examinados: 0 };
+  }
 
   // O que já correu para esses leads, numa consulta só.
   //
@@ -411,7 +419,15 @@ export async function varrerSilenciosos(opcoes = {}) {
   for (const lead of leads) {
     if (selecionados.length >= lote) break;
     if (!comConversa.has(lead.contact_id)) continue;
+
+    // Lixo de cadastro não vira agendamento. O worker confere de novo antes
+    // de enviar — este gate existe para a linha nem nascer, e para o número
+    // inválido não ocupar uma das 15 vagas do lote de quem é alcançável.
     if (String(lead.phone).startsWith('teste')) continue;
+    if (!telefoneValido(lead.phone)) {
+      logger.debug(`[followup] Lead ${lead.id} fora da varredura: telefone ${lead.phone}`);
+      continue;
+    }
 
     const tipo = rodadaDeSilencio(porLead.get(lead.id) || []);
     if (!tipo) continue;
@@ -450,8 +466,23 @@ export async function varrerSilenciosos(opcoes = {}) {
     cursor = dentroDaJanela(new Date(cursor.getTime() + intervaloMin * 60_000));
   }
 
+  // A varredura SEMPRE diz o que fez, inclusive quando não fez nada.
+  //
+  // Antes ela só logava quando agendava algo, e o silêncio no log era
+  // ambíguo de um jeito caro: "rodou e não achou ninguém" ficava idêntico a
+  // "não rodou" — e as duas coisas exigem investigações opostas. Uma linha
+  // por hora é barata; não saber se o worker está vivo, não.
+  //
+  // Os três números contam a história inteira: quantos leads da janela
+  // foram olhados, quantos tinham rodada aberta, e quantos estavam mesmo
+  // calados. `candidatos > 0` com `elegiveis = 0` é operação normal;
+  // `candidatos = 0` é sinal de que o filtro ou a janela estão errados.
+  const resumo =
+    `${leads.length} candidato(s) na janela de ${janelaDias}d, ` +
+    `${examinados} com rodada aberta, ${selecionados.length} em silêncio há ${dias}d ou mais`;
+
   if (simular) {
-    logger.info(`[followup] Varredura (SIMULAÇÃO): ${selecionados.length} lead(s) entrariam`);
+    logger.info(`[followup] Varredura (SIMULAÇÃO): ${resumo} — nada gravado`);
     return { agendados: 0, leads: selecionados, examinados, simulado: true };
   }
 
@@ -466,9 +497,7 @@ export async function varrerSilenciosos(opcoes = {}) {
     if (criado) agendados++;
   }
 
-  if (agendados) {
-    logger.info(`[followup] Varredura de silêncio: ${agendados} cutucada(s) agendada(s)`);
-  }
+  logger.info(`[followup] Varredura de silêncio: ${resumo} → ${agendados} agendada(s)`);
   return { agendados, leads: selecionados, examinados };
 }
 
