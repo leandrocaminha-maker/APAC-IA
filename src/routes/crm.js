@@ -23,6 +23,7 @@ import {
   login, gravarCookie, limparCookie, exigirLogin, exigirAdmin, hashSenha, conferirSenha,
 } from '../services/crm-auth.js';
 import { funil } from '../services/funil.js';
+import { followup } from '../services/followup.js';
 import { atendimento } from '../services/atendimento.js';
 import { evoSync } from '../services/evo-sync.js';
 import { evoClient } from '../services/evo-client.js';
@@ -326,6 +327,66 @@ router.post('/api/leads/:id/followup', rota(async (req, res) => {
   } catch (err) {
     res.status(422).json({ erro: err.message });
   }
+}));
+
+/**
+ * Aciona à mão a régua de silêncio.
+ *
+ * ## Para que serve, já que o worker varre sozinho
+ *
+ * A varredura automática enxerga `FOLLOWUP_SILENCIO_JANELA_DIAS` para trás
+ * (padrão: 7). Quem parou de responder há mais tempo que isso está fora do
+ * alcance dela — de propósito, para o primeiro ciclo depois do deploy não
+ * acordar lead de meses atrás. Este endpoint é como o consultor alcança
+ * esse acumulado, decidindo ele até onde voltar.
+ *
+ * O critério de dias continua sendo um PISO (`>= dias`), não uma igualdade:
+ * um lead parado há 5 dias que nunca foi cutucado entra normalmente. Por
+ * isso não existe rotina separada de recuperação — é a mesma função, com a
+ * janela aberta.
+ *
+ * ## Simula por padrão
+ *
+ * Sem `simular: false` explícito, NADA é gravado: a resposta lista quem
+ * entraria, com quantos dias de silêncio cada um e por qual rodada. É uma
+ * ação em lote sobre clientes reais, e a ordem certa é ler a lista antes.
+ *
+ * Body (tudo opcional):
+ *   dias        piso de dias em silêncio      (padrão: config)
+ *   janelaDias  quão para trás olhar          (padrão: config; teto de 90)
+ *   lote        máximo de agendamentos        (padrão: config; teto de 50)
+ *   simular     false para gravar de verdade  (padrão: true)
+ */
+router.post('/api/followups/varredura', rota(async (req, res) => {
+  const corpo = req.body || {};
+
+  const opcoes = {
+    simular: corpo.simular !== false,
+    ...(corpo.dias != null && { dias: Math.max(1, parseInt(corpo.dias, 10) || 2) }),
+    ...(corpo.janelaDias != null && {
+      janelaDias: Math.min(90, Math.max(1, parseInt(corpo.janelaDias, 10) || 7)),
+    }),
+    // Teto duro acima do configurado: a janela ampliada torna o conjunto
+    // elegível muito maior, e 50 mensagens é o limite do que um consultor
+    // consegue acompanhar num dia.
+    ...(corpo.lote != null && { lote: Math.min(50, Math.max(1, parseInt(corpo.lote, 10) || 15)) }),
+  };
+
+  const resultado = await followup.varrerSilenciosos(opcoes);
+
+  logger.info(
+    `[crm] ${req.usuario.email} rodou a varredura de silêncio ` +
+    `(${opcoes.simular ? 'simulação' : 'valendo'}): ` +
+    `${resultado.leads.length} elegível(is), ${resultado.agendados} agendado(s)`
+  );
+
+  res.json({
+    simulado: opcoes.simular,
+    elegiveis: resultado.leads.length,
+    agendados: resultado.agendados,
+    examinados: resultado.examinados,
+    leads: resultado.leads,
+  });
 }));
 
 // ──────────────────────────────────────────────

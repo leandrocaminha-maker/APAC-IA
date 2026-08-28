@@ -52,6 +52,20 @@ function instrucao(tipo, { lead, presenca, contexto }) {
       })
     : null;
 
+  // Contexto da régua do silêncio, gravado pela varredura no agendamento.
+  //
+  // `dias_parado` vira texto aproximado de propósito: o roteiro proíbe
+  // comentar o silêncio, então o número serve para a Leia calibrar o tom
+  // (retomar de leve ou reconhecer a distância), não para ela citar.
+  const dias = contexto?.dias_parado;
+  const parado = dias >= 7 ? 'mais de uma semana'
+    : dias >= 2 ? `${dias} dias`
+    : null;
+
+  const autoria = String(contexto?.ultima_fala_de || '').startsWith('human:')
+    ? 'de um consultor da academia (o histórico acima mostra qual foi)'
+    : 'sua';
+
   const cabeca =
     '[INSTRUÇÃO INTERNA DO SISTEMA — isto NÃO é mensagem do cliente. ' +
     'Escreva a próxima mensagem que VOCÊ vai enviar, começando a conversa. ' +
@@ -93,6 +107,27 @@ function instrucao(tipo, { lead, presenca, contexto }) {
       'Reconheça que ela pode estar sem tempo ou ter mudado de ideia — e diga que tudo bem. ' +
       'Deixe a porta aberta de forma concreta: se quiser experimentar outro horário ou ' +
       'outra modalidade, é só falar. Curto. Se ela não responder, você não escreve de novo.',
+
+    // As duas abaixo são a régua do silêncio. Diferença essencial para as
+    // sondagens: aqui a pessoa pode NUNCA ter pisado na academia, e o
+    // roteiro não pode supor experiência nenhuma. O que ela tem é o
+    // histórico — e é de lá que sai o assunto a retomar.
+    silencio_1:
+      `A conversa parou${parado ? ` há ${parado}` : ''}. A última mensagem foi ${autoria}, ` +
+      'e a pessoa não respondeu. **Não comente o silêncio** — nada de "vi que você sumiu", ' +
+      '"ainda está aí?" ou "não tive retorno". Isso cobra, e quem sumiu não deve nada a você.\n' +
+      'Retome o ASSUNTO onde ele parou, pelo nome: o que ela disse que queria, a dúvida que ' +
+      'ficou aberta, o que ficou de ser confirmado. O histórico acima tem isso — use o que ' +
+      'está lá e não invente o que não está.\n' +
+      'Uma pergunta só, fácil de responder, sobre o próximo passo concreto. Duas ou três linhas.',
+
+    silencio_2:
+      'Última tentativa desta conversa. A pessoa não respondeu à retomada anterior.\n' +
+      'NÃO repita o que você já perguntou e NÃO faça a mesma pergunta com outras palavras. ' +
+      'Reconheça, sem drama e sem cobrança, que pode não ser o momento dela — e diga que tudo bem.\n' +
+      'Feche deixando a porta aberta de um jeito concreto: quando ela quiser retomar, é só ' +
+      'escrever aqui. Curto, duas ou três linhas, tom leve. ' +
+      'Depois desta você não escreve de novo.',
   };
 
   const chave = tipo === 'ae_pos_aula'
@@ -284,14 +319,20 @@ async function enviarUm(item) {
  * "Perdido" explícito vale mais para o funil do que um lead eternamente
  * "em conversa" que ninguém vai atender — e é o que faz a taxa de
  * conversão significar alguma coisa.
+ *
+ * Vale para as duas réguas: `sondagem_2` fecha quem sumiu depois da aula,
+ * `silencio_2` fecha quem sumiu antes dela. Chegar ao fim das duas rodadas
+ * significa a mesma coisa nos dois casos — pedimos duas vezes e não houve
+ * resposta —, e um lead precisa poder ser encerrado pelo caminho por onde
+ * ele efetivamente andou.
  */
 async function encerrarSemResposta() {
   const limite = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data } = await supabase
     .from('crm_followups')
-    .select('lead_id, sent_at, lead:crm_leads ( id, stage, last_activity_at )')
-    .eq('tipo', 'sondagem_2')
+    .select('lead_id, tipo, sent_at, lead:crm_leads ( id, stage, last_activity_at )')
+    .in('tipo', ['sondagem_2', 'silencio_2'])
     .eq('status', 'enviado')
     .lte('sent_at', limite)
     .limit(50);
@@ -312,11 +353,46 @@ async function encerrarSemResposta() {
   }
 }
 
+/**
+ * Última varredura de silêncio, em epoch. Ver `talvezVarrer`.
+ */
+let ultimaVarredura = 0;
+
+/**
+ * Roda a varredura de silêncio no ritmo dela, não no do ciclo.
+ *
+ * O ciclo lê uma FILA indexada e é barato, por isso roda de 10 em 10 min:
+ * o que ele compra é pontualidade no lembrete de 24h. A varredura é outra
+ * coisa — percorre os leads vivos da semana e consulta as últimas mensagens
+ * de cada um. Silêncio de dois dias não muda de minuto em minuto, então
+ * rodar isso a cada ciclo seria pagar o scan seis vezes para descobrir
+ * exatamente o mesmo.
+ *
+ * O relógio é interno de propósito: um `setInterval` próprio poderia
+ * disparar a varredura no meio de um ciclo de envio, e as duas mexem nas
+ * mesmas linhas.
+ */
+async function talvezVarrer() {
+  const cfg = config.followup.silencio;
+  if (!cfg.habilitado || cfg.minutos <= 0) return;
+  if (Date.now() - ultimaVarredura < cfg.minutos * 60_000) return;
+
+  ultimaVarredura = Date.now();
+  await followup.varrerSilenciosos().catch(err =>
+    logger.error('[followup] Varredura de silêncio falhou:', err.message));
+}
+
 async function ciclo() {
   if (rodando) return;
   rodando = true;
 
   try {
+    // Ordem importa: varrer ANTES de ler a fila faz a cutucada recém-agendada
+    // que já caiu na janela sair neste mesmo ciclo, em vez de esperar o
+    // próximo. Como `agendar` é idempotente e a varredura só olha o que já
+    // está gravado, não há risco de agendar e enviar em duplicidade.
+    await talvezVarrer();
+
     const fila = await followup.vencidos(20);
     for (const item of fila) {
       try {
@@ -347,6 +423,16 @@ export async function startFollowupWorker() {
     logger.warn('[followup] Não iniciado: crm_followups ainda não responde. ' +
       'Rode a migration 003 e reinicie o serviço.');
     return;
+  }
+
+  const silencio = config.followup.silencio;
+  if (silencio.habilitado && silencio.minutos > 0) {
+    logger.info(`[followup] Régua de silêncio ligada: ${silencio.dias} dia(s) parado, ` +
+      `janela de ${silencio.janelaDias} dia(s), até ${silencio.lote} por varredura ` +
+      `a cada ${silencio.minutos} min`);
+  } else {
+    logger.info('[followup] Régua de silêncio desligada (FOLLOWUP_SILENCIO_HABILITADO=false ' +
+      'ou FOLLOWUP_SILENCIO_MINUTOS=0)');
   }
 
   logger.info(`[followup] Worker iniciado (ciclo a cada ${minutos} min)`);

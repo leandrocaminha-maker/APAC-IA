@@ -8,6 +8,7 @@
  * aula. Guardar a frase pronta no agendamento produziria "como foi a
  * aula?" para quem faltou, que é pior do que não mandar nada.
  */
+import { config } from '../config.js';
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { registrarEvento } from './funil.js';
@@ -190,6 +191,287 @@ export async function proximaSondagem(lead) {
   return null;   // acabou: o chamador marca como perdido
 }
 
+// ──────────────────────────────────────────────
+// Régua do silêncio: o lead que parou de responder
+//
+// A régua pós-aula acima só existe para quem marcou experimental. Quem
+// sumiu antes disso — no meio da conversa, depois de ouvir o preço, depois
+// de o consultor prometer um retorno — não tinha nenhum turno em que
+// alguém agisse. Esta seção é esse turno.
+//
+// O relógio é a NOSSA última fala sem resposta. Dois dias dela → 1ª
+// cutucada; como a própria cutucada vira a nossa última fala, mais dois
+// dias de silêncio → 2ª, que cai no 4º dia. Não há encadeamento em
+// código: a mesma regra, aplicada duas vezes, produz "2 e 4 dias".
+//
+// O efeito colateral disso é o desejado: se o consultor responder à mão no
+// dia 3, a mensagem dele passa a ser a nossa última fala e o relógio
+// reinicia — que é exatamente o que "2 dias após a última resposta da Leia
+// ou do consultor" quer dizer.
+// ──────────────────────────────────────────────
+
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+export const TIPOS_SILENCIO = ['silencio_1', 'silencio_2'];
+const TIPOS_SONDAGEM = ['sondagem_1', 'sondagem_2'];
+
+/**
+ * Uma mensagem de saída que faz o relógio do silêncio começar a contar.
+ *
+ * Vale a fala da Leia (`bot`, `bot:followup`) e a do consultor
+ * (`human:email`). **Não** vale:
+ *
+ *  - `app:*` — cobrança, nota fiscal, e também a campanha, que sai como
+ *    `app:campanha:<slug>`. Quem não respondeu a um boleto não é um lead em
+ *    silêncio, e quem não respondeu à abertura de campanha tem a porta de
+ *    consentimento dela, não esta. Tratar isso como silêncio transformaria
+ *    a régua numa segunda campanha, para uma lista fria.
+ *  - `simulador` / `teste-web` — conversa de teste não recebe follow-up.
+ */
+function ehNossaFala(sentBy) {
+  const quem = String(sentBy || '');
+  return quem === 'bot' || quem.startsWith('bot:') || quem.startsWith('human:');
+}
+
+/**
+ * Há quanto tempo este contato está sem responder à nossa última fala.
+ *
+ * Devolve `null` quando não está em silêncio — inclusive quando a última
+ * palavra é dela (aí quem deve resposta somos nós, e follow-up seria
+ * atropelo).
+ *
+ * Lê as 20 últimas mensagens em vez de duas consultas: uma sequência de
+ * cobranças automáticas pode empurrar a nossa última fala real para trás, e
+ * é ela que conta.
+ */
+async function estadoDoSilencio(contactId) {
+  const { data, error } = await supabase
+    .from('wa_messages')
+    .select('direction, sent_by, created_at')
+    .eq('contact_id', contactId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error || !data?.length) return null;
+
+  const ultimaNossa = data.find(m => m.direction === 'outbound' && ehNossaFala(m.sent_by));
+  if (!ultimaNossa) return null;
+
+  const ultimaDela = data.find(m => m.direction === 'inbound');
+  if (ultimaDela && new Date(ultimaDela.created_at) >= new Date(ultimaNossa.created_at)) {
+    return null;
+  }
+
+  return {
+    desde: new Date(ultimaNossa.created_at),
+    porQuem: ultimaNossa.sent_by,
+    dias: Math.floor((Date.now() - new Date(ultimaNossa.created_at).getTime()) / DIA_MS),
+  };
+}
+
+/**
+ * Decide qual rodada de silêncio cabe a um lead, olhando o que já correu.
+ *
+ * Devolve `null` — isto é, "não mexa" — em três situações:
+ *
+ *  - **Já existe follow-up pendente**, de qualquer tipo. O lembrete da aula
+ *    de amanhã já é a próxima mensagem; somar uma cutucada faria a pessoa
+ *    receber duas.
+ *  - **A régua pós-aula já correu.** `sondagem_*` É o silêncio de quem
+ *    passou pela experiência. Abrir `silencio_*` em cima seria dar quatro
+ *    rodadas a quem a régua deu duas — e a segunda dupla chegaria sem nada
+ *    novo a dizer.
+ *  - **As duas rodadas de silêncio já se esgotaram.** Acabou. O teto é o
+ *    mesmo das sondagens, pela mesma razão: sem teto isto vira perseguição.
+ */
+function rodadaDeSilencio(followupsDoLead) {
+  const pendente = followupsDoLead.some(f => f.status === 'pendente');
+  if (pendente) return null;
+
+  const enviados = new Set(
+    followupsDoLead.filter(f => f.status === 'enviado').map(f => f.tipo)
+  );
+
+  if (TIPOS_SONDAGEM.some(t => enviados.has(t))) return null;
+
+  // Uma rodada também se esgota por falha repetida.
+  //
+  // Linha `falhou` não é `pendente`, então a fila nunca a tenta de novo — e
+  // como a varredura só é bloqueada por `pendente` e `enviado`, sem este
+  // teto ela abriria uma linha nova a cada hora, para sempre, no lead cujo
+  // envio falha de forma permanente. Duas tentativas absorvem o erro
+  // passageiro (o agente não gerar texto) sem virar laço.
+  const falhas = {};
+  for (const f of followupsDoLead) {
+    if (f.status === 'falhou') falhas[f.tipo] = (falhas[f.tipo] || 0) + 1;
+  }
+  const esgotada = t => enviados.has(t) || (falhas[t] || 0) >= 2;
+
+  if (!esgotada('silencio_1')) return 'silencio_1';
+  if (!esgotada('silencio_2')) return 'silencio_2';
+  return null;
+}
+
+/**
+ * Varre os leads parados e agenda a cutucada de quem está em silêncio.
+ *
+ * ## Por que uma varredura, e não um gatilho
+ *
+ * O resto da régua nasce de um FATO com hora marcada — a aula foi agendada,
+ * o follow-up pós-aula foi enviado. Silêncio não é um fato: é a ausência
+ * dele. Ninguém emite um evento "o cliente não respondeu". Só dá para
+ * descobrir olhando.
+ *
+ * ## Por que `>= dias`, e não `== dias`
+ *
+ * Um lead parado há 5 dias que nunca recebeu cutucada continua elegível: o
+ * corte é um piso, não uma igualdade. É isso que faz esta mesma função
+ * servir de recuperação do acumulado, sem código separado de backfill — e é
+ * por isso que ela precisa de `janelaDias` como teto. Sem esse teto, a
+ * primeira execução acordaria lead de meses atrás, para quem uma retomada
+ * não é retomada, é abordagem fria.
+ *
+ * ## Espaçamento
+ *
+ * Os agendamentos saem espalhados de `intervaloMin` em `intervaloMin`. 15
+ * mensagens no mesmo minuto é o que denuncia robô — e satura a instância.
+ *
+ * @param {object}  opcoes
+ * @param {boolean} opcoes.simular  Não grava nada; só devolve quem entraria.
+ * @returns {Promise<{agendados: number, leads: Array, examinados: number}>}
+ */
+export async function varrerSilenciosos(opcoes = {}) {
+  const cfg = config.followup.silencio;
+  const {
+    dias = cfg.dias,
+    janelaDias = cfg.janelaDias,
+    lote = cfg.lote,
+    intervaloMin = cfg.intervaloMin,
+    simular = false,
+  } = opcoes;
+
+  const agora = Date.now();
+  const piso = new Date(agora - janelaDias * DIA_MS).toISOString();
+
+  // `last_activity_at` NÃO serve de corte superior: ele é encostado também
+  // por mudança de etapa e por envio nosso, então um lead em silêncio há 3
+  // dias pode ter atividade de hoje. Ele serve só de piso — quem não teve
+  // nenhuma atividade na janela está fora do escopo "leads desta semana".
+  //
+  // A ordem é do mais parado para o menos: são os que estão prestes a cair
+  // fora da janela, e o `break` do lote não pode deixá-los para trás.
+  const { data: leads, error } = await supabase
+    .from('crm_leads')
+    .select('id, full_name, phone, stage, contact_id, last_activity_at')
+    .not('stage', 'in', '(ganho,perdido)')
+    .not('contact_id', 'is', null)
+    .not('phone', 'is', null)
+    .gte('last_activity_at', piso)
+    .order('last_activity_at', { ascending: true })
+    .limit(Math.max(lote * 6, 60));
+
+  if (error) {
+    logger.error('[followup] Varredura de silêncio falhou:', error.message);
+    return { agendados: 0, leads: [], examinados: 0 };
+  }
+  if (!leads?.length) return { agendados: 0, leads: [], examinados: 0 };
+
+  // O que já correu para esses leads, numa consulta só.
+  //
+  // `cancelado` fica de fora de propósito: um follow-up cancelado porque a
+  // pessoa respondeu não pode bloquear a próxima vez que ela sumir — é
+  // assim que a rodada é devolvida a quem voltou a conversar. `falhou`
+  // entra porque `rodadaDeSilencio` precisa contá-las para não reabrir a
+  // mesma rodada indefinidamente.
+  const { data: feitos } = await supabase
+    .from('crm_followups')
+    .select('lead_id, tipo, status')
+    .in('lead_id', leads.map(l => l.id))
+    .in('status', ['pendente', 'enviado', 'falhou']);
+
+  const porLead = new Map();
+  for (const f of feitos || []) {
+    if (!porLead.has(f.lead_id)) porLead.set(f.lead_id, []);
+    porLead.get(f.lead_id).push(f);
+  }
+
+  // Conversa aberta e não assumida por humano. Conferir aqui, e não só no
+  // envio, evita encher `crm_followups` de linhas que já nascem para falhar.
+  const { data: conversas } = await supabase
+    .from('wa_conversations')
+    .select('contact_id, status')
+    .in('contact_id', leads.map(l => l.contact_id))
+    .eq('status', 'active');
+
+  const comConversa = new Set((conversas || []).map(c => c.contact_id));
+
+  const selecionados = [];
+  let examinados = 0;
+
+  for (const lead of leads) {
+    if (selecionados.length >= lote) break;
+    if (!comConversa.has(lead.contact_id)) continue;
+    if (String(lead.phone).startsWith('teste')) continue;
+
+    const tipo = rodadaDeSilencio(porLead.get(lead.id) || []);
+    if (!tipo) continue;
+
+    examinados++;
+
+    const silencio = await estadoDoSilencio(lead.contact_id);
+    if (!silencio) continue;
+    if (silencio.desde.getTime() > agora - dias * DIA_MS) continue;
+
+    selecionados.push({
+      lead_id: lead.id,
+      nome: lead.full_name,
+      etapa: lead.stage,
+      tipo,
+      dias_parado: silencio.dias,
+      calado_desde: silencio.desde.toISOString(),
+      ultima_fala_de: silencio.porQuem,
+    });
+  }
+
+  // O escalonamento anda com um CURSOR, e não com `agora + i * intervalo`.
+  //
+  // A diferença aparece fora da janela: `dentroDaJanela` empurra tudo que
+  // está antes das 9h para exatamente 9h00. Varredura rodando às 3h da
+  // manhã — ou às 20h45, que cai no dia seguinte — marcaria as 15 cutucadas
+  // no mesmo minuto, que é justamente o que o espaçamento existe para
+  // evitar. Avançando o cursor e reajustando a cada passo, o escalonamento
+  // sobrevive à virada: 20h31 vira 9h00 do dia seguinte, e o próximo, 9h07.
+  //
+  // Calculado antes do desvio de simulação de propósito: quem lê a prévia
+  // precisa ver a que horas cada mensagem sairia, não só quem entraria.
+  let cursor = dentroDaJanela(new Date(agora));
+  for (const alvo of selecionados) {
+    alvo.agendado_para = cursor.toISOString();
+    cursor = dentroDaJanela(new Date(cursor.getTime() + intervaloMin * 60_000));
+  }
+
+  if (simular) {
+    logger.info(`[followup] Varredura (SIMULAÇÃO): ${selecionados.length} lead(s) entrariam`);
+    return { agendados: 0, leads: selecionados, examinados, simulado: true };
+  }
+
+  let agendados = 0;
+  for (const alvo of selecionados) {
+    const criado = await agendar(alvo.lead_id, alvo.tipo, new Date(alvo.agendado_para), {
+      origem: 'varredura_silencio',
+      calado_desde: alvo.calado_desde,
+      dias_parado: alvo.dias_parado,
+      ultima_fala_de: alvo.ultima_fala_de,
+    });
+    if (criado) agendados++;
+  }
+
+  if (agendados) {
+    logger.info(`[followup] Varredura de silêncio: ${agendados} cutucada(s) agendada(s)`);
+  }
+  return { agendados, leads: selecionados, examinados };
+}
+
 /** Follow-ups vencidos, prontos para envio. */
 export async function vencidos(limite = 20) {
   const { data, error } = await supabase
@@ -248,7 +530,7 @@ export async function registrarNoFunil(leadId, tipo, resumo, payload = {}) {
 }
 
 export const followup = {
-  JANELA, dentroDaJanela,
-  agendar, cancelar, aoAgendarExperimental, proximaSondagem,
+  JANELA, dentroDaJanela, TIPOS_SILENCIO,
+  agendar, cancelar, aoAgendarExperimental, proximaSondagem, varrerSilenciosos,
   vencidos, registrarEnvio, registrarTentativa, registrarNoFunil,
 };

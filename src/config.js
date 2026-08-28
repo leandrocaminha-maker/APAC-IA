@@ -156,7 +156,45 @@ export const config = {
   // para de responder some em silêncio: não existe turno em que o modelo
   // possa agir. Todo envio respeita a janela de 9h–20h30.
   followup: {
+    // Ciclo da FILA (o que já venceu). Não custa token nenhum: é só
+    // Postgres. O que ele compra é pontualidade — o `ae_lembrete_24h` sai
+    // com o atraso de até um ciclo, e a reconsulta de presença também. Por
+    // isso 10 min, e não 60.
     minutos: parseInt(env('FOLLOWUP_MINUTOS', '10'), 10),
+
+    // Régua de lead que parou de responder.
+    //
+    // Separada do ciclo da fila porque é uma VARREDURA, não uma leitura de
+    // fila: percorre os leads vivos da janela e olha a última mensagem de
+    // cada um. Silêncio de dois dias não muda de minuto em minuto, então
+    // rodar isso a cada 10 min seria pagar o scan 6x por nada.
+    silencio: {
+      habilitado: env('FOLLOWUP_SILENCIO_HABILITADO', 'true') !== 'false',
+
+      // Intervalo próprio da varredura, em minutos. 0 desliga.
+      minutos: parseInt(env('FOLLOWUP_SILENCIO_MINUTOS', '60'), 10),
+
+      // Dias de silêncio para a 1ª cutucada. A 2ª sai 2 dias depois dela —
+      // ou seja, no 4º dia de silêncio.
+      dias: parseInt(env('FOLLOWUP_SILENCIO_DIAS', '2'), 10),
+
+      // Piso da varredura: quão para trás ela enxerga.
+      //
+      // Sem piso, a primeira execução acordaria todo lead parado desde
+      // sempre — inclusive gente de meses atrás, para quem uma retomada não
+      // é retomada, é abordagem fria. 7 dias = "os leads desta semana".
+      janelaDias: parseInt(env('FOLLOWUP_SILENCIO_JANELA_DIAS', '7'), 10),
+
+      // Teto de agendamentos por varredura. Segura o susto do primeiro
+      // ciclo depois do deploy, quando o acúmulo da semana inteira está
+      // elegível de uma vez.
+      lote: parseInt(env('FOLLOWUP_SILENCIO_LOTE', '15'), 10),
+
+      // Espaçamento entre os agendamentos de uma mesma varredura, em
+      // minutos. 15 mensagens saindo no mesmo minuto é o que denuncia
+      // robô — e satura a instância da Evolution.
+      intervaloMin: parseInt(env('FOLLOWUP_SILENCIO_INTERVALO_MIN', '7'), 10),
+    },
   },
 
   // Painel CRM (crm.apacademia.com.br) — login por consultor.

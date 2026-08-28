@@ -333,14 +333,23 @@ async function handleIncomingMessage(event) {
   // a cada resposta — sem retroceder quem já avançou.
   await moverFunil(() => funil.aoReceberMensagem(contact));
 
-  // Quem respondeu não está em silêncio: as sondagens pendentes perdem o
-  // motivo de existir. O lembrete da aula e a conversa pós-aula NÃO são
-  // canceladas — elas dependem da aula, não do silêncio.
+  // Quem respondeu não está em silêncio: as sondagens e as cutucadas de
+  // silêncio pendentes perdem o motivo de existir. O lembrete da aula e a
+  // conversa pós-aula NÃO são canceladas — elas dependem da aula, não do
+  // silêncio.
+  //
+  // Cancelar (e não apagar) é o que devolve a rodada: a varredura só é
+  // bloqueada por `pendente` e `enviado`, então esta pessoa volta a ser
+  // elegível se sumir de novo — mas partindo da rodada em que parou.
   await moverFunil(async () => {
     const lead = await funil.leadAbertoPorContato(contact.id);
     if (lead) {
       const { followup } = await import('../services/followup.js');
-      await followup.cancelar(lead.id, ['sondagem_1', 'sondagem_2'], 'o cliente respondeu');
+      await followup.cancelar(
+        lead.id,
+        ['sondagem_1', 'sondagem_2', ...followup.TIPOS_SILENCIO],
+        'o cliente respondeu',
+      );
     }
   });
 

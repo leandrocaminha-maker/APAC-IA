@@ -52,8 +52,9 @@ de produção.
    verdade** — cadastro de prospect, agendamento e venda. O painel só mostra a
    fita âmbar quando o ensaio está ligado; sem fita, é produção.
 4. **⚠️ Quatro workers rodando.** Fila (5s), sync do EVO (15min), follow-up
-   (10min) e o processador de mensagens. O de follow-up **manda mensagem para
-   cliente real** — ver a seção própria antes de mexer.
+   (10min, com a varredura de silêncio de 60 em 60min dentro dele) e o
+   processador de mensagens. O de follow-up **manda mensagem para cliente
+   real** — ver a seção própria antes de mexer.
 5. **⚠️ O container roda em UTC.** `TZ` não está definida. Toda data lida de
    string precisa de offset **explícito** `-03:00`; sem ele o parse usa o fuso do
    processo e grava 3 horas adiantado. Isso já aconteceu com `experimental_at` e
@@ -488,6 +489,10 @@ porque não existe turno em que o modelo possa agir.
 
 `workers/followup-worker.js` é esse turno.
 
+São **duas réguas**, disjuntas por construção.
+
+**Régua da aula** — para quem marcou experimental. Nasce do agendamento:
+
 | Quando | Tipo | O que faz |
 |---|---|---|
 | 24h antes da aula | `ae_lembrete_24h` | Confirma presença, reforça o valor, diz o que levar |
@@ -495,6 +500,35 @@ porque não existe turno em que o modelo possa agir.
 | +2 dias | `sondagem_1` | "O que falta para você decidir?" |
 | +4 dias | `sondagem_2` | Última, porta aberta |
 | +5 dias sem resposta | — | Lead vira `perdido` explícito |
+
+**Régua do silêncio** — para quem sumiu em qualquer outro ponto do funil: no
+meio da conversa, depois de ouvir o preço, depois de um consultor prometer
+retorno. Não nasce de fato nenhum, porque silêncio não é um fato: é a ausência
+dele, e ninguém emite um evento "o cliente não respondeu". Nasce de uma
+varredura (`varrerSilenciosos`).
+
+| Quando | Tipo | O que faz |
+|---|---|---|
+| 2 dias calada | `silencio_1` | Retoma o assunto onde parou, sem comentar o sumiço |
+| +2 dias (4º dia) | `silencio_2` | Última, reconhece que pode não ser o momento |
+| +5 dias sem resposta | — | Lead vira `perdido` explícito |
+
+O relógio é a **nossa última fala sem resposta** — da Leia ou do consultor.
+Cobrança e campanha (`sent_by` começando com `app:`) não contam: quem não
+respondeu a um boleto não é um lead em silêncio, e quem não respondeu à abertura
+de campanha tem a porta de consentimento dela.
+
+Não há encadeamento em código entre as duas rodadas: como a própria cutucada
+vira a nossa última fala, a mesma regra aplicada duas vezes já produz "2 e 4
+dias". O efeito colateral é o desejado — se o consultor responder à mão no dia
+3, a mensagem dele reinicia o relógio.
+
+**Por que tipos próprios e não `sondagem_*`:** o índice único é
+`(lead_id, tipo) WHERE pendente`, então reaproveitar faria um lead que sumiu
+antes da aula colidir com a própria régua pós-aula — e gastar as duas rodadas
+dela antes da aula acontecer. Além disso o roteiro mentiria: `sondagem_1` afirma
+"você passou pela experiência", e quem está em `silencio_1` pode nunca ter
+pisado na academia. A varredura recusa abrir uma régua quando a outra já correu.
 
 ### Três decisões que não são detalhe
 
@@ -511,10 +545,37 @@ seguintes.
 
 - Lead que fechou ou foi perdido → cancela **tudo**. Fica em `mudarEtapa`, que é
   o caminho comum de painel, webhook do EVO e poller.
-- Cliente que responde → cancela **só as sondagens**. O lembrete da aula
-  depende da aula, não do silêncio.
+- Cliente que responde → cancela **as sondagens e as cutucadas de silêncio**. O
+  lembrete da aula e a conversa pós-aula ficam de pé: dependem da aula, não do
+  silêncio.
 - Conversa que o consultor assumiu (`status = human`) → nada é enviado. Quem
   fala é ele.
+
+Cancelar, e não apagar, é o que **devolve a rodada**: a varredura só é bloqueada
+por `pendente` e `enviado`, então quem respondeu e sumiu de novo volta a ser
+elegível — partindo da rodada em que parou.
+
+### Acionar o acumulado à mão
+
+A varredura enxerga `FOLLOWUP_SILENCIO_JANELA_DIAS` para trás (padrão: 7). O
+teto existe para o primeiro ciclo depois do deploy não acordar lead de meses
+atrás, para quem uma retomada não é retomada, é abordagem fria.
+
+Quem parou antes disso se alcança pelo painel:
+
+```http
+POST /crm/api/followups/varredura
+{ "janelaDias": 30, "lote": 25, "simular": false }
+```
+
+**Simula por padrão.** Sem `"simular": false` explícito nada é gravado: a
+resposta lista quem entraria, com quantos dias de silêncio, por qual rodada e a
+que horas cada mensagem sairia. É ação em lote sobre cliente real — a ordem
+certa é ler a lista antes.
+
+Não existe rotina separada de recuperação porque o critério de dias é um **piso**
+(`>= dias`), não uma igualdade: um lead parado há 5 dias que nunca foi cutucado
+entra normalmente. É a mesma função, com a janela aberta.
 
 ### A janela de 9h–20h30
 
