@@ -27,6 +27,46 @@ const authHeader = 'Basic ' + Buffer.from(`${dns}:${token}`).toString('base64');
 /** Filial padrão. 1 = AP ACADEMIA - PIRITUBA. */
 export const ID_BRANCH_PADRAO = config.evo.idBranch;
 
+// ──────────────────────────────────────────────
+// Regulagem de chamadas
+//
+// O EVO responde `429 API calls quota exceeded! maximum admitted 5 per 1s`.
+// Nada no cliente respeitava isso: `sincronizarProspects` percorre os leads
+// num laço `await` apertado, e um laço local faz dezenas de chamadas por
+// segundo sem esforço. A guarda de aluno ativo da régua de silêncio somou
+// mais 1 ou 2 chamadas por lead varrido, e em 28/08/2026 os primeiros 429
+// apareceram.
+//
+// O espaçamento fica AQUI, e não em cada laço, porque o limite é da conta
+// inteira: throttle por chamador não sabe do outro chamador, e dois laços
+// educados somam 10/s. Aqui, todo caller passa pelo mesmo gargalo.
+//
+// 250ms = 4/s, com folga deliberada sob o teto de 5. O poll de 15 leads
+// passa de instantâneo para ~4s, o que não importa num worker de 15 min.
+// ──────────────────────────────────────────────
+
+const INTERVALO_MIN_MS = 250;
+
+let ultimaChamada = 0;
+
+// A fila serializa apenas a AUTORIZAÇÃO, não a resposta: cada chamador
+// espera a vez de partir, e a requisição em si segue concorrente. Uma
+// corrente de promessas, e não um array, porque a ordem de chegada já é a
+// ordem justa e não há prioridade a arbitrar.
+let vez = Promise.resolve();
+
+function aguardarVez() {
+  vez = vez.then(async () => {
+    const espera = INTERVALO_MIN_MS - (Date.now() - ultimaChamada);
+    if (espera > 0) await new Promise(r => setTimeout(r, espera));
+    ultimaChamada = Date.now();
+  });
+  return vez;
+}
+
+/** Teto de reenvios num 429. Só para leitura — ver `evoFetch`. */
+const RETENTATIVAS_429 = 2;
+
 /**
  * Erro de API do EVO com o status preservado.
  * Quem chama precisa distinguir "dado inválido" (4xx, não adianta repetir)
@@ -80,21 +120,43 @@ async function evoFetch(path, options = {}) {
   else logger.debug(`[evo-w12] ${method} ${path}`);
 
   const { configuracao: _ignorado, ...opcoesFetch } = options;
-  const res = await fetch(fullUrl, { ...opcoesFetch, headers });
 
-  if (!res.ok) {
+  // Reenvio SÓ em leitura, e isso não é excesso de zelo: `evoFetch` atende
+  // GET e POST pelo mesmo caminho, e repetir o POST que cria prospect,
+  // agenda aula ou registra venda criaria dois. Um 429 numa escrita sobe
+  // para o chamador decidir — ele sabe se pode repetir, este helper não.
+  const podeReenviar = method === 'GET';
+
+  for (let tentativa = 0; ; tentativa++) {
+    await aguardarVez();
+    const res = await fetch(fullUrl, { ...opcoesFetch, headers });
+
+    if (res.ok) {
+      // Vários POSTs do EVO respondem 200 com corpo vazio.
+      const texto = await res.text();
+      if (!texto) return null;
+      try {
+        return JSON.parse(texto);
+      } catch {
+        return texto;
+      }
+    }
+
     const body = await res.text().catch(() => '');
+
+    // O 429 vinha de uma rajada nossa: esperar um pouco mais que o
+    // espaçamento normal costuma bastar, e o `aguardarVez` do próximo giro
+    // já garante a distância mínima por cima disso.
+    if (res.status === 429 && podeReenviar && tentativa < RETENTATIVAS_429) {
+      const espera = INTERVALO_MIN_MS * (tentativa + 2);
+      logger.warn(`[evo-w12] 429 em ${path} — reenviando em ${espera}ms ` +
+        `(tentativa ${tentativa + 1}/${RETENTATIVAS_429})`);
+      await new Promise(r => setTimeout(r, espera));
+      continue;
+    }
+
     logger.error(`[evo-w12] ${res.status} ${method} ${path}`, body.slice(0, 400));
     throw new EvoApiError(res.status, path, body);
-  }
-
-  // Vários POSTs do EVO respondem 200 com corpo vazio.
-  const texto = await res.text();
-  if (!texto) return null;
-  try {
-    return JSON.parse(texto);
-  } catch {
-    return texto;
   }
 }
 

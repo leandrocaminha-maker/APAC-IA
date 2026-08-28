@@ -949,6 +949,26 @@ pareamento.
    quem falhou por `exists: false` — número que não existe no WhatsApp, e que vai
    falhar de novo. **Filtre pelo erro da fila, não pelo do alvo.**
 
+### A cota do EVO: 5 chamadas por segundo
+
+`429 API calls quota exceeded! maximum admitted 5 per 1s`. Apareceu pela
+primeira vez em 28/08/2026, e **nada no cliente respeitava esse limite**:
+`sincronizarProspects` percorre os leads num laço `await` apertado, e laço local
+faz dezenas de chamadas por segundo sem esforço. A guarda de aluno ativo da régua
+de silêncio somou mais 1–2 chamadas por lead varrido e o teto estourou.
+
+O espaçamento ficou em `evoFetch`, **não em cada laço**: o limite é da conta
+inteira, e throttle por chamador não sabe do outro — dois laços educados somam
+10/s. 250ms entre chamadas = 4/s, com folga deliberada. O poll de 15 leads passa
+de instantâneo para ~4s, irrelevante num worker de 15 min.
+
+⚠️ **Reenvio só em GET.** `evoFetch` atende leitura e escrita pelo mesmo caminho,
+e repetir o POST que cria prospect, agenda aula ou registra venda criaria dois. Um
+429 numa escrita sobe para o chamador, que sabe se pode repetir — este helper não.
+
+O campo `EvoApiError.retryable` existia desde sempre e **nunca foi usado por
+ninguém**. Cada 429 era um lead que o poll deixava de reconciliar em silêncio.
+
 ### O relógio da varredura, agora persistido
 
 `ultimaVarredura` era `let … = 0` em memória, e memória zera no boot: **cada
