@@ -1,12 +1,31 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 28/08/2026, fim do dia.** Documento de continuidade: descreve
+> **Snapshot de 31/08/2026, fim do dia.** Documento de continuidade: descreve
 > onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
-## ⚠️ Antes de qualquer coisa — 28/08/2026
+## ⚠️ Antes de qualquer coisa — 31/08/2026
+
+**O funil tem DUAS trilhas desde hoje.** Quem abrir o painel vai ver menos lead
+do que ontem, e isso está certo: 73 dos 229 atendimentos eram **aluno
+matriculado** contado como lead. Eles foram para a trilha de relacionamento, e
+os números do topo agora são só de venda. Detalhe na seção "A ramificação do
+funil".
+
+**Três coisas mexem em dado sozinhas, sem ninguém pedir:**
+
+| O quê | Quando | Onde desligar |
+|---|---|---|
+| Lead sem resposta vira `perdido` | 5 dias depois da 2ª rodada de follow-up | `FOLLOWUP_DIAS_ATE_PERDIDO=0` |
+| Atendimento de relacionamento vira `finalizado` | 3 dias sem atividade | `RELACIONAMENTO_DIAS_FINALIZAR=0` |
+| Contato com contrato ativo no EVO vira `aluno` | na varredura de silêncio | — (é o que tira aluno da régua) |
+
+⚠️ **O encerramento automático de lead nunca rodou ainda.** Nenhuma `silencio_2`
+tinha 5 dias em 31/08 — as 38 primeiras saíram nesse dia. **A partir de 05/09 ele
+começa a fechar lead sozinho.** Se a taxa parecer alta demais na primeira vez,
+o número que se mexe é `FOLLOWUP_DIAS_ATE_PERDIDO`, não o código.
 
 **Duas coisas mandam mensagem para cliente real sozinhas, agora.**
 
@@ -127,6 +146,11 @@ aparelho da academia na mão — não dá para fazer sozinho.
 academia.** WhatsApp conectado, painel do consultor no ar em
 `crm.apacademia.com.br`, e a Leia **escreve no EVO**: cadastra prospect, agenda
 aula experimental e registra venda.
+
+**O funil tem duas trilhas desde 31/08** — venda e relacionamento. Aluno,
+convênio, fornecedor e engano correm fora do funil de venda, e é isso que faz
+"leads abertos", "parados" e conversão quererem dizer alguma coisa. Ver "A
+ramificação do funil".
 
 Cinco automações mandam mensagem sozinhas, e todas respeitam a janela de contato:
 
@@ -259,6 +283,9 @@ Construído em 22/08/2026. Quatro superfícies, uma autenticação.
 | Aba | O que faz |
 |---|---|
 | **Funil** | A tabela de gestão de leads. Métricas, os dois cartões de pendência, filtros por etapa/dono/origem, ordenação, e a ficha do lead numa gaveta com as ações que escrevem no EVO |
+| ↳ *Venda / Relacionamento* | A chave das duas trilhas, acima dos chips de etapa. Não é filtro: é qual funil está na tela. Ver "A ramificação do funil" |
+| ↳ *Em follow-up com a Leia* | Filtro: quem está na régua dela agora — primeira mensagem pós aula experimental, ou cliente que parou de responder |
+| ↳ *Tipo de atendimento* | Na gaveta → Ações. Move o atendimento de trilha à mão, e grava o tipo no contato |
 | **Conversas** | Histórico de **todas** as conversas, por id. Abre a thread, responde pelo WhatsApp e devolve para a Leia |
 | **Simulador** | Conversar com a Leia sem WhatsApp. Herdeiro da `/teste`, agora amarrado ao consultor logado |
 | **Ajustes** | Pareamento do WhatsApp (QR), webhooks do EVO, sincronização e cadastro de consultores |
@@ -515,13 +542,13 @@ recrie o container.
 
 ## A ramificação do funil — venda x relacionamento
 
-Criada em 31/08/2026. Migrations **009** e **010**.
+Criada em 31/08/2026. Migrations **009** e **010**, aplicadas no mesmo dia.
 
-⚠️ **As duas rodam ANTES do deploy do código, nesta ordem.** A 009 só adiciona o
-rótulo `finalizado` ao enum `crm_stage`, sozinha, porque o Postgres proíbe usar
-um rótulo novo na mesma transação em que ele foi criado — e a 010 o usa em
-índice parcial. Código no ar sem as colunas derruba a tela do funil com
-`column crm_leads.trilha does not exist`.
+⚠️ **Em ambiente novo, as duas rodam ANTES do deploy do código, nesta ordem.** A
+009 só adiciona o rótulo `finalizado` ao enum `crm_stage`, sozinha, porque o
+Postgres proíbe usar um rótulo novo na mesma transação em que ele foi criado — e
+a 010 o usa em índice parcial. Código no ar sem as colunas derruba a tela do
+funil com `column crm_leads.trilha does not exist`.
 
 `garantirLeadDoContato` abre uma linha em `crm_leads` para **todo** contato que
 escreve, e o número é o principal da academia. Até aqui todos corriam no mesmo
@@ -573,6 +600,22 @@ para o contato e para o próximo atendimento.
 linha de relacionamento (o aluno agendou experimental de outra modalidade, ou
 comprou mais um plano), `mudarEtapa` devolve a linha à trilha de venda, com
 evento no razão. Recusar a etapa esconderia uma venda de verdade do funil.
+
+**Mover à mão é liberado, e a trava vale só para o automático.** O consultor
+está olhando a conversa: quando ele diz que aquilo não é venda, é ele quem sabe.
+A rota do painel chama com `forcar`, e a linha vai mesmo tendo experimental
+marcada — a etapa vira "Com consultor", que é a única parada do outro lado que
+descreve o que está acontecendo.
+
+A trava existe contra a **varredura**: ela pergunta ao EVO, descobre contrato
+ativo num lead que marcou experimental e, sem a trava, arrastaria a linha para o
+relacionamento — apagando o agendamento do funil e cancelando o lembrete da
+aula junto. O cliente perderia a aula por causa de uma reclassificação que
+ninguém pediu.
+
+O que nem o consultor move é **atendimento encerrado**. Aí o painel diz o que
+aconteceu ("o contato ficou marcado como X e o próximo atendimento dele já nasce
+assim") em vez de dizer que moveu.
 
 ### O que a ramificação muda no follow-up
 
@@ -642,6 +685,28 @@ Não há encadeamento em código entre as duas rodadas: como a própria cutucada
 vira a nossa última fala, a mesma regra aplicada duas vezes já produz "2 e 4
 dias". O efeito colateral é o desejado — se o consultor responder à mão no dia
 3, a mensagem dele reinicia o relógio.
+
+**O `perdido` do fim das duas réguas** é `encerrarSemResposta`, no ciclo do
+worker. A espera é `FOLLOWUP_DIAS_ATE_PERDIDO` (padrão 5, 0 desliga), contada do
+**envio da segunda rodada** — é o tempo de a pessoa responder à última mensagem,
+não um silêncio novo.
+
+"Não respondeu" é decidido em `wa_messages`, procurando mensagem **inbound**
+depois daquele envio. Era decidido em `crm_leads.last_activity_at` até
+31/08/2026, e não podia ser: aquela coluna é encostada por mudança de etapa, por
+classificação de contato e por envio nosso — inclusive pelo próprio follow-up.
+Bastava uma delas para o lead virar, para sempre, "alguém que respondeu" sem
+nunca ter respondido.
+
+⚠️ Ele **nunca rodou até 31/08**: nenhuma `silencio_2` tinha 5 dias. A primeira
+execução, em 05/09, pega o acúmulo inteiro de uma vez.
+
+**Para ver quem está na régua agora**, o painel tem o filtro *Em follow-up com a
+Leia*, no funil. Critério: `ae_pos_aula` (a primeira mensagem depois da aula) ou
+as rodadas de quem parou de responder, em `pendente` ou `enviado` nos últimos 7
+dias. Fora fica `ae_lembrete_24h` — recado de agenda não é retomada. O corte de
+7 dias é o que faz a lista drenar em vez de virar o histórico de todo mundo que
+um dia recebeu follow-up. Em 31/08: 89 leads na régua, 75 abertos na venda.
 
 **Por que tipos próprios e não `sondagem_*`:** o índice único é
 `(lead_id, tipo) WHERE pendente`, então reaproveitar faria um lead que sumiu
@@ -885,6 +950,29 @@ motivos mais frequentes. Telefone de cliente sai mascarado; a pasta está no
 Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
 `X-Api-Key`).
 
+### Os scripts do repositório, num lugar só
+
+Todos leem o `.env` da máquina onde rodam e falam com a **produção** — não há
+ambiente de teste. Os que escrevem avisam antes ou têm `--dry`.
+
+| Comando | O que faz | Escreve? |
+|---|---|---|
+| `npm run prompt` | publica `vendas.md` em `wa_ai_prompts` | sim (com backup e `--dry`) |
+| `npm run conversas` | exporta o histórico para `data/conversas/` | não |
+| `npm run grade` | gera a grade horária a partir do EVO | arquivo local |
+| `npm run campanha` | status, pausar, retomar campanha | sim |
+| `npm run consultor` | cria consultor, reseta senha, lista | sim |
+| `npm run classificar` | pergunta ao EVO quem tem contrato ativo e marca o contato como `aluno` | sim (tem `--dry`) |
+
+`npm run classificar` é o da ramificação: percorre a trilha de venda aberta,
+consulta o EVO e reclassifica só quem tem contrato ativo. `--limite=N` para ir
+em lotes. ⚠️ Com o backend no ar, rode com `EVO_CHAMADAS_POR_MINUTO=16` — as
+duas janelas de cota somam contra o mesmo teto de 40/min do EVO.
+
+⚠️ **`npm run` está barrado no Windows do Leandro** pela política de execução do
+PowerShell (`npm` é um `.ps1`). Pelo Git Bash funciona; pelo PowerShell, chame o
+`node scripts/<arquivo>.js` direto.
+
 ### Limites e riscos aceitos
 
 - ~~**É HTTP puro, sem TLS.**~~ **Resolvido em 20/08/2026:** a página só é
@@ -898,6 +986,71 @@ Para espiar sem gerar arquivo: `GET /admin/conversas-teste` (header
 - Os contadores vivem em memória: reiniciar o container zera todos.
 - **Desligue a página quando a rodada de testes acabar** — senha curta em IP
   público não é para ficar no ar indefinidamente.
+
+## O que foi feito em 31/08/2026
+
+O funil deixou de tratar todo mundo como lead, o áudio do consultor passou a ser
+transcrito, e a segunda cota do EVO apareceu. Commits `461f9db`, `ab538d0`,
+`95218ae` e `5f867ee`, todos no ar.
+
+### Estado no fim do dia
+
+| | |
+|---|---|
+| Migrations aplicadas | 004–008, **009 e 010** |
+| Deploy | `5f867ee`, VPS igual ao repositório |
+| Prompt no banco | publicado com `definir_tipo_atendimento` (backup em `data/backups/prompt-vendas-2026-08-31T14-18-16-539Z.md`) |
+| Funil | 156 na trilha de venda (152 abertos), **73 em relacionamento** (65 abertos, 8 finalizados) |
+| Conversão | 25% sobre 4 decididos — 1 ganho, 3 perdidos |
+| Parados 2+ dias | 123, agora sem aluno no meio da conta |
+| Régua de silêncio | 38 `silencio_2` enviadas no dia; encerramento automático começa em **05/09** |
+| Cota do EVO | 32 chamadas/min (`EVO_CHAMADAS_POR_MINUTO`), janela deslizante |
+
+### As cinco coisas que mudaram
+
+**1. Ramificação do funil.** Seção própria acima. 73 alunos saíram da conta de
+venda; `definir_tipo_atendimento` mantém a separação daqui para a frente.
+
+**2. Áudio do consultor transcrito.** O do cliente já virava texto desde 22/08;
+o do consultor era gravado como `[áudio]` e sumia do histórico — junto com
+metade do combinado (preço fechado, horário, promessa de retorno). Agora passa
+pelo mesmo `transcreverAudio`, **depois** de calar a Leia e mover o funil: a
+Groq pode levar 25s, e segurar o modo humano por esse tempo é o buraco em que o
+cliente responde e a Leia fala por cima do consultor. Junto foi um defeito que
+só aparecia no áudio: a checagem antieco por "mesmo conteúdo em 30s" comparava a
+string `[áudio]`, igual em todo áudio, e dois recados seguidos viravam um só.
+
+**3. A segunda cota do EVO** — 40/min, não só 5/s. Seção própria acima.
+
+**4. O encerramento automático de lead, que não ia disparar.** A regra existia
+desde 25/08, mas perguntava "respondeu?" para `crm_leads.last_activity_at`, que
+não significa isso — a coluna é encostada por mudança de etapa, classificação de
+contato e envio nosso. A classificação retroativa expôs: encostou a coluna de 43
+leads de uma vez e teria isentado todos. Agora a pergunta vai a `wa_messages`,
+procurando mensagem **inbound** depois do envio da segunda rodada.
+
+**5. Filtro "Em follow-up com a Leia"**, no funil, e o movimento manual entre
+trilhas liberado no painel. Os dois estão descritos nas seções próprias — régua
+de silêncio e ramificação.
+
+### A classificação retroativa, em duas passadas
+
+`npm run classificar` (`scripts/classificar-retroativo.js`) pergunta ao EVO quem
+tem contrato ativo e marca só esses como `aluno`. Convênio, fornecedor e engano
+**não são adivinháveis** — nada no EVO responde isso, e chutar gravaria erro
+permanente no contato. Esses três vêm da conversa.
+
+| Passada | Resultado |
+|---|---|
+| 1ª (cota errada) | 43 alunos, **46 indefinidos** por 429 |
+| 2ª (`EVO_CHAMADAS_POR_MINUTO=16`) | +18 alunos, **zero 429, zero indefinidos** |
+
+⚠️ **Rodando o script com o backend no ar, baixe a cota no ambiente dele** — as
+duas janelas somam contra o mesmo teto de 40/min.
+
+⚠️ **`--dry` gravava classificação até 31/08.** A gravação tinha ficado antes do
+`if (simular) return` em `varrerSilenciosos`, e uma simulação moveu 9 leads de
+verdade. Corrigido; a lição fica: prévia que reclassifica lead não é prévia.
 
 ## O que foi feito em 28/08/2026
 
@@ -1544,16 +1697,56 @@ modelo alucine a chamada.
 **Tools ativas desde 22/08/2026:** `transferir_para_humano`, `buscar_cadastro`,
 `cadastrar_prospect` e `agendar_aula_experimental`. A Leia conduz o agendamento
 da aula experimental do começo ao fim — ver "A integração com o EVO".
+`carregar_base` entrou em 26/08 (módulos da base sob demanda) e
+**`definir_tipo_atendimento` em 31/08** — é ela que ramifica o funil, e o prompt
+manda chamá-la uma vez por conversa, com `lead` como padrão na dúvida.
 
 ## Próxima sessão
 
 ### Onde retomar
 
-Tudo está **no ar e funcionando**: migrations 001–007 aplicadas, prompt
-publicado, WhatsApp conectado, quatro workers rodando. Não há passo de
-instalação pendente.
+Tudo está **no ar e funcionando**: migrations 001–010 aplicadas, prompt
+publicado (com `definir_tipo_atendimento`), WhatsApp conectado, quatro workers
+rodando, VPS em `5f867ee`. Não há passo de instalação pendente.
+
+⚠️ **O working tree está sujo, e não é do trabalho de 31/08.** Sete arquivos
+editados e **nunca commitados**, de antes daquela sessão:
+
+```text
+INFORMACOES-PENDENTES.md
+scripts/gerar-grade-horaria.js
+src/prompts/knowledge/{atividades,planos-e-valores,natacao-infantil-tecnico}.md
+src/prompts/knowledge/{base-conhecimento-natacao-infantil,grade-horaria-infantil}.md
+```
+
+Parece uma passada de terminologia no infantil (*trilha* → *programa*) mais
+ajustes de grade. **Eles não estão em produção**: a base de conhecimento é lida
+do DISCO (`KNOWLEDGE_DIR`, em `knowledge.js`), e o deploy é `git pull` — o que
+não está commitado não sobe. Quem escreveu isso pode estar achando que a Leia já
+responde assim. Decidir: commitar e subir, ou descartar.
 
 O que vale fazer a seguir, em ordem de retorno:
+
+**0. Conferir a ramificação com a conversa na mão.** É o que só a primeira
+sessão depois de 31/08 consegue fazer: abrir o painel em **Relacionamento** e
+ver se os 73 marcados como aluno são aluno mesmo, e abrir **Venda** para ver se
+sobrou aluno na conta. A classificação automática só sabe de contrato ativo no
+EVO — convênio, fornecedor e engano dependem de a Leia acertar na conversa, e
+**isso ainda não foi visto acontecer nenhuma vez**. Vale ler as primeiras
+conversas em que ela chamou a tool:
+
+```sql
+SELECT lead_id, summary, occurred_at FROM crm_lead_events
+WHERE type = 'tipo_definido' AND actor = 'leia' ORDER BY occurred_at DESC;
+```
+
+Zero linhas com `actor = 'leia'` depois de 31/08 quer dizer que ela não está
+chamando a tool — aí o ajuste é no prompt, na seção "Diga em qual frente você
+está".
+
+**0.1. 05/09: o primeiro encerramento automático de lead.** Ver quantos caíram
+para `perdido` de uma vez e se o veredito faz sentido. É a regra que nunca
+rodou, e a primeira execução pega o acúmulo inteiro.
 
 **1. Ler o que a régua de silêncio escreveu.** É a prioridade do dia seguinte.
 Ela rodou pela primeira vez em 28/08 e mandou ~45 retomadas para gente real, e
@@ -1743,6 +1936,18 @@ detalhes:
   do `cache_control`: antes do breakpoint a hora invalidaria o cache a cada
   minuto.
 - **Telefone não é normalizado** antes das buscas no EVO.
+- **A trilha só se classifica sozinha para `aluno`** — convênio, fornecedor e
+  engano dependem de a Leia chamar `definir_tipo_atendimento` na conversa, ou de
+  alguém marcar no painel. Nada no EVO responde essas três, e chutar gravaria
+  erro permanente no contato. Enquanto ela não estiver chamando, o
+  relacionamento cresce só pelo lado dos alunos.
+- **A cota do EVO é contada por processo** — backend da VPS e script local somam
+  contra o mesmo teto de 40/min sem se enxergarem. Um contador compartilhado
+  (Redis já está no compose) resolveria; hoje a saída é baixar
+  `EVO_CHAMADAS_POR_MINUTO` no ambiente do script.
+- **A fila de handoff mistura as duas trilhas** — de propósito: o fornecedor
+  também precisa de resposta. A linha mostra o tipo ao lado do telefone para
+  quem for atender escolher a ordem, mas não há filtro nem separação de fila.
 - ~~**CORS só lista `localhost`**~~ — `crm.apacademia.com.br` e o curinga
   `*.apacademia.com.br` entraram em `server.js`.
 
