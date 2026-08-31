@@ -1015,7 +1015,7 @@ transcrito, e a segunda cota do EVO apareceu. Commits `461f9db`, `ab538d0`,
 | Régua de silêncio | 38 `silencio_2` enviadas no dia; encerramento automático começa em **05/09** |
 | Cota do EVO | 32 chamadas/min (`EVO_CHAMADAS_POR_MINUTO`), janela deslizante |
 
-### As cinco coisas que mudaram
+### As seis coisas que mudaram
 
 **1. Ramificação do funil.** Seção própria acima. 73 alunos saíram da conta de
 venda; `definir_tipo_atendimento` mantém a separação daqui para a frente.
@@ -1041,6 +1041,36 @@ procurando mensagem **inbound** depois do envio da segunda rodada.
 **5. Filtro "Em follow-up com a Leia"**, no funil, e o movimento manual entre
 trilhas liberado no painel. Os dois estão descritos nas seções próprias — régua
 de silêncio e ramificação.
+
+**6. A base de conhecimento infantil**, corrigida a partir de um erro real de
+atendimento — idade de entrada e o fim do termo "trilha". Seção logo abaixo.
+
+### A idade de entrada e o termo "trilha"
+
+Commit `6b18061`, saído de um caso real: **a Leia indicou turma de "3 a 5 anos"
+para uma criança de 3 anos.** O nome do grupo engana, e a base já dizia o
+contrário em dois lugares — a idade mínima daquelas turmas é entre **3,5 e 4
+anos completos**, e a Natação Bebê vai até essa mesma faixa. Estava em bullet,
+no meio de outros.
+
+Virou tabela de ponto de entrada por idade em
+`base-conhecimento-natacao-infantil.md`, com aviso explícito e a consequência
+prática junto: bebê é 1x na semana, 30 minutos, com o responsável na água e
+**sem par de dias** — prometer "terça e quinta às 17h" para uma criança de 3
+anos é oferecer turma que ela não pode frequentar. Entre 3,5 e 4 os dois grupos
+são possíveis, e quem decide é o professor.
+
+**Nível não restringe horário.** A regra anterior cobria só "quando o horário
+não especificar o nível", deixando de fora o caso comum: o nome da atividade
+cita um nível ("Natação Infantil N1", "Golfinhos N3+") e o horário atende todos
+mesmo assim. O que separa são os três grupos etários — **bebê, 3 a 5, 6 a 12** —
+e nada mais.
+
+⚠️ **Os títulos e as notas da grade infantil vivem no GERADOR**
+(`scripts/gerar-grade-horaria.js`), não no `.md`. Editar só o arquivo gerado é
+trabalho que a próxima `npm run grade` desfaz — foi o que quase aconteceu com a
+troca de "trilha", que tinha deixado sobras no gerador (`Níveis da  3 a 5 anos`)
+e quebrado a tabela de ponto de entrada, engolindo o parágrafo seguinte.
 
 ### A classificação retroativa, em duas passadas
 
@@ -1718,21 +1748,10 @@ Tudo está **no ar e funcionando**: migrations 001–010 aplicadas, prompt
 publicado (com `definir_tipo_atendimento`), WhatsApp conectado, quatro workers
 rodando, VPS em `5f867ee`. Não há passo de instalação pendente.
 
-⚠️ **O working tree está sujo, e não é do trabalho de 31/08.** Sete arquivos
-editados e **nunca commitados**, de antes daquela sessão:
-
-```text
-INFORMACOES-PENDENTES.md
-scripts/gerar-grade-horaria.js
-src/prompts/knowledge/{atividades,planos-e-valores,natacao-infantil-tecnico}.md
-src/prompts/knowledge/{base-conhecimento-natacao-infantil,grade-horaria-infantil}.md
-```
-
-Parece uma passada de terminologia no infantil (*trilha* → *programa*) mais
-ajustes de grade. **Eles não estão em produção**: a base de conhecimento é lida
-do DISCO (`KNOWLEDGE_DIR`, em `knowledge.js`), e o deploy é `git pull` — o que
-não está commitado não sobe. Quem escreveu isso pode estar achando que a Leia já
-responde assim. Decidir: commitar e subir, ou descartar.
+✅ **O working tree está limpo.** Os sete arquivos que estavam editados e nunca
+commitados eram a passada de terminologia no infantil (*trilha* → *progressão
+pedagógica* / *turmas*); foram revisados, corrigidos e commitados em `6b18061`.
+Ver "A idade de entrada e o termo trilha", abaixo.
 
 O que vale fazer a seguir, em ordem de retorno:
 
