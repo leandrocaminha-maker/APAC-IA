@@ -265,6 +265,15 @@ partir do `.env.example`:
   variável. O padrão do compose passou a ser `http://evolution-api:8080`, que é
   o que resolve dentro da `apac-network` para download de mídia.
 - ⚠️ `ADMIN_API_KEY` — confira se está preenchida; sem ela `/admin` responde 503
+- ℹ️ **As três variáveis de 31/08 NÃO estão no `.env` da VPS**, e não precisam
+  estar: valem os padrões do código. Só entram lá quando alguém quiser mudar o
+  número.
+
+  | Variável | Padrão em vigor |
+  |---|---|
+  | `FOLLOWUP_DIAS_ATE_PERDIDO` | 5 dias depois da 2ª rodada |
+  | `RELACIONAMENTO_DIAS_FINALIZAR` | 3 dias sem atividade |
+  | `EVO_CHAMADAS_POR_MINUTO` | 32 (80% do teto de 40 do EVO) |
 
 **Armadilha do `env_file`:** uma linha que não seja comentário, vazia ou
 `VAR=valor` invalida o arquivo inteiro, e o `docker compose up` aborta **sem
