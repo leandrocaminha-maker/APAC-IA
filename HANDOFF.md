@@ -1060,11 +1060,23 @@ prática junto: bebê é 1x na semana, 30 minutos, com o responsável na água e
 anos é oferecer turma que ela não pode frequentar. Entre 3,5 e 4 os dois grupos
 são possíveis, e quem decide é o professor.
 
-**Nível não restringe horário.** A regra anterior cobria só "quando o horário
-não especificar o nível", deixando de fora o caso comum: o nome da atividade
-cita um nível ("Natação Infantil N1", "Golfinhos N3+") e o horário atende todos
-mesmo assim. O que separa são os três grupos etários — **bebê, 3 a 5, 6 a 12** —
-e nada mais.
+**Nível não restringe horário — com duas exceções.** A regra anterior cobria só
+"quando o horário não especificar o nível", deixando de fora o caso comum: o
+nome da atividade cita um nível ("Natação Infantil N1", "Peixinhos N1&N2") e o
+horário atende todos mesmo assim. O que separa são os três grupos etários —
+**bebê, 3 a 5, 6 a 12**.
+
+As duas exceções vieram do Leandro, depois de a regra já estar escrita, e estão
+na regra 4 da grade infantil:
+
+| Exceção | Por quê |
+|---|---|
+| **08:30** (Seg e Qua, e a sexta) é do **N5 Laranja em diante** | aquela turma existe só para o N5+, inclusive no par de matrícula |
+| **Turmas de sexta N3+** não recebem níveis anteriores — nem em 3 a 5 (Golfinhos N3+) nem em 6 a 12 (Infantil N3+) | sexta é aula extra, e o direito a ela começa no intermediário (Golfinho I / N3) |
+
+A segunda tem raiz no plano: as sessões extras são o que completa a frequência
+dos níveis intermediário e de aperfeiçoamento (`planos-e-valores.md`). Quem não
+chegou lá não tem o que fazer numa turma de sexta.
 
 ⚠️ **Os títulos e as notas da grade infantil vivem no GERADOR**
 (`scripts/gerar-grade-horaria.js`), não no `.md`. Editar só o arquivo gerado é

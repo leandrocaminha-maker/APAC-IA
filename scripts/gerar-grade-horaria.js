@@ -56,9 +56,11 @@ const SECOES = [
     nota:
       'Progressão pedagógica de 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → ' +
       'Peixinho N2 → Golfinho I → Golfinho II → Tutubarão. O nome da turma indica ' +
-      'o nível de referência dela, mas **todo horário desta faixa atende todos os ' +
-      'níveis de 3 a 5** — ver "Como ler a grade infantil". O conteúdo de cada ' +
-      'nível e a idade de entrada estão em `base-conhecimento-natacao-infantil.md`.',
+      'o nível de referência dela, mas **todo horário de matrícula desta faixa ' +
+      'atende todos os níveis de 3 a 5** — com a exceção das turmas de sexta, que ' +
+      'são aula extra e começam no Golfinho I. Ver "Como ler a grade infantil". O ' +
+      'conteúdo de cada nível e a idade de entrada estão em ' +
+      '`base-conhecimento-natacao-infantil.md`.',
     atividades: [
       ['Natação 3-5 Adaptação', 'quem nunca teve contato com a piscina'],
       ['Natação Peixinhos N1&N2', 'níveis Estrelinha N1 e Peixinho N2'],
@@ -72,14 +74,16 @@ const SECOES = [
     nota:
       'Progressão pedagógica de 6 a 12 anos, na ordem: N1 Branca → N2 Branca → ' +
       'N3 e N4 Amarela → N5 e N6 Laranja → N7 e N8 Vermelha → Atleta. O nome da ' +
-      'turma indica o nível de referência dela, mas **todo horário desta faixa ' +
-      'atende todos os níveis de 6 a 12** — ver "Como ler a grade infantil".',
+      'turma indica o nível de referência dela, mas **todo horário de matrícula ' +
+      'desta faixa atende todos os níveis de 6 a 12** — com duas exceções: as ' +
+      '08:30, que são do N5 em diante, e as turmas de sexta, que são aula extra e ' +
+      'começam no N3. Ver "Como ler a grade infantil".',
     atividades: [
       ['Natação Infantil N1', 'nível N1 Branca'],
       ['Natação Infantil N1 N2', 'níveis N1 e N2 Branca'],
       ['Natação Infantil N2', 'nível N2 Branca'],
       ['Natação Infantil N3+', 'nível N3 Amarela em diante'],
-      ['Natação Infantil N5+', 'nível N5 Laranja em diante'],
+      ['Natação Infantil N5+', 'EXCEÇÃO: só do nível N5 Laranja em diante, inclusive no horário de matrícula das 08:30'],
     ],
   },
   {
@@ -251,7 +255,12 @@ function linhasEmPares(aulas, atividade) {
   }
   if (sexta.length) {
     if (out.length) out.push('');
-    out.push('Sexta — aula extra, **não é turma de matrícula**:', '');
+    out.push(
+      'Sexta — aula extra, **não é turma de matrícula**. Só para quem já tem ' +
+      'direito à aula extra, ou seja, do nível intermediário em diante ' +
+      '(Golfinho I / N3): os níveis anteriores **não** entram nestas turmas.',
+      '',
+    );
     out.push(...sexta);
   }
   return out;
@@ -430,14 +439,27 @@ function montarInfantil(aulas, hoje, conhecidas) {
   out.push('3. **O nível NÃO restringe o horário. O que separa é o grupo etário.**');
   out.push('   São três grupos, e só eles: **bebê**, **3 a 5** e **6 a 12**. Dentro do');
   out.push('   grupo, **todo horário atende todos os níveis** — inclusive quando o nome');
-  out.push('   da atividade cita um nível só ("Natação Infantil N1", "Golfinhos N3+").');
+  out.push('   da atividade cita um nível só ("Natação Infantil N1", "Peixinhos N1&N2").');
   out.push('   O nome é a referência da turma, não uma porta fechada.');
   out.push('');
-  out.push('   Na prática: perguntaram os horários de uma criança de 8 anos no N5?');
-  out.push('   Ofereça **todos** os horários de 6 a 12, não só os que dizem "N5+".');
-  out.push('   Nunca diga que o nível da criança não é atendido num horário, e nunca');
-  out.push('   transfira por causa disso. Quem confirma a turma e a vaga é o');
-  out.push('   consultor, com o professor.');
+  out.push('   Na prática: perguntaram os horários de uma criança de 8 anos no N2?');
+  out.push('   Ofereça **todos** os horários de matrícula de 6 a 12, não só os que');
+  out.push('   dizem "N1 N2". Nunca diga que o nível da criança não é atendido num');
+  out.push('   horário, e nunca transfira por causa disso. Quem confirma a turma e a');
+  out.push('   vaga é o consultor, com o professor.');
+  out.push('');
+  out.push('4. **Duas exceções, e só estas duas.** Aqui o nível fecha mesmo a porta:');
+  out.push('');
+  out.push('   - **08:30 (Seg e Qua, e a sexta) é do N5 Laranja em diante.** Não');
+  out.push('     ofereça esse horário para quem está abaixo disso.');
+  out.push('   - **As turmas de sexta N3+ não recebem os níveis anteriores** — nem em');
+  out.push('     3 a 5 (Golfinhos N3+), nem em 6 a 12 (Infantil N3+).');
+  out.push('');
+  out.push('   A da sexta se explica sozinha: sexta é **aula extra**, e o direito à');
+  out.push('   aula extra só começa no nível intermediário (Golfinho I / N3) — quem');
+  out.push('   não chegou lá não tem o que fazer nessas turmas (`planos-e-valores.md`).');
+  out.push('   A das 08:30 é outra coisa: aquela turma **existe só para o N5+**, e');
+  out.push('   isso vale também no par de matrícula de segunda e quarta.');
   out.push('');
   out.push('**Duração:** bebê 30 minutos; 3–5 e 6–12 anos 45 minutos. É dado');
   out.push('confirmado — responda direto, não transfira.');
