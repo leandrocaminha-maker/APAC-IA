@@ -671,7 +671,10 @@ async function tratarConsentimentoDeCampanha({ phone, contact, conversation, con
  * e impediria o agente de retomar uma conversa que passou por um humano sem
  * repetir o que já foi combinado.
  *
- * Não roda a IA: mensagem nossa não pede resposta nossa.
+ * Não roda a IA: mensagem nossa não pede resposta nossa. Mas áudio é
+ * transcrito, no fim da função — o consultor fecha preço e horário por
+ * áudio, e sem o texto a Leia retoma a conversa sem saber o que ele
+ * prometeu.
  *
  * **Como distinguir do eco.** Duas checagens, porque uma só não basta:
  *
@@ -727,22 +730,29 @@ async function registrarMensagemDeSaida({ phone, content, contentType, evolution
     return;
   }
 
-  const desde = new Date(Date.now() - 30_000).toISOString();
-  const { data: mesmoTexto } = await supabase
-    .from('wa_messages')
-    .select('id')
-    .eq('contact_id', contact.id)
-    .eq('direction', 'outbound')
-    .eq('content', content)
-    .gte('created_at', desde)
-    .limit(1);
+  // A comparação por texto não vale para áudio: o conteúdo é sempre a mesma
+  // string `[áudio]`, então ela não distingue um recado do outro — dois
+  // áudios do consultor em menos de 30 segundos viravam um só no histórico.
+  // E não protege de nada aqui: a Leia só manda texto (`sendText`), e o
+  // áudio que sai pela fila é pego pelo `evolution_msg_id`.
+  if (contentType !== 'audio') {
+    const desde = new Date(Date.now() - 30_000).toISOString();
+    const { data: mesmoTexto } = await supabase
+      .from('wa_messages')
+      .select('id')
+      .eq('contact_id', contact.id)
+      .eq('direction', 'outbound')
+      .eq('content', content)
+      .gte('created_at', desde)
+      .limit(1);
 
-  if (mesmoTexto?.length) {
-    logger.debug('[webhook] Eco do nosso próprio envio (mesmo texto agora há pouco)');
-    return;
+    if (mesmoTexto?.length) {
+      logger.debug('[webhook] Eco do nosso próprio envio (mesmo texto agora há pouco)');
+      return;
+    }
   }
 
-  await saveMessage({
+  const salva = await saveMessage({
     conversationId: conversation.id,
     contactId: contact.id,
     direction: 'outbound',
@@ -787,6 +797,33 @@ async function registrarMensagemDeSaida({ phone, content, contentType, evolution
   await moverFunil(() => funil.aoConsultorAssumir(contact, { via: 'whatsapp' }));
 
   logger.info(`[webhook] 👤 consultor → ${phone}: ${content.slice(0, 80)}`);
+
+  // Áudio do consultor: transcreve DEPOIS de tudo, e nunca antes.
+  //
+  // O que o consultor grava é metade do combinado — preço fechado, horário,
+  // promessa de retorno. Sem transcrever, o histórico guarda `[áudio]`, e a
+  // Leia retoma a conversa sem saber o que foi prometido. É o mesmo motivo
+  // que faz o áudio do cliente ser transcrito lá em cima.
+  //
+  // Fica por último porque calar a Leia é urgente e a transcrição não é: a
+  // Groq pode levar até `TRANSCRICAO_TIMEOUT_MS` (25s), e segurar o modo
+  // humano por esse tempo é exatamente o buraco em que o cliente responde e
+  // a Leia fala por cima do consultor. Gravar primeiro também deixa a
+  // mensagem aparecer na hora no painel; o texto entra segundos depois.
+  if (contentType === 'audio' && salva?.id) {
+    const texto = await transcreverAudio(salva.evolution_msg_id || evolutionMsgId);
+    if (!texto) return; // Falhou: fica `[áudio]`, como era antes. Ninguém a avisar — a mensagem é nossa.
+
+    await supabase
+      .from('wa_messages')
+      .update({
+        content: `[áudio] ${texto}`,
+        metadata: { ...(salva.metadata || {}), transcrito: true },
+      })
+      .eq('id', salva.id);
+
+    logger.info(`[webhook] 🎙 consultor → ${phone}: ${texto.slice(0, 100)}`);
+  }
 }
 
 /**
