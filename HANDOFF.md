@@ -1036,7 +1036,7 @@ pareamento.
    quem falhou por `exists: false` — número que não existe no WhatsApp, e que vai
    falhar de novo. **Filtre pelo erro da fila, não pelo do alvo.**
 
-### A cota do EVO: 5 chamadas por segundo
+### A cota do EVO: são DUAS, 5 por segundo e 40 por minuto
 
 `429 API calls quota exceeded! maximum admitted 5 per 1s`. Apareceu pela
 primeira vez em 28/08/2026, e **nada no cliente respeitava esse limite**:
@@ -1055,6 +1055,37 @@ e repetir o POST que cria prospect, agenda aula ou registra venda criaria dois. 
 
 O campo `EvoApiError.retryable` existia desde sempre e **nunca foi usado por
 ninguém**. Cada 429 era um lead que o poll deixava de reconciliar em silêncio.
+
+#### A segunda cota — 31/08/2026
+
+O espaçamento de 250ms respeita a cota de **rajada**, que é a que o 429 anuncia
+primeiro. Existe outra, que só aparece em laço sustentado e diz outra coisa:
+
+```text
+The request limit of 40 requests per minute has been reached
+```
+
+40/min é 0,67/s — **quinze vezes mais apertada** que a de rajada. Com só o
+espaçamento de 250ms, o laço passa quatro minutos dentro da cota e estoura no
+quinto.
+
+Medido na classificação retroativa da ramificação: 215 leads, ~430 chamadas em
+7 minutos (~61/min), **494 respostas 429**. Como o reenvio desiste em duas
+tentativas, 46 leads voltaram `indefinido` — o valor que a régua trata como "não
+sei, não mexe". Nada foi classificado errado; um quinto do trabalho é que não foi
+feito. A falha fechada funcionou.
+
+`evo-client` ganhou uma **janela deslizante** de `EVO_CHAMADAS_POR_MINUTO`
+(padrão 32 = 80% de 40, a mesma folga que 4/s tem sob 5/s). Janela, e não
+espaçamento fixo de 1875ms, porque quem chama uma vez só — a tool da Leia no
+meio de uma conversa — não pode pagar pelo laço que rodou antes dela.
+
+⚠️ **A janela é por PROCESSO.** O backend da VPS e um script rodando na máquina
+de alguém somam contra o mesmo teto de 40, e cada um só enxerga a própria
+janela. Rodando script pesado com o backend no ar, baixe o teto no ambiente do
+script (`EVO_CHAMADAS_POR_MINUTO=16`). Foi por isso que o reenvio de 429 passou
+de 500ms para 2s e 4s: meio segundo não devolve cota nenhuma quando o teto é por
+minuto — só gastava as duas tentativas para falhar igual.
 
 ### O relógio da varredura, agora persistido
 

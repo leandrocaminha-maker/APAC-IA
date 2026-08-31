@@ -71,6 +71,15 @@ export const config = {
     // Filial. 1 = AP ACADEMIA - PIRITUBA, confirmado em /api/v1/prospects.
     idBranch: parseInt(env('EVO_ID_BRANCH', '1'), 10),
 
+    // Teto de chamadas por minuto à API do EVO, para a conta inteira.
+    //
+    // O EVO tem DUAS cotas. A de rajada (5 por segundo) é a que o 429
+    // anuncia primeiro, e o espaçamento de 250ms em `evo-client` cuida
+    // dela. Esta é a outra, que só aparece em laço sustentado: "The request
+    // limit of 40 requests per minute has been reached". 32 é 80% de 40 —
+    // a mesma folga que 4/s tem sob 5/s.
+    chamadasPorMinuto: parseInt(env('EVO_CHAMADAS_POR_MINUTO', '32'), 10),
+
     // Como o lead vindo da Leia aparece no relatório de origem do EVO.
     // O campo é usado de verdade na conta (INDICAÇÃO, WEBSITE / GOOGLE,
     // INSTAGRAN...), então vale entrar com um valor próprio em vez de cair

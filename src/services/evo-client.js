@@ -41,13 +41,33 @@ export const ID_BRANCH_PADRAO = config.evo.idBranch;
 // inteira: throttle por chamador não sabe do outro chamador, e dois laços
 // educados somam 10/s. Aqui, todo caller passa pelo mesmo gargalo.
 //
-// 250ms = 4/s, com folga deliberada sob o teto de 5. O poll de 15 leads
-// passa de instantâneo para ~4s, o que não importa num worker de 15 min.
+// ## São DUAS cotas, e a segunda foi descoberta caro
+//
+// A de rajada é a que o 429 anuncia primeiro: `maximum admitted 5 per 1s`.
+// 250ms = 4/s a respeita com folga, e era o que estava aqui.
+//
+// A outra só aparece em laço sustentado, e diz outra coisa:
+// `The request limit of 40 requests per minute has been reached`. 40/min é
+// 0,67/s — quinze vezes mais apertada que a de rajada. Respeitar só o
+// espaçamento de 250ms passa quatro minutos inteiros dentro da cota e
+// estoura no quinto.
+//
+// Medido em 31/08/2026, na classificação retroativa: 215 leads, ~430
+// chamadas em 7 minutos (~61/min), e 494 respostas 429. Como o reenvio
+// desiste em duas tentativas, 46 leads voltaram com "situação indefinida" —
+// que é o valor que a régua trata como "não sei, não mexe". Nada foi
+// classificado errado; simplesmente um quinto do trabalho não foi feito.
+//
+// 32/min é 80% de 40, a mesma folga que 4/s tem sob 5/s.
 // ──────────────────────────────────────────────
 
 const INTERVALO_MIN_MS = 250;
+const JANELA_MS = 60_000;
 
 let ultimaChamada = 0;
+
+/** Partidas do último minuto. É a janela deslizante da cota por minuto. */
+const partidas = [];
 
 // A fila serializa apenas a AUTORIZAÇÃO, não a resposta: cada chamador
 // espera a vez de partir, e a requisição em si segue concorrente. Uma
@@ -55,11 +75,29 @@ let ultimaChamada = 0;
 // ordem justa e não há prioridade a arbitrar.
 let vez = Promise.resolve();
 
+const dormir = ms => new Promise(r => setTimeout(r, ms));
+
 function aguardarVez() {
   vez = vez.then(async () => {
     const espera = INTERVALO_MIN_MS - (Date.now() - ultimaChamada);
-    if (espera > 0) await new Promise(r => setTimeout(r, espera));
+    if (espera > 0) await dormir(espera);
+
+    // Janela deslizante, e não um espaçamento fixo de 1875ms: quem chama
+    // uma vez só — a tool da Leia no meio de uma conversa — não pode pagar
+    // pelo laço que rodou antes dela. Com a janela, a rajada curta passa na
+    // hora e só o laço sustentado é que espera.
+    for (;;) {
+      const agora = Date.now();
+      while (partidas.length && agora - partidas[0] >= JANELA_MS) partidas.shift();
+      if (partidas.length < config.evo.chamadasPorMinuto) break;
+
+      const falta = JANELA_MS - (agora - partidas[0]) + 20;
+      logger.debug(`[evo-w12] cota de ${config.evo.chamadasPorMinuto}/min atingida — aguardando ${falta}ms`);
+      await dormir(falta);
+    }
+
     ultimaChamada = Date.now();
+    partidas.push(ultimaChamada);
   });
   return vez;
 }
@@ -144,11 +182,14 @@ async function evoFetch(path, options = {}) {
 
     const body = await res.text().catch(() => '');
 
-    // O 429 vinha de uma rajada nossa: esperar um pouco mais que o
-    // espaçamento normal costuma bastar, e o `aguardarVez` do próximo giro
-    // já garante a distância mínima por cima disso.
+    // 429 mesmo dentro da nossa cota quer dizer que alguém MAIS está
+    // gastando a conta — o backend na VPS e um script rodando na máquina de
+    // alguém contam contra o mesmo teto, e cada processo só enxerga a
+    // própria janela. Por isso a espera aqui é de segundos, e não os 500ms
+    // de antes: meio segundo não devolve cota nenhuma quando o teto é por
+    // minuto, e só gastava as duas tentativas para falhar igual.
     if (res.status === 429 && podeReenviar && tentativa < RETENTATIVAS_429) {
-      const espera = INTERVALO_MIN_MS * (tentativa + 2);
+      const espera = 2000 * (tentativa + 1);
       logger.warn(`[evo-w12] 429 em ${path} — reenviando em ${espera}ms ` +
         `(tentativa ${tentativa + 1}/${RETENTATIVAS_429})`);
       await new Promise(r => setTimeout(r, espera));
