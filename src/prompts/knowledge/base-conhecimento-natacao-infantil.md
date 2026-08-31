@@ -21,7 +21,9 @@
 
 - Matriculado em horário determinado, **1x por semana**, aula de **30 minutos**.
 - O aluno faz a aula **sempre acompanhado de um responsável**, que entra na água.
-- Idade mínima **1 ano**, máxima entre **3,5 e 4 anos**.
+- Idade mínima **1 ano**, máxima entre **3,5 e 4 anos**. Esses últimos seis
+  meses são o **período de transição** para as turmas de 3 a 5 anos: a criança
+  pode ficar aqui ou já passar, e quem decide é o professor na avaliação.
 - **Bebê 1:** faz a aula com suporte do responsável, e o professor conduz com
   músicas, brincadeiras e brinquedos.
 - **Bebê 2:** já pode fazer sem o suporte do responsável, conforme a evolução do
@@ -31,6 +33,7 @@
 
 - **6 níveis:** Adaptação, Estrelinha N1, Peixinho N2, Golfinho I, Golfinho II e
   Tutubarão.
+- Idade mínima entre **3,5 e 4 anos completos**. O professor avalia em aula experimental se o melhor é iniciar nestas turmas ou passar algumas semanas na turma bebê.
 - Matriculado em horário determinado, **2x por semana**, aula de **45 minutos**.
 - No mesmo horário as turmas são divididas por nível.
 - Iniciantes ficam em **turmas reduzidas de até 5 alunos**.
@@ -61,7 +64,8 @@ definem tudo o que vem depois.
 
 - **Não sabe:** apresente o que a turma de iniciante daquela idade faz. Crianças
   até a faixa de 3,5 a 4 anos se encaixam nas turmas de Bebê 1 e 2, e aí não há
-  distinção de nível.
+  distinção de nível. **Isso inclui a criança de 3 anos** — repare que a idade
+  dela cai dentro do nome "3 a 5", mas não dentro do grupo.
 - **Já sabe:** apresente, de forma curta, o que os níveis intermediário e de
   aperfeiçoamento buscam.
 
@@ -78,10 +82,24 @@ Esta é a pergunta mais frequente do atendimento.
 
 | Situação | Nível inicial |
 | --- | --- |
-| 3 a 5 anos, sem experiência na água | **Adaptação** |
+| 1 ano até 3 anos e meio | **Natação Bebê** (Bebê 1 ou 2), com o responsável na água |
+| Entre 3 anos e meio e 4 | **Os dois grupos são possíveis** — bebê ou 3 a 5. Quem decide é o professor na avaliação |
+| A partir de 4 anos, sem experiência na água | **Adaptação** |
 | 6 a 12 anos, sem experiência na água | **N1 Branca** |
 | Já fez natação antes | O nível é definido na avaliação/aula experimental, conforme as metas que a criança já executa |
-| Completou a trilha de 3 a 5 anos (Golfinho II) | Transição para as turmas de 6 a 12 anos |
+| Completou a progressão pedagógica de 3 a 5 anos (Tutubarão) | Transição para as turmas de 6 a 12 anos |
+
+⚠️ **Criança de 3 anos não entra nas turmas de "3 a 5 anos".** O nome do grupo
+engana, e é um erro que já aconteceu no atendimento: a idade mínima delas é
+entre **3,5 e 4 anos completos**, e até lá o lugar da criança é a **Natação
+Bebê**, que vai até essa mesma faixa. Aos 3 anos, ofereça a turma de bebê — e,
+se o responsável perguntar pelo 3 a 5, explique a transição sem prometer a
+mudança: ela acontece na virada dos 3 anos e meio, quando o professor avalia.
+
+Isso muda o que você oferece junto: bebê é **1x na semana, 30 minutos, com o
+responsável na água**, e não segue a regra do par de dias. Prometer "terça e
+quinta às 17h" para uma criança de 3 anos é oferecer uma turma que ela não pode
+frequentar.
 
 Em qualquer caso, informe que **na primeira aula o professor avalia o melhor
 nível para começar** — isso tira a ansiedade de quem não sabe onde a criança se
@@ -99,7 +117,7 @@ saltos e as primeiras flutuações. Quando ele já estiver seguro e soltinho na
 Prontas para dizer ao responsável. O **conteúdo** de cada nível — os exercícios
 que aparecem na aula — está em `natacao-infantil-tecnico.md`.
 
-### Trilha de 3 a 5 anos
+### Progressão pedagógica de 3 a 5 anos
 
 **Adaptação** — Ganhar confiança no meio líquido, aprender a controlar a
 respiração ao submergir, brincar com os colegas e materiais, deslocar-se na
@@ -121,10 +139,10 @@ e nado submerso.
 desenvolver habilidades combinadas. Concluído este nível, a criança está pronta
 para as turmas de 6 a 12 anos.
 
-**Tutubarão** — Concluir a trilha de 3 a 5 anos e estar pronto para a transição
+**Tutubarão** — Concluir o programa de 3 a 5 anos e estar pronto para a transição
 às turmas de 6 a 12 anos.
 
-### Trilha de 6 a 12 anos
+### Progressão pedagógica de 6 a 12 anos
 
 **N1 Branca** — Aprender o controle respiratório, as flutuações, os deslizes, a
 sustentação no meio líquido e o salto da borda.
@@ -150,7 +168,7 @@ treinar crawl, costas e seus fundamentos.
 **N8 Vermelha** — Dominar os quatro nados olímpicos com saídas e viradas
 oficiais, nadando em ritmo de velocidade e fundo — tornar-se atleta de natação!
 
-**Atleta** — descrição `PENDENTE`.
+**Atleta** — neste nível, as crianças participam de treinamentos para competições, com foco na evolução técnica e física.
 
 ## Programação anual
 

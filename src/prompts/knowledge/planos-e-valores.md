@@ -31,7 +31,7 @@ tradução entre os dois vocabulários:
 | **Intermediário** — 3 sessões | Golfinho I, Golfinho II, tutubarão | N3 Amarela, N4 Amarela |
 | **Aperfeiçoamento** — 5 sessões | — | N5 Laranja, N6 Laranja, N7 Vermelha, N8 Vermelha, Atleta |
 
-**A trilha de 3 a 5 anos não chega ao Aperfeiçoamento** — ela vai até
+**O programa de 3 a 5 anos não chega ao Aperfeiçoamento** — ele vai até
 Intermediário, e o salto para 5 sessões acontece na faixa de 6 a 12.
 
 Isso bate com o que a base infantil já diz por outro caminho: ao chegar no

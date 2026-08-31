@@ -50,14 +50,15 @@ const avisos = [];
 // sai em `grade-horaria-infantil.md`, que só entra com o módulo `infantil`.
 const SECOES = [
   {
-    titulo: 'Escola de Natação Infantil — trilha 3 a 5 anos',
+    titulo: 'Escola de Natação Infantil — turmas de 3 a 5 anos',
     publico: 'infantil',
     regime: 'par',
     nota:
-      'Níveis da trilha 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → ' +
-      'Peixinho N2 → Golfinho I → Golfinho II → Tutubarão. As turmas agrupam níveis ' +
-      'vizinhos. O conteúdo de cada nível e a idade de entrada estão em ' +
-      '`base-conhecimento-natacao-infantil.md`.',
+      'Progressão pedagógica de 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → ' +
+      'Peixinho N2 → Golfinho I → Golfinho II → Tutubarão. O nome da turma indica ' +
+      'o nível de referência dela, mas **todo horário desta faixa atende todos os ' +
+      'níveis de 3 a 5** — ver "Como ler a grade infantil". O conteúdo de cada ' +
+      'nível e a idade de entrada estão em `base-conhecimento-natacao-infantil.md`.',
     atividades: [
       ['Natação 3-5 Adaptação', 'quem nunca teve contato com a piscina'],
       ['Natação Peixinhos N1&N2', 'níveis Estrelinha N1 e Peixinho N2'],
@@ -65,13 +66,14 @@ const SECOES = [
     ],
   },
   {
-    titulo: 'Escola de Natação Infantil — trilha 6 a 12 anos',
+    titulo: 'Escola de Natação Infantil — turmas de 6 a 12 anos',
     publico: 'infantil',
     regime: 'par',
     nota:
-      'Níveis da trilha 6 a 12 anos, na ordem: N1 Branca → N2 Branca → N3 e N4 ' +
-      'Amarela → N5 e N6 Laranja → N7 e N8 Vermelha → Atleta. Turmas com dois ' +
-      'níveis no nome (ex.: "N1 N2") atendem os dois.',
+      'Progressão pedagógica de 6 a 12 anos, na ordem: N1 Branca → N2 Branca → ' +
+      'N3 e N4 Amarela → N5 e N6 Laranja → N7 e N8 Vermelha → Atleta. O nome da ' +
+      'turma indica o nível de referência dela, mas **todo horário desta faixa ' +
+      'atende todos os níveis de 6 a 12** — ver "Como ler a grade infantil".',
     atividades: [
       ['Natação Infantil N1', 'nível N1 Branca'],
       ['Natação Infantil N1 N2', 'níveis N1 e N2 Branca'],
@@ -86,7 +88,11 @@ const SECOES = [
     nota:
       'De **12 meses até entre 3 anos e meio e 4 anos**, **1x na semana** — cada ' +
       'horário abaixo é uma turma independente. A regra de matrícula em par de dias ' +
-      'da natação infantil **não vale aqui**.',
+      'da natação infantil **não vale aqui**. ⚠️ **A criança de 3 anos é daqui, ' +
+      'não do "3 a 5"** — aquelas turmas começam entre 3 anos e meio e 4 ' +
+      'completos, e o nome do grupo engana. Entre 3,5 e 4 os dois são possíveis, ' +
+      'e quem decide é o professor na avaliação (ver ' +
+      '`base-conhecimento-natacao-infantil.md`).',
     atividades: [['Natação Bebê 1 e 2', null]],
   },
   {
@@ -230,19 +236,22 @@ function linhasEmPares(aulas, atividade) {
     }
   }
 
+  // A linha em branco antes de cada lista não é estética: sem ela o
+  // markdown gruda a lista no parágrafo anterior, e o arquivo é lido tanto
+  // por gente quanto pelo modelo.
   const out = [];
   if (semana.length) {
-    out.push('Matrícula na semana (2x, sempre nos dois dias do par):');
+    out.push('Matrícula na semana (2x, sempre nos dois dias do par):', '');
     out.push(...semana);
   }
   if (sabado.length) {
     if (out.length) out.push('');
-    out.push('Turma de sábado (1x na semana, exclusiva do dia):');
+    out.push('Turma de sábado (1x na semana, exclusiva do dia):', '');
     out.push(...sabado);
   }
   if (sexta.length) {
     if (out.length) out.push('');
-    out.push('Sexta — aula extra, **não é turma de matrícula**:');
+    out.push('Sexta — aula extra, **não é turma de matrícula**:', '');
     out.push(...sexta);
   }
   return out;
@@ -418,11 +427,17 @@ function montarInfantil(aulas, hoje, conhecidas) {
   out.push('   **use esses** ao falar de turma reduzida, nunca o número de vagas.');
   out.push('2. **Nunca ofereça um dia solto da semana:** a matrícula é o par de dias');
   out.push('   (regra na próxima seção).');
-  out.push('3. **Nem todo horário lista os níveis que atende.** Quando o horário não');
-  out.push('   especificar, assuma que **todos os níveis daquele grupo etário estão');
-  out.push('   inclusos** — não diga que o nível da criança não é atendido ali, e não');
-  out.push('   transfira por causa disso. A confirmação do nível na turma é do');
-  out.push('   consultor, junto com a vaga.');
+  out.push('3. **O nível NÃO restringe o horário. O que separa é o grupo etário.**');
+  out.push('   São três grupos, e só eles: **bebê**, **3 a 5** e **6 a 12**. Dentro do');
+  out.push('   grupo, **todo horário atende todos os níveis** — inclusive quando o nome');
+  out.push('   da atividade cita um nível só ("Natação Infantil N1", "Golfinhos N3+").');
+  out.push('   O nome é a referência da turma, não uma porta fechada.');
+  out.push('');
+  out.push('   Na prática: perguntaram os horários de uma criança de 8 anos no N5?');
+  out.push('   Ofereça **todos** os horários de 6 a 12, não só os que dizem "N5+".');
+  out.push('   Nunca diga que o nível da criança não é atendido num horário, e nunca');
+  out.push('   transfira por causa disso. Quem confirma a turma e a vaga é o');
+  out.push('   consultor, com o professor.');
   out.push('');
   out.push('**Duração:** bebê 30 minutos; 3–5 e 6–12 anos 45 minutos. É dado');
   out.push('confirmado — responda direto, não transfira.');

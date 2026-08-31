@@ -7,7 +7,7 @@
 > **A grade da Escola de Natação Infantil e da Natação Bebê está em
 > `grade-horaria-infantil.md`**, no módulo `infantil`. Aqui estão as
 > atividades a partir de 13 anos e as regras gerais de leitura.
-> Última geração: 26/08/2026.
+> Última geração: 31/08/2026.
 
 ## Como usar esta grade no atendimento
 

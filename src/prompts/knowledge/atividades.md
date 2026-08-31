@@ -50,7 +50,7 @@
 
 ### Escola de Natação Infantil
 
-- Trilhas de 3 a 5 e de 6 a 12 anos, com níveis, metas objetivas por nível e
+- Dois programas, de 3 a 5 e de 6 a 12 anos, com níveis, metas objetivas por nível e
   avaliação a cada quadrimestre. Conteúdo completo — incluindo respostas prontas
   para as objeções mais comuns dos pais — em
   `base-conhecimento-natacao-infantil.md`.

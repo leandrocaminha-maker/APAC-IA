@@ -14,7 +14,7 @@
 ## ✅ Resolvido no pente fino de 18/08/2026
 
 | # | Era | Ficou |
-|---|---|---|
+| --- | --- | --- |
 | 1 | Nome contraditório | **AP Academia**, academia completa. O arquivo que dizia "de Natação e Hidroginástica" foi apagado. |
 | 2 | `vendas.md` prometia estorno de 30 dias inexistente | **Garantia de Adaptação de 21 dias**, com as duas condições (8 atividades + questionário de satisfação), em `operacional-adulto.md` e no roteiro de objeção. |
 | 3 | Turmas de sábado sem preço | **Clube Sábado** em `planos-e-valores.md`: 12x R$ 147 anual / R$ 179 assinatura / R$ 197 mensal, matrícula R$ 105 no mensal e assinatura. Vale para infantil **e** adulto 13+. |
@@ -36,7 +36,7 @@ O contrato de prestação de serviços foi condensado em
 `src/prompts/knowledge/contrato-resumo.md`. O que ele fechou:
 
 | # | Era | Ficou |
-|---|---|---|
+| --- | --- | --- |
 | 13 | Cancelamento de contrato sem regra | Regra por tipo de plano: **Assinatura** com 30 dias de aviso por e-mail e **sem multa**; **Anual** com acerto de saldo (descontos revertidos, sem devolução no último mês). Canal: `cancelamento@apacademia.com.br`. |
 | 14 | Devolução dos 21 dias: integral? de quando conta? | **Total**, contada **da matrícula** — mantidas as 8 sessões + questionário. |
 | 15 | Nada sobre atestado médico | **Decidido: quem informa é o consultor.** O agente responde que o consultor detalha isso na matrícula e **segue a conversa — sem transferir por causa disso**. |
@@ -58,7 +58,7 @@ Decisão de 18/08/2026: **onde contrato e base divergem, a base está certa.** O
 atualizado.
 
 | Ponto | O que o contrato diz hoje | O que vale |
-|---|---|---|
+| --- | --- | --- |
 | Reposição infantil | Iniciante tem 2 reposições/mês, usáveis em 15 dias | Não há reposição, salvo força maior com atestado |
 | Falta não justificada | Nada | **2 dias sem poder agendar** pelo app — **a academia vai incluir no contrato** |
 | Agendamentos simultâneos | 2 | **3** |
@@ -88,7 +88,7 @@ todos preenchidos.
 Sobrou pouco, e nada que trave uma venda:
 
 | Prioridade | Dado | Onde |
-|---|---|---|
+| --- | --- | --- |
 | 🔴 | **Atendimento a PCD, e a criança com TEA ou outra necessidade específica** | `informacoes-gerais.md` — já apareceu numa conversa de teste (id40, 20/08) e o agente teve de transferir. É pergunta de mãe/pai decidindo matrícula, não curiosidade |
 | 🔴 | **Serviços de saúde e bem-estar:** fisioterapia, hidroterapia, quiropraxia, massagem relaxante, liberação miofascial, drenagem linfática, acupuntura — a academia oferece? É à parte do plano? Quanto custa? | `informacoes-gerais.md` — hoje está tudo `PENDENTE` e o agente transfere em qualquer uma dessas |
 | ✅ | ~~Descontos: família, matrícula antecipada, convênio empresa~~ — respondido em 20/08/2026 | `planos-e-valores.md` seção 4: 65+ e família de 3 ou mais, 10%, sem acúmulo e sem negociação |
@@ -113,7 +113,7 @@ diferentes**, e o agente escolhe um por sorteio sem avisar. Detalhe e correção
 em [REVISAO-PROMPT.md](REVISAO-PROMPT.md), bloco 3.
 
 | Contradição | Onde | O que vale |
-|---|---|---|
+| --- | --- | --- |
 | ✅ Agendamentos simultâneos — resolvido em 20/08/2026 | corrigido no `gerar-grade-horaria.js` e no `.md` | **3 no total, no máximo 1 por modalidade** (`operacional-adulto.md`, `suporte-fiti.md`) |
 | ✅ Duração da aula — resolvido em 20/08/2026 | seção própria na grade, fora de "não invente" | **45 min** adultas e coletivas |
 | ✅ Idade da natação bebê — resolvido em 20/08/2026 | corrigido no `gerar-grade-horaria.js` | **de 12 meses até entre 3,5 e 4 anos** |
@@ -142,8 +142,8 @@ O prompt manda usar estes conteúdos. Sem eles, a conversa trava exatamente no
 ponto mais forte do roteiro.
 
 | Conteúdo | Situação |
-|---|---|
-| ~~Metodologia da natação infantil, por nível~~ | ✅ Resolvido — `base-conhecimento-natacao-infantil.md` cobre as duas trilhas, nível a nível, com respostas prontas para objeções. |
+| --- | --- |
+| ~~Metodologia da natação infantil, por nível~~ | ✅ Resolvido — `base-conhecimento-natacao-infantil.md` cobre as duas s, nível a nível, com respostas prontas para objeções. |
 | ~~Anamnese em versão enxuta~~ | ✅ Resolvido — `anamnese-perfil-cliente.md`. |
 | ~~Diferenciais de cada aula aquática~~ | ✅ Resolvido — natação adulto, bebê, hidroginástica e Hidro Zen têm a linha "Diferencial na AP" preenchida em `atividades.md`. Falta só nas coletivas terrestres. |
 
@@ -154,7 +154,7 @@ ponto mais forte do roteiro.
 Critério aplicado: **o prompt diz o que fazer, a base diz o que é verdade.**
 
 | Repetido em | Situação |
-|---|---|
+| --- | --- |
 | Regras operacionais adulto — `vendas.md` × `planos-e-valores.md` | ✅ Consolidado em `operacional-adulto.md` |
 | FITI 48h, cancelamento 1h, falta = 2 dias sem agendar | ✅ Saiu do prompt, virou base |
 | "Dor não troca a modalidade" — `vendas.md` §5 e `anamnese` §7, quase palavra por palavra | ⚠️ Ainda duplicado. Manter na anamnese e deixar só a instrução no prompt |
@@ -183,7 +183,7 @@ ver a nota sobre carregamento condicional em [HANDOFF.md](HANDOFF.md).
 ## Decisões suas, não informação
 
 | Assunto | Situação |
-|---|---|
+| --- | --- |
 | Nome da consultora virtual | Definido: **Leia** |
 | O bot pode fechar venda? | Hoje não fecha nem cadastra — coleta e transfere. As tools de cadastro e agendamento estão pausadas. |
 | Tom | Definido: levemente descontraído, consciente da responsabilidade de conduzir à contratação |
@@ -200,7 +200,7 @@ Os motivos — e a releitura depois da auditoria de
 [REVISAO-PROMPT.md](REVISAO-PROMPT.md):
 
 | Motivo do handoff | Registrado como | Releitura |
-|---|---|---|
+| --- | --- | --- |
 | Dificuldade de agendamento no app FITI (2x) | O bot não enxerga agenda nem cadastro — o prompt manda transferir | **Correto** para "não consigo entrar no app". Mas a regra não distingue isso de "como funciona o agendamento?", que é pergunta de venda |
 | Negociação da taxa de adesão de R$ 184 (2x) | Financeiro é transferência imediata por regra | **Regra disparando cedo demais.** "Negociação" no item Financeiro captura objeção de preço de lead novo — e o próprio prompt tem a resposta: o Anual é isento da adesão |
 | Marcar aula experimental de natação infantil | Quem agenda é o consultor (`informacoes-gerais.md`) | **Instrução desatualizada.** O `vendas.md` ainda diz que as condições da aula experimental são `PENDENTE`; a base já responde que existe e é gratuita. O agente transfere com "não sei" onde deveria escolher o horário e transferir com o lead pronto |

@@ -6,7 +6,7 @@
 > **Módulo `infantil`.** As atividades a partir de 13 anos e as regras
 > gerais de leitura da grade estão em `grade-horaria.md`, que vai em toda
 > conversa. O que está aqui vale por cima daquilo, não no lugar.
-> Última geração: 26/08/2026.
+> Última geração: 31/08/2026.
 
 ## Como ler a grade infantil
 
@@ -17,11 +17,17 @@
    **use esses** ao falar de turma reduzida, nunca o número de vagas.
 2. **Nunca ofereça um dia solto da semana:** a matrícula é o par de dias
    (regra na próxima seção).
-3. **Nem todo horário lista os níveis que atende.** Quando o horário não
-   especificar, assuma que **todos os níveis daquele grupo etário estão
-   inclusos** — não diga que o nível da criança não é atendido ali, e não
-   transfira por causa disso. A confirmação do nível na turma é do
-   consultor, junto com a vaga.
+3. **O nível NÃO restringe o horário. O que separa é o grupo etário.**
+   São três grupos, e só eles: **bebê**, **3 a 5** e **6 a 12**. Dentro do
+   grupo, **todo horário atende todos os níveis** — inclusive quando o nome
+   da atividade cita um nível só ("Natação Infantil N1", "Golfinhos N3+").
+   O nome é a referência da turma, não uma porta fechada.
+
+   Na prática: perguntaram os horários de uma criança de 8 anos no N5?
+   Ofereça **todos** os horários de 6 a 12, não só os que dizem "N5+".
+   Nunca diga que o nível da criança não é atendido num horário, e nunca
+   transfira por causa disso. Quem confirma a turma e a vaga é o
+   consultor, com o professor.
 
 **Duração:** bebê 30 minutos; 3–5 e 6–12 anos 45 minutos. É dado
 confirmado — responda direto, não transfira.
@@ -47,19 +53,21 @@ Vale para toda a Escola de Natação Infantil (3 a 5 e 6 a 12 anos).
 
 ---
 
-## Escola de Natação Infantil — trilha 3 a 5 anos
+## Escola de Natação Infantil — turmas de 3 a 5 anos
 
-> Níveis da trilha 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → Peixinho N2 → Golfinho I → Golfinho II → Tutubarão. As turmas agrupam níveis vizinhos. O conteúdo de cada nível e a idade de entrada estão em `base-conhecimento-natacao-infantil.md`.
+> Progressão pedagógica de 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → Peixinho N2 → Golfinho I → Golfinho II → Tutubarão. O nome da turma indica o nível de referência dela, mas **todo horário desta faixa atende todos os níveis de 3 a 5** — ver "Como ler a grade infantil". O conteúdo de cada nível e a idade de entrada estão em `base-conhecimento-natacao-infantil.md`.
 
 ### Natação 3-5 Adaptação — quem nunca teve contato com a piscina
 
 Matrícula na semana (2x, sempre nos dois dias do par):
+
 - **Ter e Qui, 18:20** — até 10 vagas
 - **Ter e Qui, 19:00** — até 10 vagas
 
 ### Natação Peixinhos N1&N2 — níveis Estrelinha N1 e Peixinho N2
 
 Matrícula na semana (2x, sempre nos dois dias do par):
+
 - **Ter e Qui, 09:20** — até 10 vagas
 - **Seg e Qua, 10:00** — até 10 vagas
 - **Seg e Qua, 15:40** — até 12 vagas
@@ -67,12 +75,14 @@ Matrícula na semana (2x, sempre nos dois dias do par):
 - **Ter e Qui, 19:00** — até 10 vagas na Ter e 14 na Qui
 
 Turma de sábado (1x na semana, exclusiva do dia):
+
 - **Sáb, 10:00** — até 5 vagas
 - **Sáb, 11:00** — até 17 vagas
 
 ### Natação Golfinhos N3+ — níveis Golfinho I em diante
 
 Matrícula na semana (2x, sempre nos dois dias do par):
+
 - **Ter e Qui, 09:20** — até 6 vagas
 - **Seg e Qua, 10:00** — até 6 vagas
 - **Seg e Qua, 15:40** — até 6 vagas
@@ -80,26 +90,30 @@ Matrícula na semana (2x, sempre nos dois dias do par):
 - **Ter e Qui, 19:00** — até 9 vagas
 
 Turma de sábado (1x na semana, exclusiva do dia):
+
 - **Sáb, 11:00** — até 5 vagas
 
 Sexta — aula extra, **não é turma de matrícula**:
+
 - **Sex, 09:20** — até 6 vagas
 - **Sex, 16:20** — até 8 vagas
 - **Sex, 19:00** — até 6 vagas
 
-## Escola de Natação Infantil — trilha 6 a 12 anos
+## Escola de Natação Infantil — turmas de 6 a 12 anos
 
-> Níveis da trilha 6 a 12 anos, na ordem: N1 Branca → N2 Branca → N3 e N4 Amarela → N5 e N6 Laranja → N7 e N8 Vermelha → Atleta. Turmas com dois níveis no nome (ex.: "N1 N2") atendem os dois.
+> Progressão pedagógica de 6 a 12 anos, na ordem: N1 Branca → N2 Branca → N3 e N4 Amarela → N5 e N6 Laranja → N7 e N8 Vermelha → Atleta. O nome da turma indica o nível de referência dela, mas **todo horário desta faixa atende todos os níveis de 6 a 12** — ver "Como ler a grade infantil".
 
 ### Natação Infantil N1 — nível N1 Branca
 
 Matrícula na semana (2x, sempre nos dois dias do par):
+
 - **Seg e Qua, 19:00** — até 8 vagas
 - **Ter e Qui, 19:40** — até 8 vagas
 
 ### Natação Infantil N1 N2 — níveis N1 e N2 Branca
 
 Matrícula na semana (2x, sempre nos dois dias do par):
+
 - **Seg e Qua, 09:20** — até 8 vagas
 - **Ter e Qui, 10:00** — até 8 vagas
 - **Ter e Qui, 15:40** — até 12 vagas
@@ -107,17 +121,20 @@ Matrícula na semana (2x, sempre nos dois dias do par):
 - **Ter e Qui, 17:00** — até 12 vagas
 
 Turma de sábado (1x na semana, exclusiva do dia):
+
 - **Sáb, 11:40** — até 13 vagas
 
 ### Natação Infantil N2 — nível N2 Branca
 
 Matrícula na semana (2x, sempre nos dois dias do par):
+
 - **Seg e Qua, 19:00** — até 10 vagas
 - **Ter e Qui, 19:40** — até 14 vagas
 
 ### Natação Infantil N3+ — nível N3 Amarela em diante
 
 Matrícula na semana (2x, sempre nos dois dias do par):
+
 - **Seg e Qua, 09:20** — até 13 vagas
 - **Ter e Qui, 10:00** — até 12 vagas
 - **Ter e Qui, 15:40** — até 12 vagas
@@ -127,9 +144,11 @@ Matrícula na semana (2x, sempre nos dois dias do par):
 - **Ter e Qui, 19:40** — 2 turmas no mesmo horário, até 16 e 14 vagas
 
 Turma de sábado (1x na semana, exclusiva do dia):
+
 - **Sáb, 11:40** — até 12 vagas
 
 Sexta — aula extra, **não é turma de matrícula**:
+
 - **Sex, 09:20** — até 16 vagas
 - **Sex, 16:20** — até 16 vagas
 - **Sex, 19:00** — até 16 vagas
@@ -137,14 +156,16 @@ Sexta — aula extra, **não é turma de matrícula**:
 ### Natação Infantil N5+ — nível N5 Laranja em diante
 
 Matrícula na semana (2x, sempre nos dois dias do par):
+
 - **Seg e Qua, 08:30** — até 6 vagas
 
 Sexta — aula extra, **não é turma de matrícula**:
+
 - **Sex, 08:30** — até 6 vagas
 
 ## Natação Bebê
 
-> De **12 meses até entre 3 anos e meio e 4 anos**, **1x na semana** — cada horário abaixo é uma turma independente. A regra de matrícula em par de dias da natação infantil **não vale aqui**.
+> De **12 meses até entre 3 anos e meio e 4 anos**, **1x na semana** — cada horário abaixo é uma turma independente. A regra de matrícula em par de dias da natação infantil **não vale aqui**. ⚠️ **A criança de 3 anos é daqui, não do "3 a 5"** — aquelas turmas começam entre 3 anos e meio e 4 completos, e o nome do grupo engana. Entre 3,5 e 4 os dois são possíveis, e quem decide é o professor na avaliação (ver `base-conhecimento-natacao-infantil.md`).
 
 ### Natação Bebê 1 e 2
 

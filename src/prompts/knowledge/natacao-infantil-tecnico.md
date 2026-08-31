@@ -28,11 +28,11 @@ e repertório esportivo. Um aluno que só aprendeu a nadar de um lado para o out
 não sabe se sustentar sozinho, girar, submergir ou voltar à borda em segurança —
 e essas são exatamente as habilidades que salvam vidas.
 
-## Correspondência entre as duas trilhas
+## Correspondência entre os dois programas
 
-O programa é o mesmo em essência; muda a linguagem e o ritmo conforme a idade. A
-trilha de 3 a 5 anos é mais granular porque a evolução nessa idade é mais lenta e
-mais dependente do desenvolvimento individual.
+O programa é o mesmo em essência; muda a linguagem e o ritmo conforme a idade. O
+de 3 a 5 anos é mais granular porque a evolução nessa idade é mais lenta e mais
+dependente do desenvolvimento individual.
 
 | Fase | 6 a 12 anos | 3 a 5 anos |
 | --- | --- | --- |
@@ -151,7 +151,7 @@ oficiais, nadando em ritmo de velocidade e de fundo.
 O **objetivo** de cada nível está em `base-conhecimento-natacao-infantil.md`.
 Aqui está o que aparece na aula.
 
-### Trilha de 3 a 5 anos
+### Progressão pedagógica de 3 a 5 anos
 
 - **Adaptação** — rotina de acolhimento e socialização, exercícios
   respiratórios, entradas e saltos com apoio, brincadeiras com materiais e
@@ -165,7 +165,7 @@ Aqui está o que aparece na aula.
 - **Golfinho II** — deslizes e ondulações submersas mais longos, combinações de
   pernada, giro e braçada, e nado frontal e de costas por distâncias maiores.
 
-### Trilha de 6 a 12 anos
+### Progressão pedagógica de 6 a 12 anos
 
 - **N1 Branca** — exercícios respiratórios, flutuações horizontais e verticais,
   sustentação vertical com a cabeça fora, deslize foguetinho, propulsão
