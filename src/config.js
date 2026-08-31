@@ -226,6 +226,16 @@ export const config = {
       // robô — e satura a instância da Evolution.
       intervaloMin: parseInt(env('FOLLOWUP_SILENCIO_INTERVALO_MIN', '7'), 10),
     },
+
+    // Dias depois da SEGUNDA rodada até o lead ser dado como perdido.
+    //
+    // As duas rodadas saem com 2 dias de intervalo; esta é a espera pela
+    // resposta à última delas. Curto demais dá o lead por perdido antes de
+    // ele ter tido chance de ler; longo demais deixa o funil cheio de gente
+    // que já decidiu não responder, e é isso que faz a conversão mentir.
+    //
+    // 0 desliga o encerramento automático, e aí quem move é o consultor.
+    diasAtePerdido: parseInt(env('FOLLOWUP_DIAS_ATE_PERDIDO', '5'), 10),
   },
 
   // Painel CRM (crm.apacademia.com.br) — login por consultor.

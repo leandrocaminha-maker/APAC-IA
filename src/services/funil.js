@@ -660,11 +660,22 @@ export async function aoConsultorAssumir(contato, { usuario = null, via = 'whats
  */
 export async function listarFunil(filtros = {}) {
   const {
-    etapas, dono, origem, busca, desde, ate,
+    etapas, dono, origem, busca, desde, ate, ids,
     trilha = 'lead',
     ordenar = 'last_activity_at', direcao = 'desc',
     limite = 200, offset = 0, incluirFechados = false,
   } = filtros;
+
+  // Recorte por lista de ids, para filtro que nasce FORA de `crm_leads`.
+  //
+  // Hoje é o "em follow-up com a Leia", que se decide em `crm_followups`.
+  // A lista vem pronta de quem sabe daquele domínio (a rota, que já lê a
+  // régua) em vez de este módulo aprender os tipos de follow-up — o funil
+  // não precisa saber o que é `ae_pos_aula` para saber filtrar por id.
+  //
+  // Lista vazia é resposta vazia, e não "sem filtro": ninguém casa com um
+  // conjunto vazio, e devolver o funil inteiro seria o oposto do pedido.
+  if (Array.isArray(ids) && !ids.length) return { leads: [], total: 0 };
 
   let q = supabase
     .from('crm_leads')
@@ -685,6 +696,7 @@ export async function listarFunil(filtros = {}) {
   // `todas` existe para busca — o consultor que procura um telefone não
   // sabe (nem deveria precisar saber) em que trilha ele está.
   if (TRILHAS.includes(trilha)) q = q.eq('trilha', trilha);
+  if (Array.isArray(ids)) q = q.in('id', ids);
 
   if (Array.isArray(etapas) && etapas.length) q = q.in('stage', etapas);
   else if (!incluirFechados) q = q.not('stage', 'in', FILTRO_ETAPAS_FECHADAS);

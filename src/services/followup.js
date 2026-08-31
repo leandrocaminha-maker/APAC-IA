@@ -324,6 +324,19 @@ export const TIPOS_SILENCIO = ['silencio_1', 'silencio_2'];
 const TIPOS_SONDAGEM = ['sondagem_1', 'sondagem_2'];
 
 /**
+ * O que significa "este lead está na mão da Leia agora".
+ *
+ * São as mensagens que ELA escreve por conta própria, sem o cliente ter
+ * falado: a primeira depois da aula experimental, e as duas rodadas de
+ * quem parou de responder. Fora da lista fica `ae_lembrete_24h`, que é
+ * recado de agenda — a aula é amanhã, e não há retomada nenhuma em curso.
+ *
+ * Serve ao filtro do painel. O consultor precisa saber em quem a Leia já
+ * está mexendo, para não escrever por cima nem cobrar duas vezes.
+ */
+export const TIPOS_REGUA = ['ae_pos_aula', ...TIPOS_SONDAGEM, ...TIPOS_SILENCIO];
+
+/**
  * Uma mensagem de saída que faz o relógio do silêncio começar a contar.
  *
  * Vale a fala da Leia (`bot`, `bot:followup`) e a do consultor
@@ -775,7 +788,8 @@ export async function registrarNoFunil(leadId, tipo, resumo, payload = {}) {
 }
 
 export const followup = {
-  JANELA, JANELAS, janelaDoDia, dentroDaJanela, horarioDoLembrete, TIPOS_SILENCIO,
+  JANELA, JANELAS, janelaDoDia, dentroDaJanela, horarioDoLembrete,
+  TIPOS_SILENCIO, TIPOS_REGUA,
   agendar, cancelar, aoAgendarExperimental, proximaSondagem, varrerSilenciosos,
   vencidos, registrarEnvio, registrarTentativa, registrarNoFunil, situacaoComercial,
 };

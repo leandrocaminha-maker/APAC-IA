@@ -356,13 +356,21 @@ async function enviarUm(item) {
  * significa a mesma coisa nos dois casos — pedimos duas vezes e não houve
  * resposta —, e um lead precisa poder ser encerrado pelo caminho por onde
  * ele efetivamente andou.
+ *
+ * A espera é `FOLLOWUP_DIAS_ATE_PERDIDO` (padrão 5) contada do envio da
+ * segunda rodada: é o tempo de a pessoa responder à última mensagem, não
+ * um tempo de silêncio novo. Encerrar no mesmo dia do envio dá o lead por
+ * perdido antes de ele ter tido chance de ler.
  */
 async function encerrarSemResposta() {
-  const limite = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+  const dias = config.followup.diasAtePerdido;
+  if (!dias || dias <= 0) return;
+
+  const limite = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
 
   const { data } = await supabase
     .from('crm_followups')
-    .select('lead_id, tipo, sent_at, lead:crm_leads ( id, stage, trilha, last_activity_at )')
+    .select('lead_id, tipo, sent_at, lead:crm_leads ( id, stage, trilha, contact_id )')
     .in('tipo', ['sondagem_2', 'silencio_2'])
     .eq('status', 'enviado')
     .lte('sent_at', limite)
@@ -377,12 +385,33 @@ async function encerrarSemResposta() {
     // acabou, e quem o encerra é o consultor, com `finalizado`.
     if ((lead.trilha || 'lead') !== TRILHA_DE_VENDA) continue;
 
-    // Respondeu depois da sondagem? Então não está perdido.
-    if (lead.last_activity_at && new Date(lead.last_activity_at) > new Date(f.sent_at)) continue;
+    // Respondeu depois da última rodada? Então não está perdido.
+    //
+    // A pergunta é sobre uma MENSAGEM DELE, e por isso é feita em
+    // `wa_messages`. Até 31/08/2026 ela era feita em
+    // `crm_leads.last_activity_at`, que não significa isso: a coluna é
+    // encostada por mudança de etapa, por classificação de contato e por
+    // envio nosso — inclusive pelo próprio follow-up. Qualquer uma dessas
+    // deixava `last_activity_at` na frente do `sent_at` e o lead passava a
+    // ser eternamente "alguém que respondeu", sem nunca ter respondido.
+    //
+    // Foi o que a classificação retroativa expôs: ela encostou a coluna de
+    // 43 leads num dia, e teria isentado todos eles do encerramento.
+    if (!lead.contact_id) continue;
+
+    const { data: resposta } = await supabase
+      .from('wa_messages')
+      .select('id')
+      .eq('contact_id', lead.contact_id)
+      .eq('direction', 'inbound')
+      .gt('created_at', f.sent_at)
+      .limit(1);
+
+    if (resposta?.length) continue;
 
     await funil.mudarEtapa(lead.id, 'perdido', {
       actor: 'sistema',
-      motivo: 'Sem resposta após duas rodadas de follow-up',
+      motivo: `Sem resposta ${dias} dia(s) depois da segunda rodada de follow-up`,
       campos: { lost_reason: 'Sem resposta após duas rodadas de follow-up' },
     });
     logger.info(`[followup] Lead ${lead.id} marcado como perdido (sem resposta)`);

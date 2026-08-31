@@ -146,6 +146,43 @@ router.post('/api/senha', rota(async (req, res) => {
 // ──────────────────────────────────────────────
 
 /**
+ * Quem está na régua da Leia agora.
+ *
+ * Duas situações, que é o que o filtro do painel quer dizer:
+ *
+ *  - **a primeira mensagem depois da aula experimental** (`ae_pos_aula`) —
+ *    ela pergunta como foi e puxa o fechamento;
+ *  - **o cliente parou de responder** (`sondagem_*`, `silencio_*`).
+ *
+ * `pendente` é o que ainda vai sair; `enviado` é o que já saiu e ainda
+ * pode ser respondido. O corte de 7 dias no enviado é o que faz a lista
+ * DRENAR: passada a régua inteira (2 dias, mais 2, mais a espera da
+ * última), quem não respondeu vira `perdido` e quem respondeu já teve as
+ * rodadas pendentes canceladas na chegada da mensagem. Sem o corte, a
+ * lista viraria o histórico de todo mundo que um dia recebeu follow-up.
+ *
+ * Fora da conta fica `ae_lembrete_24h`: recado de agenda não é retomada.
+ */
+async function leadsEmReguaDaLeia() {
+  const desde = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('crm_followups')
+    .select('lead_id, status, sent_at')
+    .in('tipo', followup.TIPOS_REGUA)
+    .in('status', ['pendente', 'enviado'])
+    .limit(2000);
+
+  if (error) throw new Error(`falha ao ler a régua: ${error.message}`);
+
+  const ids = new Set();
+  for (const f of data || []) {
+    if (f.status === 'pendente' || (f.sent_at && f.sent_at >= desde)) ids.add(f.lead_id);
+  }
+  return [...ids];
+}
+
+/**
  * A tabela do funil — de UMA trilha por vez.
  *
  * `trilha` sai daqui junto com as etapas DELA, e não da lista inteira: a
@@ -164,7 +201,10 @@ router.get('/api/funil', rota(async (req, res) => {
     : req.query.trilha === 'todas' ? 'todas'
     : 'lead';
 
+  const ids = req.query.followup === 'leia' ? await leadsEmReguaDaLeia() : undefined;
+
   const { leads, total } = await funil.listarFunil({
+    ids,
     etapas: req.query.etapas ? String(req.query.etapas).split(',').filter(Boolean) : null,
     dono: req.query.dono || null,
     origem: req.query.origem || null,

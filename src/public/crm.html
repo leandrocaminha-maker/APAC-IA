@@ -370,6 +370,19 @@
 
       <div class="chips" id="chips-etapas"></div>
 
+      <!--
+        Em quem a Leia já está mexendo. Fica separado dos chips de etapa
+        porque não é etapa: um lead em `em_conversa` pode estar na régua e
+        outro não, e é a diferença entre cobrar de novo e escrever por cima
+        de uma cobrança que saiu hoje de manhã.
+      -->
+      <div class="chips" id="chips-regua">
+        <button class="chip" id="chip-followup"
+          title="Leads com a primeira mensagem pós aula experimental, ou que pararam de responder e estão recebendo as rodadas de retomada.">
+          Em follow-up com a Leia
+        </button>
+      </div>
+
       <div class="filtros">
         <input class="campo busca" id="f-busca" placeholder="Buscar por nome, telefone ou e-mail…">
         <select class="campo" id="f-dono">
@@ -653,6 +666,7 @@ const estado = {
   tipos: {},
   trilha: 'lead',
   filtroEtapas: new Set(),
+  filtroFollowup: false,
   ordenar: 'last_activity_at',
   direcao: 'desc',
   leadAberto: null,
@@ -1016,14 +1030,25 @@ $$('#chips-trilha .chip').forEach(b => b.addEventListener('click', async () => {
   if (estado.trilha === b.dataset.trilha) return;
   estado.trilha = b.dataset.trilha;
   estado.filtroEtapas.clear();
+  // A régua é de venda. No relacionamento não há follow-up para filtrar, e
+  // o filtro herdado devolveria tabela vazia sem explicar por quê.
+  estado.filtroFollowup = false;
+  $('#chip-followup').classList.remove('ativo');
   $$('#chips-trilha .chip').forEach(x => x.classList.toggle('ativo', x === b));
   await carregarFunil();
   await carregarMetricas();
 }));
 
+$('#chip-followup').addEventListener('click', () => {
+  estado.filtroFollowup = !estado.filtroFollowup;
+  $('#chip-followup').classList.toggle('ativo', estado.filtroFollowup);
+  carregarFunil();
+});
+
 async function carregarFunil() {
   const p = new URLSearchParams();
   p.set('trilha', estado.trilha);
+  if (estado.filtroFollowup) p.set('followup', 'leia');
   if (estado.filtroEtapas.size) p.set('etapas', [...estado.filtroEtapas].join(','));
   if ($('#f-busca').value.trim()) p.set('busca', $('#f-busca').value.trim());
   if ($('#f-dono').value) p.set('dono', $('#f-dono').value);
@@ -1041,10 +1066,16 @@ async function carregarFunil() {
 
   const eVenda = estado.trilha === 'lead';
   const corpo = $('#corpo-funil');
+
+  // O botão da régua só existe na venda: é lá que ela roda.
+  $('#chips-regua').style.display = eVenda ? '' : 'none';
+
   $('#funil-vazio').style.display = dado.leads.length ? 'none' : 'block';
-  $('#funil-vazio').textContent = eVenda
-    ? 'Nenhum lead com esses filtros.'
-    : 'Nenhum atendimento de relacionamento com esses filtros.';
+  $('#funil-vazio').textContent = estado.filtroFollowup
+    ? 'Ninguém em follow-up com a Leia agora.'
+    : eVenda
+      ? 'Nenhum lead com esses filtros.'
+      : 'Nenhum atendimento de relacionamento com esses filtros.';
   // Buscando, o servidor devolve as duas trilhas — dizer isso evita que a
   // linha de um aluno na tabela de venda pareça erro de classificação.
   const ondeProcurou = dado.trilha === 'todas' ? ' Busca nas duas trilhas.' : '';
