@@ -31,7 +31,18 @@ import { sendText, telefoneValido } from '../services/evolution.js';
 let rodando = false;
 
 /** Etapas em que um follow-up de venda deixou de fazer sentido. */
-const ETAPAS_MORTAS = new Set(['ganho', 'perdido']);
+const ETAPAS_MORTAS = new Set(['ganho', 'perdido', 'finalizado']);
+
+/**
+ * Trilhas que recebem follow-up de venda. Só uma.
+ *
+ * A varredura já não escolhe ninguém de fora dela, mas o worker confere de
+ * novo na hora de enviar: entre o agendamento e o envio passam horas, e é
+ * nesse intervalo que a Leia descobre que o "lead" é o fornecedor de
+ * toalha. Segurar aqui é o que impede a linha já agendada de sair mesmo
+ * assim.
+ */
+const TRILHA_DE_VENDA = 'lead';
 
 // ──────────────────────────────────────────────
 // A instrução que vai para a Leia
@@ -193,6 +204,14 @@ async function enviarUm(item) {
     return;
   }
 
+  if ((lead.trilha || 'lead') !== TRILHA_DE_VENDA) {
+    await followup.cancelar(
+      lead.id, [item.tipo],
+      `atendimento deixou de ser venda (trilha "${lead.trilha}")`,
+    );
+    return;
+  }
+
   // Telefone utilizável — conferido AQUI, e não só na varredura, porque
   // esta é a última porta antes de gastar uma chamada ao modelo.
   //
@@ -343,7 +362,7 @@ async function encerrarSemResposta() {
 
   const { data } = await supabase
     .from('crm_followups')
-    .select('lead_id, tipo, sent_at, lead:crm_leads ( id, stage, last_activity_at )')
+    .select('lead_id, tipo, sent_at, lead:crm_leads ( id, stage, trilha, last_activity_at )')
     .in('tipo', ['sondagem_2', 'silencio_2'])
     .eq('status', 'enviado')
     .lte('sent_at', limite)
@@ -352,6 +371,11 @@ async function encerrarSemResposta() {
   for (const f of data || []) {
     const lead = f.lead;
     if (!lead || ETAPAS_MORTAS.has(lead.stage)) continue;
+
+    // "Perdido" é veredito de venda. Quem saiu da trilha de venda depois
+    // de a rodada ter sido enviada não é venda perdida — é atendimento que
+    // acabou, e quem o encerra é o consultor, com `finalizado`.
+    if ((lead.trilha || 'lead') !== TRILHA_DE_VENDA) continue;
 
     // Respondeu depois da sondagem? Então não está perdido.
     if (lead.last_activity_at && new Date(lead.last_activity_at) > new Date(f.sent_at)) continue;
@@ -426,6 +450,12 @@ async function ciclo() {
       }
     }
     await encerrarSemResposta();
+
+    // O fim de linha da outra trilha. Fica no mesmo ciclo porque é a mesma
+    // pergunta feita do outro lado — "isto ainda está acontecendo?" —, e
+    // porque é uma consulta indexada, sem chamada externa nenhuma.
+    await funil.encerrarRelacionamentosParados().catch(err =>
+      logger.error('[followup] Falha ao encerrar relacionamentos parados:', err.message));
   } catch (err) {
     logger.error('[followup] Ciclo falhou:', err.message);
   } finally {

@@ -11,7 +11,7 @@
 import { config } from '../config.js';
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
-import { registrarEvento } from './funil.js';
+import { registrarEvento, definirTipoDeContato, FILTRO_ETAPAS_FECHADAS } from './funil.js';
 // Sem ciclo: `evolution.js` só importa config e logger.
 import { telefoneValido } from './evolution.js';
 import { evoClient } from './evo-client.js';
@@ -413,7 +413,7 @@ async function estadoDoSilencio(contactId) {
  *
  * @returns {Promise<'lead'|'aluno'|'indefinido'>}
  */
-async function situacaoComercial(lead) {
+export async function situacaoComercial(lead) {
   try {
     let idMember = lead.evo_id_member || null;
 
@@ -528,8 +528,16 @@ export async function varrerSilenciosos(opcoes = {}) {
   // fora da janela, e o `break` do lote não pode deixá-los para trás.
   const { data: leads, error } = await supabase
     .from('crm_leads')
-    .select('id, full_name, phone, stage, contact_id, last_activity_at')
-    .not('stage', 'in', '(ganho,perdido)')
+    .select('id, full_name, phone, stage, contact_id, last_activity_at, evo_id_member')
+    // A régua é de VENDA, e agora existe onde perguntar isso.
+    //
+    // Antes a única defesa era `situacaoComercial`, no fim do laço, e ela
+    // custa uma ida ao EVO por lead. Com a ramificação, quem já foi
+    // classificado como aluno, convênio, fornecedor ou engano nem entra na
+    // consulta — a pergunta cara sobra só para quem ninguém classificou
+    // ainda, que é exatamente o caso em que ela é necessária.
+    .eq('trilha', 'lead')
+    .not('stage', 'in', FILTRO_ETAPAS_FECHADAS)
     .not('contact_id', 'is', null)
     .not('phone', 'is', null)
     .gte('last_activity_at', piso)
@@ -610,6 +618,33 @@ export async function varrerSilenciosos(opcoes = {}) {
       logger.info(`[followup] Lead ${lead.id} fora da varredura: ${situacao === 'aluno'
         ? 'é aluno com contrato ativo' : 'situação indefinida (EVO não respondeu)'}`);
       ignorados[situacao] = (ignorados[situacao] || 0) + 1;
+
+      // Descobriu que é aluno? Então grave — a pergunta não precisa ser
+      // feita de novo. Contrato ativo no EVO é a definição mais forte que
+      // existe aqui: não depende de a Leia ter percebido, nem de alguém
+      // ter marcado no painel. Da próxima varredura em diante ele sai pelo
+      // filtro de trilha, sem custar chamada ao EVO, e o painel para de
+      // contá-lo como pipeline.
+      //
+      // `indefinido` não grava nada de propósito: EVO fora do ar não é
+      // fato sobre a pessoa, e gravar "aluno" por causa de um timeout
+      // tiraria um lead de verdade do funil de forma permanente.
+      //
+      // ⚠️ E `simular` não grava NADA, nem isto. A simulação existe para o
+      // consultor conferir a régua antes de soltá-la, e uma prévia que
+      // reclassifica lead não é prévia — foi o que aconteceu na primeira
+      // execução desta função depois da ramificação, em 31/08/2026: um
+      // `--dry` moveu 9 leads para a trilha de relacionamento.
+      if (situacao === 'aluno' && !simular) {
+        try {
+          await definirTipoDeContato(lead, 'aluno', {
+            actor: 'sistema',
+            motivo: 'contrato ativo no EVO',
+          });
+        } catch (err) {
+          logger.warn(`[followup] Não deu para classificar o lead ${lead.id}: ${err.message}`);
+        }
+      }
       continue;
     }
 
@@ -689,7 +724,7 @@ export async function vencidos(limite = 20) {
     .select(`
       id, tipo, scheduled_for, contexto, tentativas,
       lead:crm_leads (
-        id, full_name, phone, stage, contact_id, interest,
+        id, full_name, phone, stage, trilha, contact_id, interest,
         evo_id_prospect, evo_id_member, experimental_at, experimental_activity
       )
     `)
@@ -742,5 +777,5 @@ export async function registrarNoFunil(leadId, tipo, resumo, payload = {}) {
 export const followup = {
   JANELA, JANELAS, janelaDoDia, dentroDaJanela, horarioDoLembrete, TIPOS_SILENCIO,
   agendar, cancelar, aoAgendarExperimental, proximaSondagem, varrerSilenciosos,
-  vencidos, registrarEnvio, registrarTentativa, registrarNoFunil,
+  vencidos, registrarEnvio, registrarTentativa, registrarNoFunil, situacaoComercial,
 };

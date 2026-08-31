@@ -174,6 +174,9 @@
   .e-experimental_realizada { background: #14532d; color: #bbf7d0; }
   .e-ganho { background: var(--acento-escuro); color: #f0fdf4; }
   .e-perdido { background: #450a0a; color: #fca5a5; }
+  /* Fim da linha do relacionamento: encerrado, sem ser ganho nem perdido —
+     por isso cinza, e não verde nem vermelho. */
+  .e-finalizado { background: #334155; color: #cbd5e1; }
 
   .parado-ok { color: var(--suave); }
   .parado-atencao { color: var(--alerta); font-weight: 600; }
@@ -351,6 +354,19 @@
       <div class="metricas" id="pendencias"></div>
       <div class="fila-pendencia" id="fila-pendencia" style="display:none"></div>
       <div class="funil-barras" id="funil-barras"></div>
+
+      <!--
+        As duas trilhas. Não é filtro: é qual funil está na tela.
+
+        Venda tem experimental, venda e perda. Relacionamento é o
+        atendimento que não é venda — aluno, convênio, fornecedor — e vai
+        de CONVERSAS a COM CONSULTOR e FINALIZADAS. Misturar os dois é o
+        que fazia "leads abertos" contar aluno matriculado.
+      -->
+      <div class="chips" id="chips-trilha">
+        <button class="chip ativo" data-trilha="lead">Venda</button>
+        <button class="chip" data-trilha="relacionamento">Relacionamento</button>
+      </div>
 
       <div class="chips" id="chips-etapas"></div>
 
@@ -633,6 +649,9 @@ const estado = {
   dryRun: false,
   rotulos: {},
   etapas: [],
+  etapasPorTrilha: { lead: [], relacionamento: [] },
+  tipos: {},
+  trilha: 'lead',
   filtroEtapas: new Set(),
   ordenar: 'last_activity_at',
   direcao: 'desc',
@@ -757,11 +776,23 @@ $$('nav button').forEach(b => b.addEventListener('click', () =>
 async function carregarMetricas() {
   const m = await api('/funil/metricas');
 
+  // Os cartões são da VENDA — é o que "funil" quer dizer. O
+  // relacionamento entra num cartão próprio, ao lado, porque responde
+  // outra pergunta: quanto atendimento que não é venda este número
+  // absorve. Somar os dois é o que fazia "leads abertos" contar aluno
+  // matriculado e a conversão sair diluída.
+  const rel = m.relacionamento || { abertos: 0, total: 0 };
+
   $('#metricas').innerHTML = `
     <div class="cartao">
       <div class="rotulo">Leads abertos</div>
       <div class="valor">${m.abertos}</div>
-      <div class="nota">${m.total} no total</div>
+      <div class="nota">${m.total} no total · só venda</div>
+    </div>
+    <div class="cartao">
+      <div class="rotulo">Relacionamento</div>
+      <div class="valor">${rel.abertos}</div>
+      <div class="nota">${rel.finalizados || 0} finalizado(s)</div>
     </div>
     <div class="cartao ${m.parados > 0 ? 'atencao' : ''}">
       <div class="rotulo">Parados</div>
@@ -784,12 +815,16 @@ async function carregarMetricas() {
       <div class="nota">sobre ${m.ganhos + m.perdidos} decididos</div>
     </div>`;
 
-  const maior = Math.max(1, ...Object.values(m.porEtapa));
+  // As barras acompanham a trilha que está na tela: mostrar as etapas de
+  // venda enquanto a tabela lista relacionamento seria dizer uma coisa e
+  // listar outra.
+  const porEtapa = estado.trilha === 'lead' ? m.porEtapa : (rel.porEtapa || {});
+  const maior = Math.max(1, ...Object.values(porEtapa));
   $('#funil-barras').innerHTML = estado.etapas.map(e => `
     <div class="funil-linha">
       <span>${esc(estado.rotulos[e] || e)}</span>
-      <span class="barra"><i style="width:${(m.porEtapa[e] || 0) / maior * 100}%"></i></span>
-      <span class="qtd">${m.porEtapa[e] || 0}</span>
+      <span class="barra"><i style="width:${(porEtapa[e] || 0) / maior * 100}%"></i></span>
+      <span class="qtd">${porEtapa[e] || 0}</span>
     </div>`).join('');
 }
 
@@ -926,8 +961,13 @@ function desenharFila() {
     const alvo = chave === 'consultor'
       ? `data-lead="${i.leadId}"`
       : `data-conversa="${i.conversaId}"`;
+    // A fila de handoff é uma só para as duas trilhas — o fornecedor
+    // espera na mesma lista que o lead quente. Dizer qual é qual ajuda a
+    // escolher por onde começar.
+    const naoEhVenda = i.tipo && i.tipo !== 'lead'
+      ? (estado.tipos[i.tipo]?.rotulo || i.tipo) : null;
     const detalhe = chave === 'consultor'
-      ? telefoneBonito(i.telefone)
+      ? [telefoneBonito(i.telefone), naoEhVenda].filter(Boolean).join(' · ')
       : [telefoneBonito(i.telefone), i.consultor ? 'com ' + i.consultor : null, i.previa]
           .filter(Boolean).join(' · ');
 
@@ -953,9 +993,11 @@ async function irParaConversa(id) {
   await abrirConversa(id);
 }
 
+// Redesenhado a cada carga, porque a lista de etapas muda com a trilha —
+// e o `ativo` sai do estado, não da classe que estava no botão anterior.
 function montarChips() {
   $('#chips-etapas').innerHTML = estado.etapas.map(e =>
-    `<button class="chip" data-etapa="${e}">${esc(estado.rotulos[e] || e)}</button>`
+    `<button class="chip${estado.filtroEtapas.has(e) ? ' ativo' : ''}" data-etapa="${e}">${esc(estado.rotulos[e] || e)}</button>`
   ).join('');
 
   $$('#chips-etapas .chip').forEach(c => c.addEventListener('click', () => {
@@ -967,8 +1009,21 @@ function montarChips() {
   }));
 }
 
+// Trocar de trilha é trocar de funil, então o filtro de etapa da anterior
+// não sobrevive: `perdido` não existe do outro lado, e o filtro herdado
+// devolveria uma tabela vazia sem explicar por quê.
+$$('#chips-trilha .chip').forEach(b => b.addEventListener('click', async () => {
+  if (estado.trilha === b.dataset.trilha) return;
+  estado.trilha = b.dataset.trilha;
+  estado.filtroEtapas.clear();
+  $$('#chips-trilha .chip').forEach(x => x.classList.toggle('ativo', x === b));
+  await carregarFunil();
+  await carregarMetricas();
+}));
+
 async function carregarFunil() {
   const p = new URLSearchParams();
+  p.set('trilha', estado.trilha);
   if (estado.filtroEtapas.size) p.set('etapas', [...estado.filtroEtapas].join(','));
   if ($('#f-busca').value.trim()) p.set('busca', $('#f-busca').value.trim());
   if ($('#f-dono').value) p.set('dono', $('#f-dono').value);
@@ -979,12 +1034,22 @@ async function carregarFunil() {
 
   const dado = await api('/funil?' + p);
   estado.etapas = dado.etapas;
+  estado.etapasPorTrilha = dado.etapasPorTrilha || estado.etapasPorTrilha;
   estado.rotulos = dado.rotulos;
+  estado.tipos = dado.tipos || estado.tipos;
+  montarChips();
 
+  const eVenda = estado.trilha === 'lead';
   const corpo = $('#corpo-funil');
   $('#funil-vazio').style.display = dado.leads.length ? 'none' : 'block';
+  $('#funil-vazio').textContent = eVenda
+    ? 'Nenhum lead com esses filtros.'
+    : 'Nenhum atendimento de relacionamento com esses filtros.';
+  // Buscando, o servidor devolve as duas trilhas — dizer isso evita que a
+  // linha de um aluno na tabela de venda pareça erro de classificação.
+  const ondeProcurou = dado.trilha === 'todas' ? ' Busca nas duas trilhas.' : '';
   $('#funil-total').textContent = dado.leads.length
-    ? `Mostrando ${dado.leads.length} de ${dado.total} leads.` : '';
+    ? `Mostrando ${dado.leads.length} de ${dado.total} ${eVenda ? 'leads' : 'atendimentos'}.${ondeProcurou}` : '';
 
   corpo.innerHTML = dado.leads.map(l => {
     const parado = desde(l.stage_since);
@@ -999,9 +1064,14 @@ async function carregarFunil() {
       : l.evo_id_member ? `aluno ${l.evo_id_member}`
       : rotuloProspect(l.evo_id_prospect);
 
+    // O tipo só aparece quando diz algo: numa tabela de venda, "Lead" em
+    // toda linha é ruído.
+    const tipo = l.tipo_contato && l.tipo_contato !== 'lead'
+      ? ' · ' + esc(estado.tipos[l.tipo_contato]?.rotulo || l.tipo_contato) : '';
+
     return `<tr data-id="${l.id}">
       <td class="nome-lead">${esc(l.full_name || 'Sem nome')}
-        <small>${esc(telefoneBonito(l.phone || l.contato?.phone))} · ${esc(l.source || '')}</small></td>
+        <small>${esc(telefoneBonito(l.phone || l.contato?.phone))} · ${esc(l.source || '')}${tipo}</small></td>
       <td><span class="etapa e-${l.stage}">${esc(estado.rotulos[l.stage] || l.stage)}</span></td>
       <td class="${parado.classe}">${parado.texto}</td>
       <td>${l.owner ? esc(l.owner.name) : '<span class="vazio">—</span>'}</td>
@@ -1085,6 +1155,8 @@ async function abrirFicha(id) {
         ['Nascimento', l.birth_date ? soData(l.birth_date) : ''],
         ['Interesse', l.interest],
         ['Origem', l.source],
+        ['Tipo de contato', (estado.tipos[l.tipo_contato]?.rotulo || l.tipo_contato || 'Lead')
+          + ((l.trilha || 'lead') === 'lead' ? '' : ' · fora do funil de venda')],
         ['Prospect no EVO', l.evo_id_prospect == null ? 'não cadastrado'
           : l.evo_id_prospect < 0 ? 'só em ensaio (nada foi criado no EVO)'
           : '#' + l.evo_id_prospect],
@@ -1162,16 +1234,37 @@ function montarAcoes(l) {
   const soEnsaio = l.evo_id_prospect != null && l.evo_id_prospect < 0;
   const cadastroReal = l.evo_id_prospect != null && l.evo_id_prospect > 0;
 
+  // As etapas oferecidas são as da trilha DESTE atendimento, não as da
+  // tela: quem está no relacionamento não tem experimental para agendar
+  // nem venda para ganhar, e oferecer isso só produz etapa impossível.
+  const trilhaDoLead = l.trilha || 'lead';
+  const etapasDoLead = estado.etapasPorTrilha[trilhaDoLead] || estado.etapas;
+
   $('#aba-acoes').innerHTML = `
     <div class="bloco">
       <h3>Etapa</h3>
       <div class="linha-form">
         <select class="campo" id="ac-etapa">
-          ${estado.etapas.map(e => `<option value="${e}" ${e === l.stage ? 'selected' : ''}>${esc(estado.rotulos[e])}</option>`).join('')}
+          ${etapasDoLead.map(e => `<option value="${e}" ${e === l.stage ? 'selected' : ''}>${esc(estado.rotulos[e])}</option>`).join('')}
         </select>
         <button class="btn" id="btn-mudar-etapa">Mover</button>
       </div>
       <button class="btn pequeno" id="btn-assumir">Assumir este lead</button>
+    </div>
+
+    <div class="bloco">
+      <h3>Tipo de atendimento</h3>
+      <p style="color:var(--suave);font-size:13px;margin-top:0">
+        Quem não é venda sai do funil e para de receber follow-up.
+        Fica gravado no contato: vale para os próximos atendimentos dele.
+      </p>
+      <div class="linha-form">
+        <select class="campo" id="ac-tipo">
+          ${Object.entries(estado.tipos).map(([t, d]) =>
+            `<option value="${t}" ${t === (l.tipo_contato || 'lead') ? 'selected' : ''}>${esc(d.rotulo)}</option>`).join('')}
+        </select>
+        <button class="btn" id="btn-mudar-tipo">Aplicar</button>
+      </div>
     </div>
 
     <div class="bloco">
@@ -1242,6 +1335,10 @@ function montarAcoes(l) {
   $('#btn-assumir').addEventListener('click', () => acao(
     () => api(`/leads/${l.id}/assumir`, { corpo: {} }), 'Lead assumido.'));
 
+  $('#btn-mudar-tipo').addEventListener('click', () => acao(
+    () => api(`/leads/${l.id}/tipo`, { corpo: { tipo: $('#ac-tipo').value } }),
+    r => r?.aviso || 'Tipo de atendimento alterado.'));
+
   $('#btn-cadastrar-evo').addEventListener('click', () => acao(
     () => api(`/leads/${l.id}/evo`, { corpo: {} }), 'Prospect cadastrado no EVO.'));
 
@@ -1281,10 +1378,15 @@ function montarAcoes(l) {
 }
 
 /** Executa uma ação da ficha, avisa e recarrega o que mudou. */
+// `mensagemOk` pode ser uma função do resultado: há ação que precisa
+// contar o que o servidor decidiu (mover de funil um atendimento
+// encerrado, por exemplo, grava no contato mas não move a linha) e dizer
+// "feito" nesse caso seria mentira.
 async function acao(fn, mensagemOk) {
   try {
     const r = await fn();
-    toast(r?.dryRun ? mensagemOk + ' (ENSAIO — não foi ao EVO)' : mensagemOk, 'ok');
+    const texto = typeof mensagemOk === 'function' ? mensagemOk(r) : mensagemOk;
+    toast(r?.dryRun ? texto + ' (ENSAIO — não foi ao EVO)' : texto, 'ok');
     const id = estado.leadAberto?.lead?.id;
     await carregarFunil();
     await carregarMetricas();

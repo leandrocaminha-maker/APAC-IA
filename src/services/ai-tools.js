@@ -156,6 +156,38 @@ const allToolDeclarations = [
     },
   },
   {
+    name: 'definir_tipo_atendimento',
+    description:
+      'Registra COM QUEM você está falando, assim que a conversa deixar claro. ' +
+      'Não muda nada para o cliente e não aparece para ele: serve para o painel separar ' +
+      'venda de atendimento e para a régua de follow-up não cutucar quem não está comprando. ' +
+      'Chame UMA vez por conversa, assim que souber — e de novo só se a conversa virar outra coisa ' +
+      '(o aluno que passa a perguntar plano para o filho vira `lead`). ' +
+      '`lead`: quer conhecer, contratar ou voltar a treinar. É o padrão — na dúvida entre lead e ' +
+      'qualquer outro, é lead. ' +
+      '`aluno`: já é matriculado e o assunto é a rotina dele (horário, contrato, app, financeiro, ' +
+      'férias, atestado). ' +
+      '`convenio`: chega por convênio ou agregador (Gympass, TotalPass e afins) — o plano dele vem ' +
+      'de fora, não é venda nossa. ' +
+      '`fornecedor`: fornecedor, vendedor, prestador de serviço, proposta comercial para a academia. ' +
+      '`outro`: engano, assunto que não é da academia, qualquer coisa que não seja as anteriores.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tipo: {
+          type: 'string',
+          description: 'Com quem você está falando.',
+          enum: ['lead', 'aluno', 'convenio', 'fornecedor', 'outro'],
+        },
+        motivo: {
+          type: 'string',
+          description: 'Em poucas palavras, o que na conversa mostrou isso. Vai para o razão do funil; o cliente não lê.',
+        },
+      },
+      required: ['tipo'],
+    },
+  },
+  {
     name: 'carregar_base',
     description:
       'Carrega no seu contexto um módulo da base de conhecimento que não está carregado agora. ' +
@@ -644,6 +676,45 @@ const handlers = {
       voucher: { codigo: code, tipo: args.tipo, valor: args.valor || null,
         validade: validade.toISOString().slice(0, 10) },
       mensagem: `Voucher ${code} gerado com sucesso!`,
+    };
+  },
+
+  /**
+   * Ramifica o atendimento: isto é venda, ou é outra coisa?
+   *
+   * Escreve só no NOSSO banco — nada vai para o EVO —, então a conversa de
+   * teste passa por aqui igual à real. É o oposto das tools de cadastro: o
+   * simulador precisa mostrar a ramificação acontecendo, e a linha que ele
+   * cria em `crm_leads` é dele mesmo.
+   *
+   * O modelo não é avisado da trilha em que caiu. Ele não tem nada a fazer
+   * com ela, e dizer "agora você está na trilha de relacionamento" só
+   * convidaria a mudar de tom no meio da conversa — o atendimento é o
+   * mesmo; o que muda é onde o painel conta.
+   */
+  async definir_tipo_atendimento(args, contexto) {
+    const tipo = String(args.tipo || '').trim();
+
+    if (!funil.TIPOS_CONTATO[tipo]) {
+      return {
+        success: false,
+        mensagem: `Tipo "${tipo}" não existe. Use um de: ` +
+          `${Object.keys(funil.TIPOS_CONTATO).join(', ')}.`,
+      };
+    }
+
+    const { lead } = await leadDaConversa(contexto);
+
+    await funil.definirTipoDeContato(lead, tipo, {
+      actor: 'leia',
+      motivo: args.motivo || null,
+    });
+
+    return {
+      success: true,
+      tipo,
+      mensagem: 'Anotado. Siga a conversa normalmente — isto não muda nada para o cliente, ' +
+        'e não precisa ser chamado de novo nesta conversa.',
     };
   },
 

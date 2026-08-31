@@ -12,6 +12,7 @@
     "prompt": "node scripts/publicar-prompt.js",
     "test": "node --test src/**/*.test.js",
     "consultor": "node scripts/criar-consultor.js",
+    "classificar": "node scripts/classificar-retroativo.js",
     "campanha": "node scripts/campanha.js"
   },
   "dependencies": {

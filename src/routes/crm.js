@@ -145,7 +145,25 @@ router.post('/api/senha', rota(async (req, res) => {
 // Funil
 // ──────────────────────────────────────────────
 
+/**
+ * A tabela do funil — de UMA trilha por vez.
+ *
+ * `trilha` sai daqui junto com as etapas DELA, e não da lista inteira: a
+ * tela de relacionamento não tem experimental nem venda, e oferecer os
+ * chips dessas etapas ali só produziria filtro que nunca casa. `todas`
+ * existe para a busca por telefone, em que o consultor não sabe (nem
+ * deveria precisar saber) de que lado a pessoa está.
+ */
 router.get('/api/funil', rota(async (req, res) => {
+  // Busca atravessa as duas trilhas, sempre. Quem digita um telefone está
+  // procurando uma PESSOA, e não sabe (nem tem como saber) se ela foi
+  // classificada como aluno ou como lead — "não achei" seria a resposta
+  // errada para alguém que está no banco.
+  const trilha = req.query.busca ? 'todas'
+    : funil.TRILHAS.includes(req.query.trilha) ? req.query.trilha
+    : req.query.trilha === 'todas' ? 'todas'
+    : 'lead';
+
   const { leads, total } = await funil.listarFunil({
     etapas: req.query.etapas ? String(req.query.etapas).split(',').filter(Boolean) : null,
     dono: req.query.dono || null,
@@ -153,6 +171,7 @@ router.get('/api/funil', rota(async (req, res) => {
     busca: req.query.busca || null,
     desde: req.query.desde || null,
     ate: req.query.ate || null,
+    trilha,
     ordenar: req.query.ordenar || 'last_activity_at',
     direcao: req.query.direcao || 'desc',
     limite: parseInt(req.query.limite || '200', 10),
@@ -160,7 +179,15 @@ router.get('/api/funil', rota(async (req, res) => {
     incluirFechados: req.query.fechados === 'true',
   });
 
-  res.json({ leads, total, etapas: funil.ETAPAS, rotulos: funil.ETAPAS_ROTULO });
+  res.json({
+    leads,
+    total,
+    trilha,
+    etapas: trilha === 'todas' ? funil.ETAPAS : funil.ETAPAS_POR_TRILHA[trilha],
+    etapasPorTrilha: funil.ETAPAS_POR_TRILHA,
+    rotulos: funil.ETAPAS_ROTULO,
+    tipos: funil.TIPOS_CONTATO,
+  });
 }));
 
 router.get('/api/funil/metricas', rota(async (req, res) => {
@@ -268,6 +295,38 @@ router.post('/api/leads/:id/etapa', rota(async (req, res) => {
 
   if (!lead) return res.status(404).json({ erro: 'Lead não encontrado' });
   res.json(lead);
+}));
+
+/**
+ * Reclassifica o contato — a ramificação à mão.
+ *
+ * É a correção do que a Leia decidiu, e o caminho de quem nasceu no
+ * balcão. Vale para os dois lados: marcar como fornecedor tira o
+ * atendimento do funil de venda, e marcar como lead devolve.
+ *
+ * `forcar: true` porque aqui quem clica é gente. A trava que impede o
+ * automático de arrastar uma linha com experimental marcada existe contra
+ * a varredura, não contra o consultor — ele está olhando a conversa. O que
+ * nem ele move é atendimento encerrado; nesse caso a resposta traz um
+ * `aviso` dizendo o que aconteceu, em vez de o painel dizer que moveu.
+ */
+router.post('/api/leads/:id/tipo', rota(async (req, res) => {
+  const { tipo, motivo } = req.body || {};
+  if (!funil.TIPOS_CONTATO[tipo]) {
+    return res.status(400).json({
+      erro: `Tipo inválido. Use um de: ${Object.keys(funil.TIPOS_CONTATO).join(', ')}`,
+    });
+  }
+
+  const r = await funil.definirTipoDeContato(parseInt(req.params.id, 10), tipo, {
+    actor: `user:${req.usuario.id}`,
+    actorUserId: req.usuario.id,
+    motivo: motivo || `${req.usuario.nome} classificou pelo painel`,
+    forcar: true,
+  });
+
+  if (!r) return res.status(404).json({ erro: 'Lead não encontrado' });
+  res.json({ ...r.lead, movido: r.movido, aviso: r.aviso });
 }));
 
 /** "Este lead é meu" — assume a fila e vira dono. */

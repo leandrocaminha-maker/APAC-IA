@@ -244,6 +244,16 @@ export const config = {
     // a Leia. Numa conversa que passa por bot, consultor no painel e
     // consultor no celular, saber quem está do outro lado não é detalhe.
     assinarResposta: env('CRM_ASSINAR_RESPOSTA', 'true') !== 'false',
+
+    // Dias sem atividade até um atendimento de RELACIONAMENTO ser dado por
+    // finalizado. Só vale para a trilha que não é venda: lead parado é
+    // trabalho a fazer, atendimento parado é assunto que terminou.
+    //
+    // Ninguém "encerra" a conversa de quem perguntou o horário da natação e
+    // foi treinar — sem este prazo a coluna CONVERSAS só cresce, e um painel
+    // que sempre mostra pendência é um painel que ninguém olha. 0 desliga e
+    // devolve o encerramento ao botão do painel.
+    diasParaFinalizar: parseInt(env('RELACIONAMENTO_DIAS_FINALIZAR', '3'), 10),
   },
 
   // Webhook

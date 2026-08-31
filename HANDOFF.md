@@ -513,6 +513,93 @@ vendeu e a venda não existir.
 **A VPS está com `EVO_DRY_RUN=true`.** Para valer de verdade, troque no `.env` e
 recrie o container.
 
+## A ramificação do funil — venda x relacionamento
+
+Criada em 31/08/2026. Migrations **009** e **010**.
+
+⚠️ **As duas rodam ANTES do deploy do código, nesta ordem.** A 009 só adiciona o
+rótulo `finalizado` ao enum `crm_stage`, sozinha, porque o Postgres proíbe usar
+um rótulo novo na mesma transação em que ele foi criado — e a 010 o usa em
+índice parcial. Código no ar sem as colunas derruba a tela do funil com
+`column crm_leads.trilha does not exist`.
+
+`garantirLeadDoContato` abre uma linha em `crm_leads` para **todo** contato que
+escreve, e o número é o principal da academia. Até aqui todos corriam no mesmo
+funil de venda: quem quer comprar, o aluno perguntando o horário da natação, o
+cliente de convênio, o fornecedor de toalha e o vendedor de software. O efeito
+não é cosmético — é que a leitura do painel deixa de valer:
+
+- **"Leads abertos"** conta aluno matriculado.
+- **"Parados há 2+ dias"** conta o fornecedor que nunca teve o que responder.
+- **A conversão** sai dividida por um denominador cheio de gente que nunca
+  esteve comprando.
+
+### As duas trilhas
+
+| `trilha` | Etapas | Para quem |
+|---|---|---|
+| `lead` | novo → em conversa → aguardando/com consultor → experimental → **ganho/perdido** | Quem quer conhecer, contratar ou voltar a treinar |
+| `relacionamento` | em conversa → aguardando/com consultor → **finalizado** | Aluno, convênio/agregador, fornecedor, e o resto |
+
+As três primeiras etapas são as **mesmas** nas duas: chegar mensagem, abrir
+handoff e o consultor assumir acontecem igual dos dois lados, e são os mesmos
+gatilhos que movem. O que muda é o fim da linha.
+
+`finalizado` não é `ganho` nem `perdido` de propósito: os dois entram na
+conversão, e responder o horário da natação para um aluno não é venda ganha nem
+venda perdida.
+
+### Quem decide, e onde fica gravado
+
+| Quem | Como |
+|---|---|
+| A Leia | tool `definir_tipo_atendimento`, assim que a conversa deixa claro com quem ela fala |
+| O consultor | gaveta do lead → Ações → **Tipo de atendimento** |
+| A varredura de follow-up | ao descobrir no EVO que o "lead" tem contrato ativo, grava `aluno` |
+| `mudarEtapa` | ao fechar uma venda (`ganho`), marca o contato como `aluno` |
+
+**O tipo mora no CONTATO (`wa_contacts.tipo_contato`), a trilha mora na linha.**
+São perguntas diferentes: "este número é de um aluno" é permanente e vale para o
+próximo atendimento dele; "este atendimento é de venda" vale para esta linha.
+Sem a memória no contato, o mesmo aluno voltaria a nascer como lead toda vez que
+abrisse conversa.
+
+⚠️ **Linha fechada não é reclassificada.** Um lead `ganho` continua `ganho` na
+trilha de venda para sempre, mesmo depois de a pessoa virar aluna — senão a
+venda some da conversão no dia seguinte ao fechamento. A classificação nova vale
+para o contato e para o próximo atendimento.
+
+**O caminho de volta existe e é automático.** Se um fato de venda cair numa
+linha de relacionamento (o aluno agendou experimental de outra modalidade, ou
+comprou mais um plano), `mudarEtapa` devolve a linha à trilha de venda, com
+evento no razão. Recusar a etapa esconderia uma venda de verdade do funil.
+
+### O que a ramificação muda no follow-up
+
+A régua de venda passou a filtrar `trilha = 'lead'` **na consulta**, e não só no
+fim do laço. Antes, a única defesa era `situacaoComercial()` — uma ida ao EVO
+por lead candidato, na última linha da varredura. Ela continua lá, para quem
+ninguém classificou ainda, mas quem já é conhecido nem entra na lista:
+
+- menos chamada ao EVO por varredura;
+- o worker confere a trilha **de novo** antes de enviar, porque entre o
+  agendamento e o envio passam horas — e é nesse intervalo que a Leia descobre
+  que o "lead" é o fornecedor;
+- `encerrarSemResposta` não marca `perdido` fora da trilha de venda: quem não é
+  venda não é venda perdida.
+
+### Como um atendimento de relacionamento termina
+
+Sozinho, por inatividade — `RELACIONAMENTO_DIAS_FINALIZAR`, padrão **3 dias**,
+0 desliga. Roda no ciclo do worker de follow-up, não manda mensagem nenhuma e
+só toca a trilha de relacionamento.
+
+Existe porque ninguém volta ao painel para encerrar a conversa de quem perguntou
+o horário e foi treinar. Sem prazo, a coluna CONVERSAS só cresce — e painel que
+nunca esvazia é painel que ninguém olha. Escrevendo de novo, a pessoa abre um
+atendimento **novo**, na mesma trilha (o tipo mora no contato): cada assunto é
+um atendimento, que é o que se quer contar.
+
 ## Follow-up de venda — a régua que recupera quem some
 
 O agente só roda quando chega mensagem: um `messages.create` por mensagem

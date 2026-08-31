@@ -19,6 +19,7 @@ import { config } from '../config.js';
 import { evoClient, EvoApiError } from './evo-client.js';
 import {
   registrarEvento, mudarEtapa, leadPorProspect, leadPorMembro,
+  FILTRO_ETAPAS_FECHADAS,
 } from './funil.js';
 
 /** Autor de uma ação, no formato que crm_lead_events espera. */
@@ -849,7 +850,7 @@ export async function sincronizarProspects({ dias = 7 } = {}) {
       .from('crm_leads')
       .select('id, evo_id_prospect, evo_id_member, stage, full_name')
       .not('evo_id_prospect', 'is', null)
-      .not('stage', 'in', '(ganho,perdido)')
+      .not('stage', 'in', FILTRO_ETAPAS_FECHADAS)
       .limit(500);
 
     for (const lead of leads || []) {

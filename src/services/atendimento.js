@@ -56,7 +56,8 @@ export async function filaDeConsultor({ limite = 12 } = {}) {
   const { data, count, error } = await supabase
     .from('crm_leads')
     .select(
-      'id, full_name, phone, stage_since, contact_id, contato:wa_contacts ( id, name, phone )',
+      'id, full_name, phone, stage_since, contact_id, trilha, tipo_contato, ' +
+      'contato:wa_contacts ( id, name, phone )',
       { count: 'exact' },
     )
     .eq('stage', 'aguardando_consultor')
@@ -71,11 +72,16 @@ export async function filaDeConsultor({ limite = 12 } = {}) {
     total: count ?? leads.length,
     maisAntigoEm: leads[0]?.stage_since || null,
     contatos: leads.map(l => l.contact_id).filter(Boolean),
+    // `tipo` vai junto porque a fila é uma só e as duas trilhas caem nela:
+    // o handoff do fornecedor espera na mesma lista que o lead quente. Quem
+    // vai atender decide melhor a ordem sabendo qual é qual.
     itens: leads.slice(0, limite).map(l => ({
       leadId: l.id,
       nome: l.full_name || l.contato?.name || null,
       telefone: l.phone || l.contato?.phone || null,
       desde: l.stage_since,
+      tipo: l.tipo_contato || 'lead',
+      trilha: l.trilha || 'lead',
     })),
   };
 }
