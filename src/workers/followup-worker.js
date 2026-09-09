@@ -26,7 +26,9 @@ import { evoClient } from '../services/evo-client.js';
 import { aiAgent } from '../services/ai-agent.js';
 import { funil } from '../services/funil.js';
 import { saveMessage } from '../services/contacts.js';
-import { sendText, telefoneValido } from '../services/evolution.js';
+import { sendText, telefoneValido, numeroExiste } from '../services/evolution.js';
+import { limiteEnvio } from '../services/limite-envio.js';
+import { esperar } from '../lib/ritmo.js';
 
 let rodando = false;
 
@@ -292,6 +294,20 @@ async function enviarUm(item) {
   // preço, horário ou regra (está escrito em `prompts/followup.md`). Os
   // roteiros em `instrucao()` perguntam, não afirmam — mas um roteiro novo
   // que precise de um dado da academia tem que voltar para `processMessage`.
+  // Última porta antes de gastar o modelo, e a única que pergunta ao
+  // WhatsApp em vez de ao formato: o número existe?
+  //
+  // `telefoneValido`, acima, confere 11 dígitos e o 9 na terceira posição.
+  // Isso recusa fixo e lixo de cadastro, e não sabe nada sobre número
+  // desligado — que é o caso comum numa base de lead de meses atrás.
+  // Enviar para número morto é sinal pesado no detector de spam da Meta,
+  // além de gerar a mensagem e pagar por ela à toa.
+  if (config.envio.conferirExistencia && !(await numeroExiste(lead.phone))) {
+    await followup.registrarEnvio(item.id, { erro: `número não existe no WhatsApp (${lead.phone})` });
+    logger.warn(`[followup] Lead ${lead.id}: ${lead.phone} não existe no WhatsApp — nada enviado`);
+    return;
+  }
+
   const resposta = await aiAgent.gerarFollowup({
     instrucao: instrucao(item.tipo, { lead, presenca, contexto: item.contexto }),
     conversationId: conversa.id,
@@ -342,6 +358,11 @@ async function enviarUm(item) {
     const proxima = await followup.proximaSondagem(lead);
     if (proxima) await followup.agendar(lead.id, proxima.tipo, proxima.quando, item.contexto);
   }
+
+  // `true` significa "uma mensagem saiu" — é o que faz o ciclo esperar
+  // antes do próximo. Toda saída antecipada devolve `undefined`, que é
+  // falso: cancelamento e recusa não consomem intervalo nenhum.
+  return true;
 }
 
 /**
@@ -469,15 +490,45 @@ async function ciclo() {
     // está gravado, não há risco de agendar e enviar em duplicidade.
     await talvezVarrer();
 
-    const fila = await followup.vencidos(20);
-    for (const item of fila) {
+    // Lote pequeno e espaçado, não os 20 de antes num laço apertado.
+    //
+    // O problema não era o número: era que `dentroDaJanela` prende no
+    // minuto EXATO da abertura tudo que venceu fora da janela — noite,
+    // domingo, sábado à tarde. Às 9h00 o monte inteiro estava vencido de
+    // uma vez, e este laço mandava tudo sem intervalo nenhum. Até 20
+    // aberturas de conversa no mesmo minuto, todo dia, no mesmo horário.
+    // Foi o que a Meta viu em 31/08/2026.
+    const fila = await followup.vencidos(config.followup.loteCiclo);
+
+    for (let i = 0; i < fila.length; i++) {
+      const item = fila[i];
+
+      // O teto do número inteiro, conferido a cada envio: campanha e
+      // régua de silêncio consomem a mesma cota, e nenhuma das duas sabe
+      // da outra. `break`, e não `continue` — se não cabe uma, não cabe
+      // nenhuma, e o resto fica pendente para amanhã.
+      const { ok, motivo } = await limiteEnvio.podeIniciarConversa();
+      if (!ok) {
+        logger.warn(`[followup] Ciclo interrompido: ${motivo}`);
+        break;
+      }
+
+      let saiuMensagem = false;
       try {
-        await enviarUm(item);
+        saiuMensagem = (await enviarUm(item)) === true;
       } catch (err) {
         logger.error(`[followup] Falha no follow-up ${item.id}:`, err.message);
         await followup.registrarTentativa(item.id, item.tentativas || 0, err.message);
+        // Espaça mesmo assim: a falha pode ter sido DEPOIS de a mensagem
+        // sair, e um intervalo desperdiçado custa menos que uma rajada.
+        saiuMensagem = true;
+      }
+
+      if (saiuMensagem && i < fila.length - 1) {
+        await esperar(config.envio.espacamentoSeg);
       }
     }
+
     await encerrarSemResposta();
 
     // O fim de linha da outra trilha. Fica no mesmo ciclo porque é a mesma
@@ -517,7 +568,11 @@ export async function startFollowupWorker() {
       'ou FOLLOWUP_SILENCIO_MINUTOS=0)');
   }
 
-  logger.info(`[followup] Worker iniciado (ciclo a cada ${minutos} min)`);
+  logger.info(
+    `[followup] Worker iniciado (ciclo a cada ${minutos} min, ` +
+    `${config.followup.loteCiclo} por ciclo, ~${config.envio.espacamentoSeg}s entre envios, ` +
+    `teto do número ${config.envio.tetoDiario || 'DESLIGADO'}/dia)`
+  );
   setTimeout(ciclo, 90_000);
   setInterval(ciclo, minutos * 60_000);
 }

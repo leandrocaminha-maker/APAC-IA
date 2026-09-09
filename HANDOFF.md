@@ -6,6 +6,85 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## 🚨 A Meta restringiu o número — 31/08/2026
+
+**"Sua conta está restringida no momento."** Responder segue liberado; **iniciar
+conversa nova, não.** A causa não foi um subsistema — foi a soma de três, cada um
+com o seu teto e nenhum sabendo do outro.
+
+Os números, medidos em `wa_messages` (conversas iniciadas por dia):
+
+| 24/08 | 25/08 | 26/08 | 27/08 | 28/08 | 29/08 | 30/08 | 31/08 |
+|---|---|---|---|---|---|---|---|
+| 1 | 21 | 22 | 6 | **79** | 52 | 0 | 50 |
+
+E a distribuição por hora nos três dias anteriores à restrição: **9h=33, 10h=24,
+11h=48, 12h=35** — 77% de tudo entre 9h e 13h, quase nada depois das 16h. Não é
+padrão de gente: é o monte da abertura da janela saindo de uma vez.
+
+### O que foi consertado
+
+| # | O que era | O que é agora |
+|---|---|---|
+| 1 | Nenhum teto do número. Campanha 40/dia + silêncio 15/varredura + follow-up sem teto | `limite-envio.js` — teto único de `ENVIO_TETO_DIARIO` (30), conferido por campanha, fila e follow-up |
+| 2 | `dentroDaJanela` prendia tudo no minuto exato da abertura; worker mandava 20 sem intervalo | Folga de até 45 min ao empurrar para a abertura; lote de 5, ~75s entre envios com ±40% |
+| 3 | Fila: 10 por ciclo a 1s cravado, sem noção de horário | Lote de 3, ~75s com folga, janela de contato respeitada (reagenda, não descarta) |
+| 4 | `sendText` mandava `{number, text}` — zero tempo de digitação | `delay` proporcional ao texto, 1,2s a 15s, com variação |
+| 5 | Nenhuma checagem de existência; número morto só aparecia depois de pagar o modelo | `numeroExiste()` antes de gerar, na campanha e no follow-up |
+
+### ⚠️ Duas coisas que vão surpreender no deploy
+
+**1. Nada sai pelo resto do dia do deploy.** Hoje já saíram 50 e o teto é 30. A
+campanha e o follow-up vão dizer "teto diário do número atingido" e parar. É o
+comportamento certo depois de uma restrição — mas não confunda com bug.
+
+**2. `limite-envio` falha FECHADA.** Se a contagem em `wa_messages` falhar, nada
+inicia conversa e o log diz por quê. Um dispositivo de segurança que falha aberto
+não é dispositivo de segurança. A exceção deliberada é `numeroExiste()`, que
+falha aberta: Evolution fora do ar não pode parar a régua inteira, e o gate de
+formato continua na frente.
+
+### Antes de a restrição cair — a alavanca é a régua, não a campanha
+
+**As duas campanhas estão `concluida`.** `aqua-inativos-dez24-jun25` fechou com
+52 enviado, 11 respondeu, 1 erro — zero pendente, zero agendado — e a fila está
+vazia. **Não rode `campanha.js pausar` nelas:** o script não confere o estado
+antes de escrever, então marcaria uma campanha encerrada como "pausada" e o
+`campanha.js status` passaria a mentir. Não há nada de campanha para estancar.
+
+O que sobrou vencido são **29 follow-ups, todos da régua de silêncio** —
+`silencio_1` 14 e `silencio_2` 15 —, mais 10 agendados para o futuro
+(`ae_lembrete_24h`, `ae_pos_aula`, `sondagem_2`). O mais antigo está preso em
+`14:56:47Z`, e as três últimas saídas foram `14:57:13`, `:18` e `:23` — três
+aberturas de conversa em dez segundos, e a restrição cortou no meio do ciclo.
+
+Isso corrige o alvo do diagnóstico: nos três dias anteriores, `bot:followup` fez
+**118** dos 181 envios e a campanha **63**. A fonte principal é a régua de
+silêncio, não a campanha.
+
+Com o lote de 5, o espaçamento e o teto de 30/dia, os 29 já não saem em rajada —
+drenam ao longo de dias. Para risco zero no dia em que a restrição cair:
+
+```sql
+UPDATE crm_followups SET status = 'cancelado', erro = 'restricao Meta 31/08'
+ WHERE tipo IN ('silencio_1','silencio_2') AND status = 'pendente';
+```
+
+Cancelar não queima a rodada: a varredura só é bloqueada por `pendente` e
+`enviado`, então essas pessoas voltam a ser elegíveis quando você quiser. E
+`FOLLOWUP_SILENCIO_HABILITADO=false` impede varreduras novas enquanto o número
+não estabiliza — lembrando que ele **não** cancela o que já está agendado.
+
+### O que NÃO foi feito
+
+- **Segunda instância na Evolution** continua não existindo (ver "Riscos"). Um
+  bloqueio ainda derruba a academia inteira.
+- **API oficial (Cloud API)** — é o que a própria tela da Meta manda usar para
+  abordagem ativa. Campanha em número Baileys é o padrão que mais gera bloqueio,
+  e nenhum ajuste de ritmo muda essa categoria. Decisão pendente.
+
+---
+
 ## ⚠️ Antes de qualquer coisa — 31/08/2026
 
 **O funil tem DUAS trilhas desde hoje.** Quem abrir o painel vai ver menos lead

@@ -172,6 +172,32 @@ export function horarioDoLembrete(aula) {
 }
 
 /**
+ * Folga máxima, em minutos, de quem foi empurrado para a abertura da janela.
+ *
+ * Cabe dentro da menor janela que temos (sábado, 9h–13h) com sobra larga.
+ */
+const FOLGA_NA_ABERTURA_MIN = 45;
+
+/**
+ * Espalha quem caiu na abertura da janela.
+ *
+ * `dentroDaJanela` devolve o minuto EXATO da abertura — 9h00:00 — para
+ * tudo que venceu fora dela. Agendamento da noite, do domingo e da tarde
+ * de sábado aterrissavam todos no mesmo segundo, e o worker mandava o
+ * monte inteiro de uma vez. Era a rajada diária das 9h que a Meta viu em
+ * 31/08/2026.
+ *
+ * A folga só entra quando o horário FOI movido. Quem já estava dentro da
+ * janela é respeitado: a varredura de silêncio calcula o espaçamento dela
+ * própria, e embaralhar isso aqui desfaria o trabalho dela.
+ */
+function comFolgaNaAbertura(pedido) {
+  const alvo = dentroDaJanela(pedido);
+  if (alvo.getTime() === pedido.getTime()) return alvo;
+  return new Date(alvo.getTime() + Math.floor(Math.random() * FOLGA_NA_ABERTURA_MIN * 60_000));
+}
+
+/**
  * Agenda um follow-up.
  *
  * Idempotente pela UNIQUE parcial `(lead_id, tipo) WHERE pendente`: chamar
@@ -179,7 +205,7 @@ export function horarioDoLembrete(aula) {
  * data em vez de duplicar.
  */
 export async function agendar(leadId, tipo, quando, contexto = {}) {
-  const alvo = dentroDaJanela(quando instanceof Date ? quando : new Date(quando));
+  const alvo = comFolgaNaAbertura(quando instanceof Date ? quando : new Date(quando));
 
   const { data, error } = await supabase
     .from('crm_followups')

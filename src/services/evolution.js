@@ -151,14 +151,84 @@ export function telefoneValido(bruto) {
  * @param {string} text - Texto da mensagem
  * @returns {Promise<object>} Resposta da Evolution API
  */
-export async function sendText(phone, text) {
+/**
+ * Quanto tempo a mensagem fica "digitando" antes de sair, em ms.
+ *
+ * Proporcional ao texto, entre um piso e um teto. O teto existe porque o
+ * `delay` da Evolution **segura a resposta HTTP**: digitar 400 caracteres
+ * no ritmo real de um polegar seriam uns 90 segundos pendurados numa
+ * chamada, e o ganho sobre 15s é nenhum. A folga aleatória fecha o resto —
+ * duas mensagens do mesmo tamanho não podem levar exatamente o mesmo
+ * tempo.
+ */
+function tempoDeDigitacao(texto) {
+  const { digitacaoMinMs, digitacaoMaxMs, digitacaoMsPorChar } = config.envio;
+  const bruto = digitacaoMinMs + String(texto || '').length * digitacaoMsPorChar;
+  const variacao = 1 + (Math.random() * 2 - 1) * 0.25;
+  return Math.round(Math.min(Math.max(bruto * variacao, digitacaoMinMs), digitacaoMaxMs));
+}
+
+/**
+ * Envia uma mensagem de texto.
+ *
+ * O `delay` não é enfeite. Até 31/08/2026 o corpo era `{ number, text }` e
+ * toda mensagem saía com zero tempo de digitação — três linhas escritas
+ * instantaneamente, sempre, o que nenhuma pessoa faz. A Evolution usa esse
+ * campo para marcar presença "composing" pelo tempo pedido antes de
+ * entregar.
+ *
+ * @param {string} phone - Número do destinatário
+ * @param {string} text - Texto da mensagem
+ * @param {object} [opts]
+ * @param {number} [opts.delayMs] - Sobrescreve o tempo de digitação.
+ * @returns {Promise<object>} Resposta da Evolution API
+ */
+export async function sendText(phone, text, { delayMs } = {}) {
   const number = normalizePhone(phone);
-  logger.info(`[evolution] sendText → ${number} (${text.length} chars)`);
+  const delay = delayMs ?? tempoDeDigitacao(text);
+  logger.info(`[evolution] sendText → ${number} (${text.length} chars, ${delay}ms digitando)`);
 
   return evoFetch(`/message/sendText/${instance}`, {
     method: 'POST',
-    body: JSON.stringify({ number, text }),
+    body: JSON.stringify({ number, text, delay }),
   });
+}
+
+/**
+ * O número existe no WhatsApp?
+ *
+ * `telefoneValido` confere FORMATO — 11 dígitos e o 9 na terceira posição.
+ * Isto confere existência, que é outra pergunta e só a Meta responde.
+ *
+ * Por que passou a importar em 31/08/2026: enviar para número morto é um
+ * dos sinais mais pesados do detector de spam, e a base fria do EVO
+ * (inativos de 2024–2025) vem cheia deles. O sintoma já tinha aparecido
+ * uma vez — `136030220984483` recebeu `exists: false` DEPOIS de a mensagem
+ * ter sido gerada e o modelo, pago.
+ *
+ * Na dúvida responde `true`: uma Evolution fora do ar não pode parar a
+ * régua inteira, e o gate de formato continua na frente. É o único ponto
+ * deste conserto que falha aberto, e de propósito.
+ *
+ * @returns {Promise<boolean>}
+ */
+export async function numeroExiste(phone) {
+  const number = normalizePhone(phone);
+
+  try {
+    const resposta = await evoFetch(`/chat/whatsappNumbers/${instance}`, {
+      method: 'POST',
+      body: JSON.stringify({ numbers: [number] }),
+    });
+
+    const lista = Array.isArray(resposta) ? resposta : [];
+    if (!lista.length) return true;   // resposta que não sabemos ler
+
+    return lista[0]?.exists !== false;
+  } catch (err) {
+    logger.warn(`[evolution] Não deu para conferir se ${number} existe: ${err.message}`);
+    return true;
+  }
 }
 
 /**
@@ -170,7 +240,8 @@ export async function sendText(phone, text) {
  */
 export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'image') {
   const number = normalizePhone(phone);
-  logger.info(`[evolution] sendMedia → ${number} (${mediatype})`);
+  const delay = tempoDeDigitacao(caption);
+  logger.info(`[evolution] sendMedia → ${number} (${mediatype}, ${delay}ms digitando)`);
 
   return evoFetch(`/message/sendMedia/${instance}`, {
     method: 'POST',
@@ -179,6 +250,7 @@ export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'imag
       mediatype,
       media: mediaUrl,
       caption,
+      delay,
     }),
   });
 }
@@ -236,4 +308,6 @@ export const evolution = {
   sendButtons,
   sendList,
   normalizePhone,
+  telefoneValido,
+  numeroExiste,
 };

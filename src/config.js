@@ -28,6 +28,70 @@ export const config = {
     monitorMinutos: parseInt(env('WHATSAPP_MONITOR_MINUTOS', '2'), 10),
   },
 
+  // Regulagem de envio do NÚMERO — o teto e o ritmo que valem para todo
+  // mundo, acima dos tetos de cada subsistema.
+  //
+  // Existe porque em 31/08/2026 a Meta restringiu a conta por disparo
+  // automático. A causa não foi um subsistema: foi a SOMA de três, cada um
+  // com o seu próprio teto e nenhum sabendo do outro — campanha (40/dia),
+  // régua de silêncio (15 por varredura, de hora em hora) e follow-up de
+  // venda (sem teto). Mais de cem aberturas de conversa por dia saindo de
+  // um número Baileys, e a rajada das 9h por cima.
+  envio: {
+    // Teto de conversas NOVAS por dia, para o número inteiro. Conta
+    // follow-up e tudo que sai pela fila; resposta a mensagem recebida não
+    // entra (a própria Meta libera responder). 0 desliga o teto.
+    //
+    // 30 é o valor de recomeço depois de uma restrição, não o valor de
+    // regime. A conta vinha operando acima de 100. Suba devagar — uma
+    // semana em 30, e só então 40, 50 — e olhando `crm_supressoes`: o que
+    // derruba número é a soma de volume com gente marcando spam.
+    tetoDiario: parseInt(env('ENVIO_TETO_DIARIO', '30'), 10),
+
+    // Intervalo MÉDIO entre dois envios automáticos, em segundos. O valor
+    // real de cada intervalo sai com ±40% de folga aleatória — cadência de
+    // relógio é o que denuncia robô, e 1 mensagem por segundo cravada era
+    // o que a fila fazia.
+    espacamentoSeg: parseInt(env('ENVIO_ESPACAMENTO_SEG', '75'), 10),
+
+    // Confere no WhatsApp se o número existe antes de gerar e enviar.
+    //
+    // Duas coisas de uma vez: número morto é sinal pesado no detector de
+    // spam (uma lista fria de inativos de 2024–2025 vem cheia deles), e a
+    // checagem acontece ANTES da chamada ao modelo, que é onde o dinheiro
+    // é gasto. Uma chamada local à Evolution por envio.
+    conferirExistencia: env('ENVIO_CONFERIR_EXISTENCIA', 'true') !== 'false',
+
+    // Tempo de "digitando" antes de cada mensagem sair, em ms. Proporcional
+    // ao tamanho do texto, entre o piso e o teto. Toda mensagem saía com
+    // zero — ninguém escreve três linhas instantaneamente.
+    digitacaoMinMs: parseInt(env('ENVIO_DIGITACAO_MIN_MS', '1200'), 10),
+    digitacaoMaxMs: parseInt(env('ENVIO_DIGITACAO_MAX_MS', '15000'), 10),
+    digitacaoMsPorChar: parseInt(env('ENVIO_DIGITACAO_MS_POR_CHAR', '45'), 10),
+  },
+
+  // Fila de saída (`wa_message_queue`) — campanha e apps irmãos.
+  fila: {
+    // Quantas mensagens por ciclo. Era 10, a 1 por segundo: dez disparos
+    // em dez segundos, e o poll voltava cinco segundos depois. ~40 por
+    // minuto sustentado, que é perfil de disparo em massa.
+    lote: parseInt(env('FILA_LOTE', '3'), 10),
+
+    // A fila respeita a janela de contato (seg–sex 9h–20h30, sáb 9h–13h,
+    // domingo nunca)? O que estiver vencido fora da janela é REAGENDADO
+    // para a próxima abertura, não descartado.
+    //
+    // Isto não existia: um lote enfileirado às 2h saía às 2h. Vale
+    // inclusive para os apps irmãos — cobrança e NFS-e também são
+    // mensagem de WhatsApp para a Meta, e o número é o mesmo.
+    respeitaJanela: env('FILA_RESPEITA_JANELA', 'true') !== 'false',
+
+    // Quanto tempo a fila se cala depois de bater o teto diário, em
+    // minutos. Sem isso ela refaria a contagem a cada poll de 5s até a
+    // meia-noite.
+    pausaTetoMin: parseInt(env('FILA_PAUSA_TETO_MIN', '20'), 10),
+  },
+
   // Anthropic (Claude) — cérebro do agente
   anthropic: {
     apiKey: env('ANTHROPIC_API_KEY', ''),
@@ -192,6 +256,19 @@ export const config = {
     // com o atraso de até um ciclo, e a reconsulta de presença também. Por
     // isso 10 min, e não 60.
     minutos: parseInt(env('FOLLOWUP_MINUTOS', '10'), 10),
+
+    // Quantos follow-ups o ciclo envia de uma vez.
+    //
+    // Era 20, e saíam num laço `await` sem intervalo nenhum — o único
+    // espaçamento era a latência do modelo. Como `dentroDaJanela` prende
+    // no minuto exato da abertura tudo que venceu fora da janela, isso
+    // virava até 20 aberturas de conversa às 9h00 de todo dia. Era o sinal
+    // mais robótico do sistema.
+    //
+    // 5 por ciclo, espaçados por `ENVIO_ESPACAMENTO_SEG` com folga, cabem
+    // com sobra nos 10 minutos do ciclo — e 30/h é muito mais do que a
+    // régua precisa.
+    loteCiclo: parseInt(env('FOLLOWUP_LOTE_CICLO', '5'), 10),
 
     // Régua de lead que parou de responder.
     //

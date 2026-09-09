@@ -28,7 +28,8 @@ import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
 import { dentroDaJanela, janelaDoDia } from './followup.js';
 import { montarSegmento } from './segmentos.js';
-import { normalizePhone, telefoneValido } from './evolution.js';
+import { normalizePhone, telefoneValido, numeroExiste } from './evolution.js';
+import { limiteEnvio } from './limite-envio.js';
 
 // As constantes espelhadas saíram em 28/08/2026, quando a janela deixou de
 // ser 9h–20h30 todo dia: sábado fecha às 13h e domingo não tem contato.
@@ -489,10 +490,27 @@ export async function processarCampanha(campanha, gerarTexto) {
   }
 
   const jaHoje = await enviadosHoje(campanha.id);
-  const restante = campanha.teto_diario - jaHoje;
-  if (restante <= 0) {
+  const restanteDaCampanha = campanha.teto_diario - jaHoje;
+  if (restanteDaCampanha <= 0) {
     return { agendados: 0, motivo: `teto diário de ${campanha.teto_diario} atingido` };
   }
+
+  // O teto do NÚMERO, que é outro e está acima deste.
+  //
+  // O teto da campanha só sabe da campanha. A régua de silêncio e o
+  // follow-up de venda saem pelo mesmo WhatsApp e consomem a mesma
+  // paciência da Meta — foi a soma dos três, e não nenhum deles sozinho,
+  // que restringiu a conta em 31/08/2026.
+  //
+  // A conferência aqui não substitui a do `queue-processor`, que é a que
+  // vale na hora de enviar. Ela evita gerar (e pagar) texto que ficaria
+  // parado na fila até amanhã.
+  const cota = await limiteEnvio.cota();
+  if (!cota.ok) {
+    return { agendados: 0, motivo: cota.motivo || 'teto diário do número atingido' };
+  }
+
+  const restante = Math.min(restanteDaCampanha, cota.restante);
 
   const { data: alvos } = await supabase
     .from('crm_campanha_alvos')
@@ -540,6 +558,18 @@ export async function processarCampanha(campanha, gerarTexto) {
     const quando = dentroDaJanela(horarios[i]);
 
     try {
+      // Antes de gerar: o número existe mesmo?
+      //
+      // `telefoneValido` já recusou fixo e lixo de cadastro na montagem do
+      // segmento, mas ele só sabe de formato. Base fria de inativo de
+      // 2024–2025 vem cheia de número desligado — e enviar para número
+      // morto é dos sinais mais pesados no detector de spam da Meta, além
+      // de custar uma geração de texto que ninguém vai ler.
+      if (config.envio.conferirExistencia && !(await numeroExiste(alvo.phone))) {
+        await marcarErro(alvo.id, 'número não existe no WhatsApp');
+        continue;
+      }
+
       const texto = await gerarTexto(alvo, campanha);
       if (!texto?.trim()) {
         await marcarErro(alvo.id, 'o gerador não produziu texto');
