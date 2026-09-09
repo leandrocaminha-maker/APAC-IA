@@ -79,16 +79,17 @@ atualizado.
 
 ## O que ainda falta na base
 
-Conferido arquivo por arquivo em 19/08/2026: **não existe mais nenhum `PENDENTE`
-de dado na base** — as únicas ocorrências da palavra são as notas que explicam a
-marcação. Endereço e contatos, aula experimental, matrícula, estrutura,
-diferencial de cada atividade, Hidro Zen, feriados e vigência de preços foram
-todos preenchidos.
+Conferido arquivo por arquivo em 19/08/2026: endereço e contatos, aula
+experimental, matrícula, estrutura, diferencial de cada atividade, Hidro Zen,
+feriados e vigência de preços foram todos preenchidos.
 
-Sobrou pouco, e nada que trave uma venda:
+O único `PENDENTE` de dado que sobrou na base é o de **serviços de saúde**. O
+FREE PASS entrou em 09/09/2026 junto com o anúncio e foi fechado no mesmo dia.
+Fora isso, nada trava uma venda:
 
 | Prioridade | Dado | Onde |
 | --- | --- | --- |
+| ✅ | ~~**Termos do FREE PASS de 7 dias**~~ — respondidos em 09/09/2026, no mesmo dia em que a oferta entrou | `informacoes-gerais.md`: todas as atividades (adulto = Estilo de Vida Plus; vale para infantil também), só para quem nunca foi aluno ou parou há mais de 6 meses, ativação presencial com o consultor, uma vez só. **O início dos 7 dias é decisão do consultor** — não há data automática, e a Leia é proibida de afirmar quando começa ou termina |
 | 🔴 | **Atendimento a PCD, e a criança com TEA ou outra necessidade específica** | `informacoes-gerais.md` — já apareceu numa conversa de teste (id40, 20/08) e o agente teve de transferir. É pergunta de mãe/pai decidindo matrícula, não curiosidade |
 | 🔴 | **Serviços de saúde e bem-estar:** fisioterapia, hidroterapia, quiropraxia, massagem relaxante, liberação miofascial, drenagem linfática, acupuntura — a academia oferece? É à parte do plano? Quanto custa? | `informacoes-gerais.md` — hoje está tudo `PENDENTE` e o agente transfere em qualquer uma dessas |
 | ✅ | ~~Descontos: família, matrícula antecipada, convênio empresa~~ — respondido em 20/08/2026 | `planos-e-valores.md` seção 4: 65+ e família de 3 ou mais, 10%, sem acúmulo e sem negociação |

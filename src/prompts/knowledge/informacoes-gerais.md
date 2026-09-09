@@ -102,12 +102,61 @@ obrigatório **passar no chuveiro** antes da aula.
 > sistema recusando) ou quando quem pede **é aluno ativo** — a experimental é do
 > fluxo de oportunidade, não de matriculado.
 
+## FREE PASS de 7 dias
+
+- Existe? **Sim.** É a oferta de um anúncio nas redes sociais, feita para
+  atrair cliente novo.
+- É gratuito? **Sim**, e são **7 dias**.
+- O que dá acesso? **Todas as atividades.** Para adulto (13+), isso equivale ao
+  plano **Estilo de Vida Plus** — o mais completo, com musculação, coletivas,
+  atividades aquáticas e Pilates Fit Studio.
+- Vale para criança? **Sim.** Vale também para as turmas infantis, pela mesma
+  regra de "todas as atividades".
+- Quem pode usar? **Só quem nunca foi aluno, ou ex-aluno com mais de 6 meses
+  sem contrato.**
+- Como é ativado? **Com o consultor, presencialmente.** Pode ser ativado no
+  mesmo dia em que a pessoa vier para a aula experimental.
+- Os 7 dias contam a partir de quando? **Quem define o início é o consultor**,
+  na ativação. Não existe data automática — e por isso você **nunca afirma
+  quando o passe começa nem quando termina**. Se perguntarem, a resposta
+  honesta é que isso é combinado na ativação, com o consultor.
+- Pode ser usado mais de uma vez pela mesma pessoa? **Não.** É uma vez só.
+
+**Não é a mesma coisa que a aula experimental.** A experimental é uma aula
+avulsa e gratuita, que você agenda para qualquer oportunidade. O FREE PASS é a
+oferta do anúncio, de 7 dias. Quem chega dizendo que viu o anúncio está
+falando do FREE PASS — e confirmar uma coisa quando a pessoa perguntou da outra
+faz a academia parecer desorganizada logo no primeiro contato.
+
+As duas se encaixam: **a experimental é o caminho para o passe.** Você agenda a
+experimental; o consultor ativa o FREE PASS no dia, presencialmente. Você não
+ativa passe nenhum, e não promete ativação — promete a aula.
+
+⚠️ **Os 6 meses do passe não são os 3 meses da reativação.** São réguas
+diferentes, para coisas diferentes, e trocá-las promete a quem não tem direito:
+
+| Tempo sem contrato | Volta a ser lead? | Pode usar o FREE PASS? |
+| --- | --- | --- |
+| Menos de 3 meses | Não — ainda é retenção | Não |
+| Entre 3 e 6 meses | Sim, e faz experimental | **Não** |
+| Mais de 6 meses | Sim | Sim |
+
+O número de meses vem do `buscar_cadastro`, no campo `mesesInativo` — não
+estime pela conversa. Quem nunca se matriculou (`nada` ou `oportunidade`) é
+elegível; quem aparece como `aluno` não é.
+
+> ⚠️ Esta oferta **não se oferece**: só se confirma a quem perguntar por ela.
+> A regra está em "Regras que não se quebram", no prompt.
+
 ## Ex-aluno que volta
 
 **Quem está sem contrato há mais de 3 meses volta à condição de lead** e pode
 fazer aula experimental normalmente, como qualquer oportunidade nova. Quem
 aplica a regra é a tool `buscar_cadastro`, que cruza o status do cadastro com a
 data de fim do último contrato — o EVO sozinho não faz esse caminho de volta.
+
+> Voltar a ser lead **não** dá direito ao FREE PASS: o passe exige mais tempo
+> sem contrato do que a reativação. A régua está na seção "FREE PASS de 7 dias".
 
 O retorno é registrado como **oportunidade nova**, com o número do cadastro
 antigo anotado para o consultor ver o histórico.
