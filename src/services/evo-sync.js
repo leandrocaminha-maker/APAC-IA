@@ -569,6 +569,140 @@ export async function guardarEventoWebhook(envelope) {
  * ⚠️ O que NÃO dá: mudança de etapa/status do prospect. O EVO não emite
  * evento para isso — quem cobre é o poller em `sincronizarProspects`.
  */
+/** Etapas encerradas: o atendimento acabou, e aula nova não o reabre. */
+const ETAPAS_ENCERRADAS = new Set(['ganho', 'perdido', 'finalizado']);
+
+/** Etapas em que já existe uma aula registrada na ficha. */
+const ETAPAS_COM_AULA = new Set(['experimental_agendada', 'experimental_realizada']);
+
+/**
+ * Este lead já sabe de uma aula que ainda vai acontecer?
+ *
+ * Não basta olhar a etapa. Quem fez a primeira experimental fica em
+ * `experimental_realizada` com a data no passado — e se marcar uma segunda
+ * no balcão, essa é notícia nova: precisa de lembrete e de conversa depois,
+ * como qualquer outra. Barrar pela etapa deixaria a segunda aula muda.
+ *
+ * O que de fato dispensa trabalho é ter aula FUTURA na ficha, que é o caso
+ * de segundos atrás: a tool da Leia acabou de marcar e o webhook da venda
+ * de R$ 0 chega logo atrás, falando da mesma aula.
+ */
+function jaSabeDeAulaFutura(lead) {
+  if (ETAPAS_ENCERRADAS.has(lead.stage)) return true;
+  if (!ETAPAS_COM_AULA.has(lead.stage)) return false;
+
+  const quando = Date.parse(lead.experimental_at || '');
+  return Number.isFinite(quando) && quando > Date.now();
+}
+
+/**
+ * A aula experimental marcada no BALCÃO entra no funil por aqui.
+ *
+ * ## Como ela chega
+ *
+ * Não por `ActivityEnroll`. Esse evento está assinado desde o começo e
+ * nunca recebeu nada — confirmado num teste em 12/09/2026, marcando uma
+ * experimental direto no EVO para o prospect 47086. O que chegou foi
+ * `NewSale`, porque o serviço "AULA EXPERIMENTAL" é **vendido por R$ 0**
+ * toda vez que alguém marca um trial. É o mesmo motivo pelo qual
+ * `ehSomenteExperimental` existe.
+ *
+ * ## O que faltava
+ *
+ * Até então esse ramo só PROTEGIA: reconhecia a venda de R$ 0 e parava,
+ * para o lead não fechar como ganho por engano (o que cancelaria os
+ * follow-ups da aula — aconteceu com 8 leads em 25/08/2026). Mas ninguém
+ * movia o lead. O resultado, para quem falou com a Leia e depois marcou no
+ * balcão: o funil seguia dizendo "em conversa", sem lembrete de 24h e sem
+ * conversa pós-aula. Pelo caminho da Leia isso funciona porque a tool move
+ * o lead ela mesma, não porque o webhook faça algo.
+ *
+ * ## A ordem aqui é de custo
+ *
+ * Casar o lead é de graça (Supabase). Só depois de existir lead E de ele
+ * ainda não saber da aula é que sai a consulta ao EVO — a venda não diz
+ * QUANDO é a aula, só que ela foi vendida, e sem hora não há lembrete.
+ * Assim o evento do prospect que nunca passou pelo WhatsApp, e o da aula
+ * que a própria Leia acabou de marcar, não custam requisição nenhuma.
+ */
+async function aoVerExperimentalNaVenda(detalhe, evento) {
+  const idMember = detalhe?.idMember ?? detalhe?.IdMember ?? null;
+  const idProspect = detalhe?.idProspect ?? detalhe?.IdProspect ?? null;
+
+  let lead = idMember ? await leadPorMembro(idMember) : null;
+  if (!lead && idProspect) lead = await leadPorProspect(idProspect);
+
+  // Prospect que só existe no EVO: nada a fazer, e o funil não inventa
+  // lead para quem nunca escreveu.
+  if (!lead) return null;
+
+  // A Leia marcou, e a tool dela já moveu o lead segundos atrás. Sair
+  // daqui agora poupa a consulta de sessões — e `agendar` é idempotente,
+  // então mesmo que passasse não duplicaria follow-up.
+  if (jaSabeDeAulaFutura(lead)) {
+    logger.debug(`[evo-sync] Lead ${lead.id} já sabe da aula (${lead.stage}) — nada a reaprender`);
+    return lead;
+  }
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const ate = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const sessoes = await evoClient
+    .sessoesDaPessoa({ idProspect, idMember, de: hoje, ate })
+    .catch(err => {
+      logger.warn(`[evo-sync] Não deu para ler as sessões do lead ${lead.id}: ${err.message}`);
+      return [];
+    });
+
+  // A mais próxima: o EVO devolve a agenda da pessoa na janela, e a venda
+  // que acabou de chegar é a da aula que ainda vai acontecer.
+  const sessao = sessoes
+    .filter(s => s?.date)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+
+  if (!sessao) {
+    logger.warn(
+      `[evo-sync] Venda ${evento.id_record} é de aula experimental do lead ${lead.id}, ` +
+      'mas o EVO não devolveu a sessão — lead não movido, porque sem a hora não há lembrete'
+    );
+    return lead;
+  }
+
+  const dataHora = `${String(sessao.date).slice(0, 10)} ${String(sessao.startTime || '00:00').slice(0, 5)}`;
+  const atividade = sessao.activitieName || sessao.activityName || null;
+
+  // `somenteAvanco` protege o retrocesso de etapa, mas NÃO descarta a
+  // atualização: `mudarEtapa` grava `campos` mesmo quando bloqueia a etapa
+  // (ver funil.js). É o que faz a SEGUNDA experimental funcionar — quem
+  // está em `experimental_realizada` e marca outra no balcão continua
+  // nessa etapa, com a ficha e a régua apontando para a aula nova. A etapa
+  // não volta atrás, e a pessoa recebe lembrete e conversa pós-aula igual.
+  const atualizado = await mudarEtapa(lead, 'experimental_agendada', {
+    actor: 'evo-webhook',
+    somenteAvanco: true,
+    motivo: `Aula experimental de ${atividade || 'atividade'} marcada no EVO para ${dataHora}`,
+    campos: {
+      experimental_at: paraISO(dataHora),
+      experimental_status: 'agendada',
+      experimental_activity: atividade,
+    },
+    payload: { idSale: evento.id_record, sessao },
+  });
+
+  // A régua da aula — lembrete de 24h e conversa depois. É o que torna a
+  // aula do balcão indistinguível da que a Leia marcou, do ponto de vista
+  // do cliente.
+  try {
+    const { followup } = await import('./followup.js');
+    await followup.aoAgendarExperimental(atualizado || lead, { dataHora, atividade });
+  } catch (err) {
+    logger.error(`[evo-sync] Follow-up da experimental do lead ${lead.id} falhou: ${err.message}`);
+  }
+
+  logger.info(`[evo-sync] Lead ${lead.id}: experimental marcada no EVO para ${dataHora} (${atividade || 'atividade'})`);
+  return atualizado || lead;
+}
+
 /**
  * Tipos que o `switch` abaixo sabe interpretar.
  *
@@ -627,6 +761,7 @@ export async function processarEventoWebhook(evento) {
             `[evo-sync] ${tipo} ${evento.id_record} é do serviço de aula experimental — ` +
             'não fecha lead como ganho'
           );
+          lead = await aoVerExperimentalNaVenda(detalhe, evento);
           break;
         }
 
