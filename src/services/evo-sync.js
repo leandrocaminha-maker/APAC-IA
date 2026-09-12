@@ -830,22 +830,51 @@ export async function reprocessarPendentes(limite = 50) {
 // ──────────────────────────────────────────────
 
 /**
- * Varre os prospects do EVO e reconcilia com o funil.
+ * Reconcilia o funil com as conversões registradas no EVO.
  *
- * Existe porque o EVO **não emite evento de mudança de prospect**. Sem
- * isto, o que o consultor faz dentro do EVO (converter, marcar aula na
- * recepção, mudar dado) é invisível para o painel.
+ * Existe porque o EVO **não emite evento de mudança de prospect**, e
+ * porque webhook é entrega best-effort: se `CreateMember` se perder numa
+ * instabilidade, o lead nunca fecha como ganho. Este poller é a rede de
+ * segurança daquilo que o webhook entrega em tempo real.
  *
  * Não cria lead para prospect que nunca passou pelo WhatsApp — o funil é
  * do que a Leia e o painel tocam, não uma cópia da base inteira do EVO.
+ *
+ * ## Por que UMA consulta, e não uma por lead
+ *
+ * Até 12/09/2026 este poller fazia `buscarProspectPorId` para cada lead
+ * aberto com vínculo no EVO. Com 27 leads e ciclo de 15 min, eram
+ * **2.592 requisições por dia** — 75% de todo o consumo da conta, para
+ * uma resposta que era `{convertidos: 0, atualizados: 0}` na esmagadora
+ * maioria dos ciclos.
+ *
+ * A pergunta certa não é "o que houve com cada um dos meus 27?", e sim
+ * "quem converteu desde a última vez?" — e essa o EVO responde de uma vez,
+ * com `conversionDateStart`. O cruzamento com os leads locais é feito
+ * aqui, de graça. Mesma detecção, 1 requisição em vez de 27.
+ *
+ * ## O que foi removido junto, e por quê
+ *
+ * O ramo que copiava `currentStep`/`temperature` para `metadata`. Os dois
+ * campos vêm vazios em toda a base — conferido em 12/09/2026 numa amostra
+ * de convertidos: `currentStep: null` e `temperature: "0"` ou `""`. Era o
+ * lado caro do poller (exigia ler prospect a prospect) sustentando um
+ * dado que nunca chegou a existir. Se a academia começar a preencher, o
+ * caminho de volta é uma consulta própria, não 2.592 requisições por dia.
+ *
+ * ⚠️ Este poller nunca detectou aula marcada no balcão, apesar do que o
+ * comentário antigo sugeria: ele só lia campos do prospect, nunca as
+ * matrículas em aula. Quem cobre isso é o webhook `ActivityEnroll` — que
+ * está assinado e ainda não recebeu nenhum evento. Enquanto esse teste
+ * não for feito, essa lacuna existe, e existia igual antes desta mudança.
  */
-export async function sincronizarProspects({ dias = 7 } = {}) {
+export async function sincronizarProspects({ dias = 30 } = {}) {
   const inicio = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const resumo = { lidos: 0, atualizados: 0, convertidos: 0, erros: 0 };
 
   try {
     // Só olhamos leads que já têm vínculo com o EVO: são os únicos que
-    // podem ter mudado lá e importar aqui.
+    // podem ter convertido lá e importar aqui.
     const { data: leads } = await supabase
       .from('crm_leads')
       .select('id, evo_id_prospect, evo_id_member, stage, full_name')
@@ -853,45 +882,54 @@ export async function sincronizarProspects({ dias = 7 } = {}) {
       .not('stage', 'in', FILTRO_ETAPAS_FECHADAS)
       .limit(500);
 
-    for (const lead of leads || []) {
+    // Sem lead vinculado aberto não há o que reconciliar — e aí nem a
+    // consulta ao EVO precisa sair. É o caso comum de madrugada.
+    if (!leads?.length) {
+      logger.info('[evo-sync] Poll de prospects: nenhum lead vinculado aberto — nada a consultar');
+      return resumo;
+    }
+
+    // A janela é generosa (30 dias) de propósito: ela é o que faz o poller
+    // recuperar o que se perdeu enquanto o serviço esteve fora do ar. Cabe
+    // numa página — foram 38 conversões em 30 dias quando isto foi medido.
+    // A paginação existe para o mês que crescer, com teto para a consulta
+    // barata não virar cara de novo sem ninguém notar.
+    const convertidos = [];
+    for (let pagina = 0; pagina < 3; pagina++) {
+      const lote = await evoClient.buscarProspects({
+        conversionDateStart: inicio,
+        take: 50,
+        skip: pagina * 50,
+      });
+      convertidos.push(...lote);
+      if (lote.length < 50) break;
+    }
+
+    resumo.lidos = convertidos.length;
+
+    const porProspect = new Map(
+      convertidos.filter(p => p?.idProspect).map(p => [String(p.idProspect), p])
+    );
+
+    for (const lead of leads) {
       try {
-        const p = await evoClient.buscarProspectPorId(lead.evo_id_prospect);
-        resumo.lidos++;
-        if (!p) continue;
+        const p = porProspect.get(String(lead.evo_id_prospect));
+        if (!p?.idMember || lead.evo_id_member) continue;
 
-        const virouMembro = p.idMember && !lead.evo_id_member;
-
-        if (virouMembro) {
-          await mudarEtapa(lead, 'ganho', {
-            actor: 'evo-poll',
-            motivo: 'Oportunidade convertida em aluno dentro do EVO',
-            campos: {
-              evo_id_member: p.idMember,
-              evo_sync: 'sincronizado',
-              sale_at: p.conversionDate || new Date().toISOString(),
-            },
-            payload: { idMember: p.idMember, conversionDate: p.conversionDate },
-          });
-          resumo.convertidos++;
-          continue;
-        }
-
-        // currentStep/temperature: hoje vêm vazios em toda a base, mas se
-        // a academia começar a preencher, o painel passa a mostrar sem
-        // precisar de código novo.
-        if (p.currentStep || p.temperature) {
-          await supabase
-            .from('crm_leads')
-            .update({
-              metadata: { evo_current_step: p.currentStep, evo_temperature: p.temperature },
-              evo_sync: 'sincronizado',
-            })
-            .eq('id', lead.id);
-          resumo.atualizados++;
-        }
+        await mudarEtapa(lead, 'ganho', {
+          actor: 'evo-poll',
+          motivo: 'Oportunidade convertida em aluno dentro do EVO',
+          campos: {
+            evo_id_member: p.idMember,
+            evo_sync: 'sincronizado',
+            sale_at: p.conversionDate || new Date().toISOString(),
+          },
+          payload: { idMember: p.idMember, conversionDate: p.conversionDate },
+        });
+        resumo.convertidos++;
       } catch (err) {
         resumo.erros++;
-        logger.warn(`[evo-sync] Poll do lead ${lead.id} falhou: ${err.message}`);
+        logger.warn(`[evo-sync] Reconciliação do lead ${lead.id} falhou: ${err.message}`);
       }
     }
 
@@ -912,7 +950,15 @@ export async function sincronizarProspects({ dias = 7 } = {}) {
     });
   }
 
-  logger.info(`[evo-sync] Poll de prospects: ${JSON.stringify(resumo)}`);
+  // `lidos` mudou de significado com a consulta em lote: antes era "leads
+  // que eu perguntei um a um", agora é "conversões que o EVO devolveu na
+  // janela". A linha diz as duas coisas para o número não ser lido com a
+  // régua antiga — e para o custo ficar visível no próprio log.
+  logger.info(
+    `[evo-sync] Poll de prospects: ${resumo.convertidos} conversão(ões) reconciliada(s) ` +
+    `de ${resumo.lidos} na janela de ${dias}d` +
+    (resumo.erros ? `, ${resumo.erros} erro(s)` : '')
+  );
   return resumo;
 }
 

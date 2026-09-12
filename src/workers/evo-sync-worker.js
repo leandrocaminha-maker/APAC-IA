@@ -10,12 +10,16 @@
  *    uma venda registrada durante uma instabilidade do EVO ficava para
  *    sempre como evento pendente, e o lead nunca virava "ganho".
  *
- * 2. **Varre os prospects vinculados.** Esta é a parte que não tem
- *    alternativa: **o EVO não emite evento de mudança de prospect.** Não
- *    existe webhook para "o consultor mudou a etapa", "converteu na
- *    recepção" ou "marcou a aula pelo balcão". Sem este poller, tudo o
- *    que acontece dentro do EVO é invisível para o painel — e o funil
- *    passa a mentir por omissão.
+ * 2. **Reconcilia as conversões.** `CreateMember` e `NewSale` já avisam em
+ *    tempo real quando um prospect vira aluno, mas webhook é entrega
+ *    best-effort: o que se perder numa instabilidade não volta sozinho, e
+ *    o lead nunca fecha como ganho. Este passo é a rede embaixo disso.
+ *
+ *    Custa **uma** consulta por ciclo, não uma por lead: pergunta ao EVO
+ *    quem converteu na janela e cruza com os leads locais aqui. Até
+ *    12/09/2026 era o contrário — 27 requisições por ciclo, 2.592 por dia,
+ *    75% do consumo da conta inteira para reencontrar o que o webhook já
+ *    tinha entregado.
  *
  * Só olha leads que já têm `evo_id_prospect` e ainda estão abertos: o
  * funil é do que a Leia e o painel tocam, não uma cópia da base de 46 mil
