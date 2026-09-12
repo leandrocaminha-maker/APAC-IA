@@ -1,6 +1,6 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 31/08/2026, fim do dia.** Documento de continuidade: descreve
+> **Snapshot de 12/09/2026, fim do dia.** Documento de continuidade: descreve
 > onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
@@ -344,15 +344,21 @@ partir do `.env.example`:
   variável. O padrão do compose passou a ser `http://evolution-api:8080`, que é
   o que resolve dentro da `apac-network` para download de mídia.
 - ⚠️ `ADMIN_API_KEY` — confira se está preenchida; sem ela `/admin` responde 503
-- ℹ️ **As três variáveis de 31/08 NÃO estão no `.env` da VPS**, e não precisam
-  estar: valem os padrões do código. Só entram lá quando alguém quiser mudar o
-  número.
+- ✅ `FOLLOWUP_HANDOFF_HABILITADO=true` — **está** no `.env` da VPS, posto à mão
+  em 12/09/2026. É a exceção da lista abaixo: o padrão do código é `false`, de
+  propósito, então sem essa linha a devolução de handoff sobe desligada. Backup
+  do arquivo anterior em `/var/www/apac-ia-sales/.env.bak-handoff-2026-09-12`.
+- ℹ️ **As variáveis abaixo NÃO estão no `.env` da VPS**, e não precisam estar:
+  valem os padrões do código. Só entram lá quando alguém quiser mudar o número.
 
   | Variável | Padrão em vigor |
   |---|---|
   | `FOLLOWUP_DIAS_ATE_PERDIDO` | 5 dias depois da 2ª rodada |
   | `RELACIONAMENTO_DIAS_FINALIZAR` | 3 dias sem atividade |
   | `EVO_CHAMADAS_POR_MINUTO` | 32 (80% do teto de 40 do EVO) |
+  | `FOLLOWUP_HANDOFF_DIAS` | 4 dias de silêncio do cliente |
+  | `FOLLOWUP_HANDOFF_LOTE` | 10 devoluções por varredura |
+  | `EVO_MEMBRO_CHECAGEM_HORAS` | 24h de validade do "não é aluno" |
 
 **Armadilha do `env_file`:** uma linha que não seja comentário, vazia ou
 `VAR=valor` invalida o arquivo inteiro, e o `docker compose up` aborta **sem
@@ -524,10 +530,24 @@ Eventos assinados: `NewSale`, `RecurrentSale`, `CreateMember`,
 ⚠️ **Não existe evento de mudança de etapa ou status de prospect no EVO.** A lista
 completa da doc é de criação e alteração de membro, contrato, produto, serviço,
 venda, matrícula em atividade e transferência — nada sobre a evolução da
-oportunidade. Por isso o funil também depende do **poller**
-(`evoSync.sincronizarProspects`), que é o que enxerga o que o consultor faz
-dentro do EVO. Hoje ele roda sob demanda, por Ajustes → Sincronizar prospects;
-**ainda não está agendado**.
+oportunidade. Por isso existe o **poller** (`evoSync.sincronizarProspects`),
+que roda no `evo-sync-worker` a cada 15 min.
+
+⚠️ **O papel dele mudou em 12/09/2026.** Ele não é mais quem descobre a
+conversão — `CreateMember` e `NewSale` entregam isso em tempo real. Ele é a
+**rede** embaixo do webhook, que é entrega best-effort: o que se perder numa
+instabilidade não volta sozinho.
+
+E ele passou a custar **uma** requisição por ciclo, não uma por lead. Lia
+prospect a prospect (27 leads × 96 ciclos = 2.592/dia, 75% do consumo da conta)
+e, pior, era **cego**: `GET /api/v1/prospects?idProspect=N` devolve **null para
+prospect já convertido**, então o `if (!p) continue` engolia justamente o caso
+que ele existia para detectar. Agora pergunta "quem converteu desde a última
+vez?" com `conversionDateStart` e cruza com os leads locais aqui.
+
+⚠️ Ele **nunca** detectou aula marcada no balcão, apesar do que a versão antiga
+deste parágrafo sugeria: só lia campos do prospect. Quem cobre isso é o
+`NewSale` da venda de R$ 0 — ver a seção de 12/09.
 
 O envelope que o EVO manda é enxuto — `{ IdW12, IdBranch, IdRecord, EventType,
 ApiCallback }`. O dado real está atrás do `ApiCallback`, que é outra chamada
@@ -740,7 +760,8 @@ porque não existe turno em que o modelo possa agir.
 
 `workers/followup-worker.js` é esse turno.
 
-São **duas réguas**, disjuntas por construção.
+São **três réguas**, disjuntas por construção. As duas primeiras mandam
+mensagem; a terceira só devolve a conversa à Leia, para a segunda poder agir.
 
 **Régua da aula** — para quem marcou experimental. Nasce do agendamento:
 
@@ -774,7 +795,25 @@ vira a nossa última fala, a mesma regra aplicada duas vezes já produz "2 e 4
 dias". O efeito colateral é o desejado — se o consultor responder à mão no dia
 3, a mensagem dele reinicia o relógio.
 
-**O `perdido` do fim das duas réguas** é `encerrarSemResposta`, no ciclo do
+**Régua da devolução de handoff** — a terceira, desde 12/09/2026. Quando o
+consultor assume, a conversa vira `human` e as duas réguas acima param de
+enxergar o lead: a varredura só olha conversa `active` e o worker cancela o que
+estava agendado. Isso está certo enquanto o atendimento acontece — a Leia
+entrando por cima do consultor já produziu estrago (25/08, a conversa da
+Gisleide). O que faltava era o outro lado: **nada devolvia a conversa quando o
+atendimento parava**.
+
+`retomarHandoffsMudos` devolve à Leia quando o **cliente** calou há
+`FOLLOWUP_HANDOFF_DIAS` (4) — e só nesse caso. Quando quem sumiu foi o
+consultor (última mensagem do cliente), devolver seria mandar a Leia responder
+alguém que espera gente; esse caso é do cartão "aguardando resposta". Também não
+toca em `aguardando_consultor`, que é fila atrasada, nem em etapa encerrada.
+
+Roda no mesmo relógio da varredura de silêncio, **antes** dela: é a devolução
+que torna o lead elegível, então o handoff que emudeceu já entra como candidato
+na mesma passada. Ligada por `FOLLOWUP_HANDOFF_HABILITADO` (padrão `false`).
+
+**O `perdido` do fim das réguas** é `encerrarSemResposta`, no ciclo do
 worker. A espera é `FOLLOWUP_DIAS_ATE_PERDIDO` (padrão 5, 0 desliga), contada do
 **envio da segunda rodada** — é o tempo de a pessoa responder à última mensagem,
 não um silêncio novo.
@@ -1075,6 +1114,258 @@ PowerShell (`npm` é um `.ps1`). Pelo Git Bash funciona; pelo PowerShell, chame 
 - **Desligue a página quando a rodada de testes acabar** — senha curta em IP
   público não é para ficar no ar indefinidamente.
 
+## O que foi feito em 12/09/2026
+
+| | |
+|---|---|
+| Deploy | `28fbb16`, VPS igual ao repositório |
+| Migrations | 001–010 aplicadas. A **008 foi rodada hoje** — não estava no banco |
+| Ponto de partida | O painel marcava **219 leads parados** |
+| Resultado | 199 parados, consumo do EVO −95%, custo da API −34% |
+
+Cinco frentes, todas medidas antes e depois. A ordem abaixo é a da sessão.
+
+### 1. O beco sem saída do handoff
+
+**A pergunta que abriu o dia:** lead que vai para o consultor e para de
+responder entra na régua da Leia? **Não. E também não era encerrado.**
+
+Quando o consultor assume, a conversa vira `status = 'human'`. A varredura de
+silêncio só olha conversa `active`, e o worker cancela o que estava agendado
+("conversa está com o consultor"). Do outro lado, `encerrarSemResposta` só fecha
+quem chegou à segunda rodada, e `encerrarRelacionamentosParados` só mexe na
+trilha que não é venda. Resultado: **98 leads sem cutucada e sem encerramento**,
+mediana de 8,6 dias parados, 81 deles sem um único follow-up na vida.
+
+`followup.retomarHandoffsMudos()` fecha isso. Devolve a conversa à Leia quando o
+**cliente** calou há 4+ dias (`FOLLOWUP_HANDOFF_DIAS`), encosta
+`last_activity_at` — sem isso a janela de 7 dias da varredura barraria o lead
+que acabou de ser devolvido — e registra evento no funil.
+
+O que ela **não** faz, de propósito:
+
+- não devolve quem está em `aguardando_consultor` — ali o handoff foi aberto e
+  ninguém pegou; é fila atrasada, e devolver esconderia o problema;
+- não devolve quando a última mensagem é do **cliente** — nesse caso quem sumiu
+  foi o consultor, e a pessoa espera gente. Esse caso é do cartão "aguardando
+  resposta" do painel. São 24 leads hoje;
+- não muda etapa nem `assigned_to`. A etapa continua `com_consultor` porque é
+  isso que aconteceu.
+
+**Nasceu desligada** (`FOLLOWUP_HANDOFF_HABILITADO=false` no código; ligada à mão
+no `.env` da VPS depois da conferência). O motivo está na simulação: o primeiro
+lote não é fluxo, é acumulado, e nele havia contato que ninguém classificou —
+"INOVSERVICE FACILITEIS" e "Mais Distribuidora" entraram como lead de venda.
+`situacaoComercial` só reconhece **aluno** pelo contrato no EVO; fornecedor e
+convênio dependem de alguém marcar. Os três (com o número interno da Shirlei)
+foram classificados à mão antes de ligar.
+
+Primeira execução em produção: `98 conversas em modo humano no corte de 4d, 10
+examinadas, 10 com o cliente calado → 10 devolvidas à Leia`.
+
+O endpoint `POST /api/followups/handoffs-mudos` simula por padrão, como a
+varredura de silêncio.
+
+### 2. Três defeitos no fim da régua
+
+**`encerrarSemResposta` estava entupida.** Lia 50 linhas sem ordenação e sem
+filtrar lead já fechado — e como ela é justamente quem produz lead fechado, e
+nunca apaga nada, 45 das 50 lidas eram trabalho já feito. Sobravam 5 vagas úteis
+por ciclo e a fila real nunca era alcançada: **22 leads seguiam abertos** depois
+de duas rodadas sem resposta. Agora o filtro de etapa vai no SQL (com `!inner`,
+senão o PostgREST devolve `lead: null` em vez de omitir) e a leitura é ordenada
+por `sent_at`. As candidatas caíram de 78 para 33.
+
+**29 follow-ups `pendente` travados para sempre.** `vencidos()` filtra
+`tentativas < 3` e ninguém mudava o status; como `rodadaDeSilencio` para diante
+de qualquer pendente, **cada linha dessas era um lead proibido de receber
+follow-up**. Eram 29, 27 deles por `Evolution API 400` numa única tarde de 31/08.
+Ao bater o teto, a linha agora vira `falhou`.
+
+**O adiamento do `ae_pos_aula` consumia o mesmo contador.** Adiar não é falhar —
+são duas contagens com consequências opostas na mesma coluna, e o terceiro
+adiamento congelava a linha sem que nada tivesse falhado. O contador de
+adiamentos mora em `contexto.adiamentos` agora.
+
+`scripts/regularizar-parados.js` (`npm run regularizar`) limpou o acumulado:
+**24 leads encerrados** como perdido, **29 destravados**. Ele **simula por
+padrão** — ao contrário dos outros scripts daqui — porque a ação é em lote e
+irreversível na prática.
+
+### 3. O consumo do EVO: 3.100 → 140 requisições/dia
+
+Levantamento por ação, com o `fetch` interceptado para contar:
+
+| Origem | Antes | Depois |
+|---|---|---|
+| Poller de prospects | **2.592/dia** | 96/dia |
+| Varredura de silêncio (`situacaoComercial`) | ~480/dia | ~20/dia |
+| ApiCallback de webhook | 23/dia | ~11/dia |
+| Grade | sem cache | 1 por 10 min |
+
+**O poller não estava só caro — estava cego.** Ele lia prospect a prospect, 27
+leads × 96 ciclos. Mas `GET /api/v1/prospects?idProspect=N` devolve **null para
+prospect já convertido**: o EVO tira o convertido desse endpoint, e o
+`if (!p) continue` engolia em silêncio exatamente o caso que o poller existia
+para detectar. Estruturalmente incapaz do seu único trabalho, a 2.592
+requisições por dia.
+
+A pergunta certa não é "o que houve com cada um dos meus 27?", e sim "quem
+converteu desde a última vez?" — e o EVO responde de uma vez com
+`conversionDateStart`. Na primeira execução fechou **dois leads convertidos em
+05/09** que estavam abertos havia uma semana (53 e 247). Varredura de 180 dias
+depois: nenhum outro pendente.
+
+Saiu junto o ramo que copiava `currentStep`/`temperature` para `metadata` — os
+dois vêm vazios em toda a base (conferido: `currentStep: null`,
+`temperature: "0"`), e eram o que obrigava a ler um a um.
+
+**A resposta negativa do EVO agora é cacheada.** A varredura perguntava "este
+telefone é aluno?" para cada candidato, de hora em hora; para 33 dos 35 a
+resposta era a mesma. Guardada em `metadata.evo_nao_membro_em`, válida por
+`EVO_MEMBRO_CHECAGEM_HORAS` (24). Só o negativo — 'aluno' já se persiste sozinho
+mudando a trilha, e 'indefinido' é EVO fora do ar, que não é fato sobre a pessoa.
+
+**`RecurrentSale` NÃO foi desassinado**, ao contrário do que o levantamento
+inicial sugeriu. São 87 eventos em 7 dias com zero casamentos, mas o zero é
+empírico, não estrutural: ex-aluno reativável entra no funil como lead
+(`situacaoComercial` devolve `'lead'` quando `reativavel`), e se ele renovar quem
+fecha o lead como ganho é justamente o `RecurrentSale`. No lugar disso, o
+`buscarDetalhe` passou a rodar só para tipo que o `switch` sabe usar — o EVO
+manda eventos que ninguém assinou (`crm.segmentation.batch` respondeu por 122 dos
+660 guardados) e todos pagavam uma requisição para cair no `default`.
+
+### 4. `ActivityEnroll` está morto — quem chega é `NewSale`
+
+Teste feito marcando uma experimental direto no EVO para o prospect 47086.
+`ActivityEnroll` está assinado desde o começo e **nunca recebeu um evento**. O
+que chegou foi `NewSale`, porque o serviço "AULA EXPERIMENTAL" é vendido por R$ 0
+toda vez que alguém marca um trial — o mesmo motivo pelo qual
+`ehSomenteExperimental` existe.
+
+Até então esse ramo só **protegia**: reconhecia a venda de R$ 0 e parava, para o
+lead não fechar como ganho por engano. Ninguém movia o lead. Para quem falou com
+a Leia e depois marcou no balcão, o funil seguia dizendo "em conversa", sem
+lembrete de 24h e sem conversa pós-aula.
+
+`aoVerExperimentalNaVenda` fecha isso. A venda diz QUE a aula foi vendida, não
+QUANDO ela é — a hora vem de `sessoesDaPessoa` (`date` + `startTime` +
+`activitieName`). É uma requisição, e ela sai **por último**: primeiro casa o
+lead (Supabase, de graça) e confere se ele já sabe de aula futura, então o
+prospect que nunca passou pelo WhatsApp e a aula que a própria Leia acabou de
+marcar não custam requisição nenhuma.
+
+O guard olha a **data**, não só a etapa: quem está em `experimental_realizada`
+com aula no passado e marca outra no balcão precisa de lembrete igual. Nesse caso
+`somenteAvanco` segura a etapa, mas `mudarEtapa` grava `campos` mesmo assim — a
+ficha e a régua apontam para a aula nova sem a etapa retroceder.
+
+Testado nos quatro estados, com lead temporário e limpeza conferida:
+
+| Estado do lead | Resultado |
+|---|---|
+| `em_conversa` (balcão) | → `experimental_agendada`, 2 follow-ups |
+| `experimental_agendada` futura (Leia) | pulado, sem consulta de sessão |
+| `experimental_realizada`, aula nova | ficha e régua na aula nova, etapa mantida |
+| `ganho` | pulado |
+
+### 5. O cache de prompt: US$ 349 → 229/mês
+
+Consumo de 06 a 12/09: **42.497.496 tokens, US$ 82,91** em 992 chamadas, 152
+conversas, tudo em `claude-opus-5`. Média de US$ 11,84/dia.
+
+O gasto não estava na leitura — estava na **escrita**: 5,43 milhões de tokens a
+2x, US$ 52,87, **69% de todo o custo de entrada**.
+
+A causa era estrutural. O prefixo cacheado era um bloco só (`prompt + base
+inteira`) com um breakpoint no fim, e o cache casa por prefixo byte a byte —
+então esse bloco virava **uma entrada de cache por combinação de módulos**. Havia
+8 combinações, e o núcleo de 36.395 tokens, idêntico em toda conversa da
+academia, era reescrito colado a cada uma. 126 escritas.
+
+O culpado específico era o **índice de módulos**: ele lista o que está e o que
+não está carregado, muda a cada combinação, e ficava no *topo* da base,
+contaminando tudo abaixo.
+
+Agora são **três blocos com dois breakpoints**:
+
+| Bloco | Conteúdo | Cache |
+|---|---|---|
+| 1 | prompt + núcleo | breakpoint — uma entrada para o sistema inteiro |
+| 2 | módulos opcionais | breakpoint — varia por conversa, mas é pequeno |
+| 3 | índice + contexto do contato + data | depois do último breakpoint, nunca cacheado |
+
+**Nada muda no que o modelo recebe** — mesmos 10 arquivos, mesma modularidade,
+mesma segmentação por perfil. Só a ordem dos blocos.
+
+Validado contra a API com combos diferentes em sequência:
+
+```
+1. perfil adulto (frio)     escrita=40408  leitura=    0
+2. perfil INFANTIL          escrita= 9007  leitura=33928  <- compartilhou
+3. perfil adulto de novo    escrita=    0  leitura=40408
+```
+
+A chamada 2 é de outro perfil e mesmo assim leu 33.928 tokens que a 1 tinha
+acabado de escrever. Antes teria escrito ~46.000 do zero.
+
+**Duas alternativas foram medidas e descartadas:**
+
+- **Keep-alive** com `max_tokens: 0` para manter o cache quente: economiza só
+  US$ 4 a 7 por semana e não paga a complexidade. A maioria das escritas vem do
+  vão da madrugada, e ping nenhum atravessa 7 horas sem virar escrita. *(A
+  primeira simulação deu −US$ 21 porque pingava só entre dois usos reais da mesma
+  combinação — sabendo o futuro. Refeita com política implementável, cai para
+  −US$ 4.)*
+- **Base monolítica** (tudo sempre carregado): seria −36%, mais que os −34% dos
+  dois breakpoints. Mas desfaz a segmentação por idade, e aquilo não era só
+  custo: são 7.225 tokens de qualificação 13+ na conversa de quem pergunta por um
+  filho de 4 anos. Não foi trocado por dinheiro.
+
+O TTL de 1h continua certo: no mesmo tráfego, 5 minutos custaria US$ 11,74 a
+mais.
+
+⚠️ **Ao mexer em `buildSystem`:** nada que varie por conversa pode entrar nos
+blocos 1 ou 2. Hora, nome do contato, etapa do funil, campanha — tudo isso
+invalida o cache de **todo mundo**, não só daquela conversa. O teste é simples:
+duas conversas diferentes, no mesmo dia, com os mesmos módulos, têm que gerar
+bytes idênticos nos dois primeiros blocos.
+
+### A migration 008 nunca tinha sido aplicada
+
+`crm_controle` respondia `PGRST205`. Como `controle.js` falha **aberta** de
+propósito, nada aparecia no log — e a varredura de silêncio rodava **a cada
+ciclo de 10 min em vez de 60 em 60**, que é exatamente o bug que a 008 foi
+escrita para matar.
+
+Aplicada hoje. E ela se provou no primeiro deploy: o ciclo das 16:23 viu o
+marcador carimbado às 15:54 e **não varreu**. Antes, o restart zerava o relógio
+em memória e cada deploy disparava uma varredura nova — os "45 em vez de 15" de
+28/08.
+
+**Lição que vale além deste caso:** migration no repositório não prova migration
+aplicada. Ao investigar comportamento estranho de worker, vale um `select`
+simples em cada tabela do caminho antes de ler o código procurando o defeito.
+
+### Números do painel, antes e depois
+
+| | Antes | Depois |
+|---|---|---|
+| Leads parados (>2d) | 219 | 199 |
+| Follow-ups travados | 29 | 0 |
+| Ganhos | 3 | 5 |
+| Perdidos | 48 | 72 |
+| Conversão | 5,9% | 6,5% |
+
+Os 24 encerramentos entraram como perdido e os 2 do poller como ganho, então a
+conversão **subiu de 5,9% para 6,5%** — e passou a ser calculada sobre 77
+decididos em vez de 51. O número não melhorou porque vendeu mais hoje: melhorou
+porque parou de contar como pipeline vivo gente que já tinha decidido, dos dois
+lados.
+
+⚠️ Os parados caíram menos do que os 24 encerramentos sugerem (219 → 199, não
+195): leads novos entram no bolo o tempo todo, e quem cruzou os 2 dias hoje
+entrou junto. A conta não é estática.
 ## O que foi feito em 31/08/2026
 
 O funil deixou de tratar todo mundo como lead, o áudio do consultor passou a ser
@@ -1835,197 +2126,90 @@ manda chamá-la uma vez por conversa, com `lead` como padrão na dúvida.
 
 ### Onde retomar
 
-Tudo está **no ar e funcionando**: migrations 001–010 aplicadas, prompt
-publicado (com `definir_tipo_atendimento`), WhatsApp conectado, quatro workers
-rodando, VPS em `5f867ee`. Não há passo de instalação pendente.
+Tudo está **no ar e funcionando**: migrations 001–010 aplicadas (a 008 entrou em
+12/09), prompt publicado, WhatsApp conectado, quatro workers rodando, VPS em
+`28fbb16`. Não há passo de instalação pendente.
 
-✅ **O working tree está limpo.** Os sete arquivos que estavam editados e nunca
-commitados eram a passada de terminologia no infantil (*trilha* → *progressão
-pedagógica* / *turmas*); foram revisados, corrigidos e commitados em `6b18061`.
-Ver "A idade de entrada e o termo trilha", abaixo.
+⚠️ **O working tree tem alterações não commitadas** do trabalho de grade horária
+(`scripts/gerar-grade-horaria.js`, `grade-horaria.md`,
+`grade-horaria-infantil.md`). Elas são de outra frente e ficaram de fora dos
+commits de 12/09 de propósito.
 
 O que vale fazer a seguir, em ordem de retorno:
 
-**0. Conferir a ramificação com a conversa na mão.** É o que só a primeira
-sessão depois de 31/08 consegue fazer: abrir o painel em **Relacionamento** e
-ver se os 73 marcados como aluno são aluno mesmo, e abrir **Venda** para ver se
-sobrou aluno na conta. A classificação automática só sabe de contrato ativo no
-EVO — convênio, fornecedor e engano dependem de a Leia acertar na conversa, e
-**isso ainda não foi visto acontecer nenhuma vez**. Vale ler as primeiras
-conversas em que ela chamou a tool:
+**1. Aferir o custo da API depois da mudança de cache.** É a única medição de
+12/09 que ficou pela metade: o tráfego pós-deploy foi só de um perfil
+(`nucleo+adulto`), e dentro de uma combinação só a estrutura antiga também
+cacheava bem. O ganho aparece quando os perfis se alternam, e 09h–13h é quando
+isso acontece. Rodar o mesmo levantamento e comparar com a média de US$
+11,84/dia:
+
+```sql
+SELECT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+       SUM(cache_creation_tokens) AS escrita, SUM(cache_read_tokens) AS leitura,
+       ROUND(SUM(custo_usd), 2) AS usd
+FROM wa_ai_usage WHERE created_at > '2026-09-12' GROUP BY 1 ORDER BY 1;
+```
+
+A simulação prevê ~US$ 7,60/dia. Se sair muito acima, o suspeito é alguma coisa
+variável tendo entrado nos blocos 1 ou 2 de `buildSystem` — ver o aviso na
+seção de 12/09.
+
+**2. Ler o que a devolução de handoff produziu.** A régua devolveu 10 conversas
+à Leia às 16:56 de 12/09 e drena 10 por hora. São conversas que estavam paradas
+há até 20 dias, e **nenhuma resposta dela foi lida ainda**. Vale ver se a
+retomada faz sentido depois de tanto tempo, e se o consultor que tinha assumido
+não se incomoda com a Leia voltando a falar:
+
+```sql
+SELECT l.id, l.full_name, e.summary, e.occurred_at
+FROM crm_lead_events e JOIN crm_leads l ON l.id = e.lead_id
+WHERE e.type = 'handoff_devolvido' ORDER BY e.occurred_at DESC;
+```
+
+**3. Ler o que a régua de silêncio escreveu.** Pendente desde 28/08 e ainda
+sem dono: já são **282 retomadas enviadas** (`silencio_1` e `silencio_2`) para
+gente real, e ninguém leu o texto de nenhuma. O roteiro proíbe comentar o sumiço
+e manda retomar o assunto onde parou — se isso não estiver acontecendo, o ajuste
+é em `instrucao()`, no `followup-worker.js`. Ganhou peso agora: com a devolução
+de handoff, conversas paradas há semanas voltaram para a régua.
+
+```sql
+SELECT tipo, mensagem, sent_at FROM crm_followups
+WHERE tipo LIKE 'silencio%' AND status = 'enviado' ORDER BY sent_at DESC LIMIT 20;
+```
+
+**4. Os 24 leads no vácuo do consultor.** A devolução de propósito não toca em
+quem está esperando **gente** — última mensagem do cliente. Eles aparecem no
+cartão "aguardando resposta" do painel. Se esse cartão não está sendo olhado, o
+problema ali é de rotina, não de código.
+
+**5. Cinco leads que parecem ter fechado e estão como pipeline aberto.** Saíram
+na inspeção das candidatas a devolução: 257 ("Assinei"), 289 ("vou fazer pix"),
+252 (pediu a chave pix), 67, 59. Se fecharam mesmo, o certo é `ganho` **com
+valor** — e isso ninguém além de vocês pode preencher. Não recebem mensagem
+indevida (a régua consulta o EVO antes de enviar), mas mantêm a conversão
+subestimada.
+
+**6. Conferir a ramificação com a conversa na mão.** Continua valendo de 31/08.
+A classificação automática só sabe de contrato ativo no EVO; convênio,
+fornecedor e engano dependem de a Leia acertar na conversa. Em 12/09 três
+tiveram de ser classificados à mão (dois fornecedores e um número interno) —
+sinal de que ela ainda não está pegando esses casos.
 
 ```sql
 SELECT lead_id, summary, occurred_at FROM crm_lead_events
 WHERE type = 'tipo_definido' AND actor = 'leia' ORDER BY occurred_at DESC;
 ```
 
-Zero linhas com `actor = 'leia'` depois de 31/08 quer dizer que ela não está
-chamando a tool — aí o ajuste é no prompt, na seção "Diga em qual frente você
-está".
-
-**0.1. 05/09: o primeiro encerramento automático de lead.** Ver quantos caíram
-para `perdido` de uma vez e se o veredito faz sentido. É a regra que nunca
-rodou, e a primeira execução pega o acúmulo inteiro.
-
-**1. Ler o que a régua de silêncio escreveu.** É a prioridade do dia seguinte.
-Ela rodou pela primeira vez em 28/08 e mandou ~45 retomadas para gente real, e
-**ninguém leu ainda**. O roteiro proíbe comentar o sumiço e manda retomar o
-assunto onde parou — se isso não estiver acontecendo, é ajuste de roteiro em
-`instrucao()`, no `followup-worker.js`. No painel: **Conversas**, ou
-
-```sql
-SELECT tipo, mensagem, sent_at FROM crm_followups
-WHERE tipo LIKE 'silencio%' AND status = 'enviado' ORDER BY sent_at DESC;
-```
-
-**2. Acompanhar a campanha nova.** 24 alvos pendentes em
-`aqua-inativos-dez24-jun25` saem no dia seguinte. Comparar a taxa de resposta com
-os 37,8% do piloto: a coorte é outra (dez24–jun25), e é justamente para poder
-comparar que ela ficou em campanha separada.
-
-**3. Esvaziar a fila de conversas paradas.** Conversas em `human` estão com a
-Leia pausada, cada uma esperando um consultor. No painel: **Conversas → filtro
-"Com consultor"**, e *Devolver para a Leia* nas resolvidas. Com a régua de
-silêncio ligada isto pesa mais do que antes: conversa em `human` **cancela** a
-cutucada, então lead esquecido nessa fila não recebe nem follow-up nem gente.
-
-**3. O aviso ativo de handoff.** Continua sendo pull: alguém precisa abrir o
+**7. O aviso ativo de handoff.** Continua sendo pull: alguém precisa abrir o
 painel. O destino (número do consultor, grupo, dono do lead) ficou para o
 Leandro decidir. A infra de envio já está pareada.
 
-**4. Alarme de saldo da API.** Ver "O saldo da API acaba sem aviso prévio".
+**8. Alarme de saldo da API.** Ver "O saldo da API acaba sem aviso prévio".
 
-**5. Merge de `crm-painel` para `main`.** A VPS roda o branch. Quando o time
-validar, o merge fecha o ciclo.
-
-**6. Pós-venda**, se o funil de venda estiver estável — desenho na seção de
-follow-up.
-
-**7. A bateria de testes de prompt que ficou de 20/08.** Agora dá para pedir ao
-time, porque o simulador está dentro do painel. Roteiros nunca exercitados:
-pedir desconto, reclamar de preço, cancelamento com motivo raso, esquecer um
-objeto, não conseguir agendar no FITI, atendimento a PCD.
-
-### Limpeza pendente no EVO (assumida pelo Leandro)
-
-Testes de 22/08 deixaram registros a remover no painel do EVO — sem impacto
-financeiro (serviço R$ 0), mas com registro errado:
-
-- Vendas **95003–95006** e sessões **199608–199610** (Priscilla)
-- Duas das três reservas do **Dalmario** em 25/08 (15h15, 16h15, 17h15) e as
-  vendas **95009, 95011, 95013**
-
-⚠️ Se o horário do Dalmario mudar na limpeza, `crm_leads.experimental_at` e os
-follow-ups dele precisam ser ajustados junto — senão ele recebe lembrete do
-horário errado.
-
-### O que ainda mexe no resultado e continua pendente
-
-0. ~~**Fechar a 8080 da Evolution**~~ — **resolvido em 22/08/2026.** Fechada no
-   loopback; o QR de pareamento passou a sair pelo painel.
-1. **Não existe sinal de lead vs aluno** (bloco 9 da revisão) — `is_prospect`
-   nasce `true` e nada o põe em `false`; `evo_member_id` existe no schema e
-   ninguém preenche (0 de 11 contatos).
-
-   ⚠️ **Resolvido só para o follow-up, em 28/08/2026.** `situacaoComercial()`
-   pergunta ao EVO em vez de adivinhar, e a régua de silêncio não fala mais com
-   aluno de contrato ativo. **O agente continua sem o sinal**: a abertura segue
-   escrita para não presumir. Preencher `evo_member_id` na criação do contato
-   continua sendo o que resolve de verdade — e agora há uma função pronta para
-   isso.
-2. ~~**Follow-up agendado**~~ (bloco 7 da revisão) — **resolvido em 28/08/2026.**
-   Quem some depois de ver preço não some mais em silêncio: `silencio_1` sai em
-   2 dias, `silencio_2` em 4, e depois o lead é encerrado como perdido. Ver a
-   seção de follow-up.
-3. **Follow-up depois do consultor** (bloco 11) — a reativação existe
-   (`POST /admin/conversations/:id/reactivate`), e desde 20/08/2026 o que o
-   consultor digita no WhatsApp é gravado. Falta o gatilho, a retomada agendada e
-   a instrução no prompt para a Leia ler o que foi combinado antes de falar.
-   ⚠️ Efeito colateral já visível: se o consultor responder com a conversa ainda
-   `active`, ele e o bot falam ao mesmo tempo — decidir se mensagem humana pausa
-   o bot é decisão de operação, ainda não tomada.
-4. **A frente 2 (aluno já matriculado) tem roteiro desde 20/08/2026**, mas ele
-   está no começo: cobre objeto esquecido, dificuldade com o app FITI
-   (`suporte-fiti.md`), afastamento médico, troca de horário e cancelamento de
-   contrato. Falta o resto do que chega de aluno, como reposição de aula. Continua
-   sendo a maior lacuna de escopo para quando o WhatsApp principal entrar no ar,
-   porque ali a maioria do volume será aluno, não lead.
-5. **Imagem chega e o bot fica mudo.** `webhook.js` registra foto, documento e
-   vídeo sem responder nada — áudio ao menos ganha um "não consigo ouvir". Isso
-   passou a importar quando o roteiro de afastamento passou a pedir foto de
-   atestado: o roteiro contorna transferindo antes da foto chegar, mas uma
-   resposta curta de confirmação para imagem seria mais barata e evitaria o
-   silêncio em qualquer outro caso.
-
-As transcrições **foram lidas em 20/08/2026** — bloco 8 da revisão. O que sair de
-lá vira correção; o que ficou pendente está abaixo.
-
-⚠️ **Ao ler transcrições, corte a conversa no primeiro handoff.** A `/teste` não
-desliga a IA de propósito, mas o WhatsApp desliga: 31% das respostas do corpus
-(37 de 119) descrevem um bot que em produção já estaria pausado.
-
-⚠️ **Referência para comparar rodadas: 78% de handoff** (14 em 18 conversas, até
-as mudanças de 20/08). As 3 conversas posteriores não bastam para nada — a
-ancoragem nova e a política de descontos ainda não foram exercitadas.
-
-### Tarefa combinada
-
-Fazer o agente ler o prompt de **arquivo local** quando o banco estiver
-indisponível, para escrever e testar o prompt offline e subir para
-`wa_ai_prompts` depois. Os knowledge files já funcionam assim.
-
-Hoje `loadPrompt()` em `ai-agent.js` cai num fallback genérico de uma linha
-quando a leitura falha — é esse caminho que vira leitura de arquivo.
-
-### O que destrava o uso real
-
-~~`src/prompts/knowledge/` está 100% placeholder~~ — **resolvido**. A base tem
-planos, valores, grade real, metodologia infantil, anamnese e o resumo do
-contrato. O que sobrou de `PENDENTE` está listado em `INFORMACOES-PENDENTES.md`.
-
-O que trava agora é outra coisa: **handoff não notifica ninguém**. Os testes de
-19/08/2026 terminaram 3 em 3 conversas em handoff (agendamento pelo FITI,
-negociação de taxa de adesão e marcação de aula experimental), todas parando numa
-fila que ninguém olha.
-
-⚠️ **Correção da leitura original:** esses handoffs foram registrados aqui como
-"comportamento correto do bot". A auditoria de [REVISAO-PROMPT.md](REVISAO-PROMPT.md)
-mostrou que só um deles era — os outros dois são regra do prompt disparando cedo
-demais. A negociação da adesão caiu na regra "Financeiro … negociação", que manda
-transferir sem tentar resolver, quando o próprio prompt tem a resposta (o Anual é
-isento da adesão); e a aula experimental caiu numa instrução que ainda diz
-`PENDENTE` para um dado que a base já responde. Ou seja: parte do 3 em 3 é
-corrigível no texto, antes de mexer em notificação.
-
-### Ainda não exercitado
-
-O webhook da Evolution está configurado no `docker-compose.yml` (global, com
-`BY_EVENTS=false` e o secret na query string), mas **nunca foi testado com uma
-instância real**. O fluxo inbound WhatsApp → Evolution → backend continua não
-verificado ponta a ponta.
-
-**Loop de restart da Evolution — resolvido em 19/08/2026.** O container ficou
-12h reiniciando, e a causa não era a falta de número pareado (a Evolution sobe
-com zero instâncias): o Prisma falhava na migração com `P1000`, e por trás dele
-o Postgres respondia `role "postgres" is not permitted to log in`. O papel
-estava com `NOLOGIN` — não era senha errada. Como o superusuário é o próprio
-`postgres`, não havia caminho normal de volta.
-
-Resolvido recriando o volume `apac-ia-sales_postgres_data`, sem perda: eram
-65 MB de cluster vazio e o volume `evolution_instances` estava sem nenhuma
-instância. A Evolution subiu, roda as migrações e responde 200 em `:8080`.
-
-**Onde parou:** `GET /admin/whatsapp/status` devolve
-`The "apacademia" instance does not exist` — que é o erro certo para este ponto,
-e prova que backend → Evolution conversa. Falta parear, e aí valem dois
-detalhes:
-
-- ~~`EVOLUTION_SERVER_URL` precisa virar o IP público~~ — **não é mais
-  necessário.** Desde 22/08/2026 o QR sai pelo painel a partir do `base64` da
-  resposta, e a 8080 está fechada de propósito. Parear é em **Ajustes →
-  WhatsApp**, no CRM.
-- A instância criada tem que se chamar **`apacademia`**, que é o valor de
-  `EVOLUTION_INSTANCE` procurado pelo backend.
+**9. Merge de `crm-painel` para `main`.** A VPS roda o branch, e `main` está 68
+commits atrás. Quando o time validar, o merge fecha o ciclo.
 
 ## Backlog conhecido (não tratado)
 
@@ -2036,12 +2220,14 @@ detalhes:
   na aba aberta).
 - **Fila pode travar em `processing`** — se o processo cair após marcar o status,
   a linha nunca volta para `pending` e a query só busca `pending`.
-- **O poller do EVO não está agendado** — `evoSync.sincronizarProspects` só roda
-  quando alguém clica em Ajustes → Sincronizar prospects. Como é ele que cobre a
-  ausência de webhook de mudança de prospect, enquanto não for periódico o funil
-  não enxerga o que o consultor faz dentro do EVO.
-- **Webhook do EVO sem reprocesso automático** — `evoSync.reprocessarPendentes`
-  existe e não é chamado por ninguém. Evento que falhou fica parado.
+- ~~**O poller do EVO não está agendado**~~ — roda no `evo-sync-worker` a cada
+  15 min, e em 12/09/2026 passou a custar 1 requisição por ciclo em vez de 27.
+- ~~**Webhook do EVO sem reprocesso automático**~~ — `reprocessarPendentes` é
+  chamado no mesmo worker, 25 por ciclo.
+- **`ActivityEnroll`, `CreateMembership` e `TransferProspect` nunca receberam
+  evento** — assinados desde o começo, zero eventos. Para o `ActivityEnroll` a
+  causa foi confirmada em 12/09 (a aula chega como `NewSale` de R$ 0); os outros
+  dois seguem sem explicação e sem caso de uso pendente.
 - **Zero testes commitados** — `npm test` aponta para `src/**/*.test.js`, que não
   existe. Continua valendo, e o CRM aumentou a superfície: o funil tem regras de
   transição (`somenteAvanco`, etapas finais) que são exatamente o tipo de coisa
