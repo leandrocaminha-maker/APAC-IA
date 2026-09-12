@@ -569,7 +569,7 @@ export async function varrerSilenciosos(opcoes = {}) {
   // fora da janela, e o `break` do lote não pode deixá-los para trás.
   const { data: leads, error } = await supabase
     .from('crm_leads')
-    .select('id, full_name, phone, stage, contact_id, last_activity_at, evo_id_member')
+    .select('id, full_name, phone, stage, contact_id, last_activity_at, evo_id_member, metadata')
     // A régua é de VENDA, e agora existe onde perguntar isso.
     //
     // Antes a única defesa era `situacaoComercial`, no fim do laço, e ela
@@ -654,7 +654,38 @@ export async function varrerSilenciosos(opcoes = {}) {
 
     // A pergunta cara fica por último de propósito: é a única que sai para
     // a rede, e só vale a pena para quem já passou por todo o resto.
-    const situacao = await situacaoComercial(lead);
+    //
+    // E ela não é refeita a cada hora para quem já respondeu "não é aluno".
+    //
+    // A varredura roda de 60 em 60 min e chegava aqui com ~35 candidatos,
+    // dos quais 33 não tinham `evo_id_member` — para esses,
+    // `situacaoComercial` gasta uma busca por telefone que não acha nada e
+    // devolve 'lead'. Mesma pergunta, mesma resposta, ~840 requisições por
+    // dia. A resposta negativa é estável: virar aluno é um FATO que chega
+    // por webhook (`CreateMember`, `NewSale`) e pelo poller de conversão,
+    // então nada se perde em não reperguntar por 24h.
+    //
+    // Só o NEGATIVO é guardado. 'aluno' já se persiste sozinho, logo
+    // abaixo, mudando a trilha do contato — e 'indefinido' é EVO fora do
+    // ar, que não é fato sobre a pessoa e não pode virar cache.
+    const checadoEm = Date.parse(lead.metadata?.evo_nao_membro_em || '');
+    const aindaVale = Number.isFinite(checadoEm)
+      && agora - checadoEm < config.evo.membroChecagemHoras * 60 * 60 * 1000;
+
+    const situacao = aindaVale ? 'lead' : await situacaoComercial(lead);
+
+    if (situacao === 'lead' && !aindaVale && !simular) {
+      // Merge, e não substituição: `metadata` é de uso geral, e uma
+      // escrita cega apagaria o que outro caminho tenha posto lá.
+      await supabase
+        .from('crm_leads')
+        .update({ metadata: { ...(lead.metadata || {}), evo_nao_membro_em: new Date().toISOString() } })
+        .eq('id', lead.id)
+        .then(({ error }) => {
+          if (error) logger.warn(`[followup] Não deu para carimbar a checagem do lead ${lead.id}: ${error.message}`);
+        });
+    }
+
     if (situacao !== 'lead') {
       logger.info(`[followup] Lead ${lead.id} fora da varredura: ${situacao === 'aluno'
         ? 'é aluno com contrato ativo' : 'situação indefinida (EVO não respondeu)'}`);

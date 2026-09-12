@@ -165,6 +165,21 @@ export const config = {
     // experimental.
     mesesReativacao: parseInt(env('EVO_MESES_REATIVACAO', '3'), 10),
 
+    // Por quantas horas vale a resposta "este telefone não é aluno".
+    //
+    // A varredura de silêncio pergunta isso ao EVO para cada candidato, de
+    // hora em hora. Como quase nenhum lead é aluno, é a mesma pergunta com
+    // a mesma resposta: ~840 requisições por dia em 12/09/2026, quando o
+    // levantamento foi feito.
+    //
+    // 24h é seguro porque a resposta só muda num sentido — virar aluno —, e
+    // esse é um FATO que chega por outros dois caminhos em tempo real: os
+    // webhooks `CreateMember`/`NewSale` e o poller de conversão. O cache
+    // atrasa, no pior caso, uma reclassificação que já teria acontecido.
+    //
+    // 0 desliga o cache e volta a perguntar toda vez.
+    membroChecagemHoras: parseInt(env('EVO_MEMBRO_CHECAGEM_HORAS', '24'), 10),
+
     // Intervalo do worker que reconcilia o funil com o EVO. Existe porque
     // o EVO não emite evento de mudança de prospect: sem esta varredura,
     // o que o consultor faz dentro do EVO não chega ao painel.
