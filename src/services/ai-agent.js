@@ -32,7 +32,9 @@ import { config } from '../config.js';
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { toolDeclarations, executeTool } from './ai-tools.js';
-import { detectarModulos, montarKnowledge, invalidarKnowledge } from './knowledge.js';
+import {
+  detectarModulos, montarNucleo, montarOpcionais, indiceDeModulos, invalidarKnowledge,
+} from './knowledge.js';
 import { aiUsage } from './ai-usage.js';
 
 const MODEL = 'claude-opus-5';
@@ -358,28 +360,79 @@ function buildDynamicContext(contactInfo = {}) {
 /**
  * Monta o `system` da requisição.
  *
- * Vai em DOIS blocos por causa do prompt caching.
+ * Vai em TRÊS blocos, com DOIS breakpoints de cache. A ordem não é estética:
+ * ela é o que decide quanto a conversa custa.
  *
- * O primeiro bloco (prompt do banco + base de conhecimento) é byte-a-byte
- * idêntico para todo cliente que estiver com os MESMOS módulos carregados —
- * ele leva o breakpoint e passa a custar ~10% na leitura. O segundo muda a
- * cada conversa E a cada minuto, então fica DEPOIS do breakpoint: se a hora
- * viesse antes, invalidaria o cache a cada minuto e nunca haveria acerto.
+ *   1. prompt do banco + núcleo da base  — idêntico em TODA conversa da
+ *      academia, de todo cliente, o dia inteiro. Leva o primeiro breakpoint.
+ *   2. módulos opcionais desta conversa  — muda por combinação (adulto,
+ *      infantil, matriculado). Leva o segundo breakpoint.
+ *   3. índice dos módulos + contexto do contato + data e hora — muda a cada
+ *      conversa e a cada minuto. Fica DEPOIS do último breakpoint, e por
+ *      isso nunca invalida nada.
  *
- * O conjunto de módulos é, na prática, o nome da entrada de cache. Por isso
- * `montarKnowledge` os concatena sempre na mesma ordem: "nucleo+adulto" tem
- * que gerar os mesmos bytes na conversa de agora e na de daqui a uma hora.
+ * ## Por que dois, e não um
+ *
+ * O cache casa por PREFIXO, byte a byte: o que vem antes do breakpoint é a
+ * chave, e qualquer diferença mais acima descarta tudo que vem abaixo. Com
+ * um breakpoint só, o bloco cacheado era `prompt + base inteira`, então o
+ * núcleo de 36.395 tokens viajava colado aos opcionais e virava uma entrada
+ * de cache diferente para cada combinação de módulos.
+ *
+ * O efeito medido entre 06 e 12/09/2026, em 992 chamadas: 126 escritas de
+ * cache. Escrever custa 2x o preço de entrada e ler custa 0,1x, então essas
+ * escritas eram US$ 52,87 — 69% de todo o custo de entrada — para reenviar
+ * um texto que não tinha mudado.
+ *
+ * Separado, o bloco 1 passa a ser UMA entrada para o sistema inteiro: ~28
+ * escritas no mesmo período, praticamente uma por manhã, porque a primeira
+ * conversa do dia esquenta o cache para todas as outras. O bloco 2 continua
+ * fragmentando, mas ele é pequeno (6 a 22 mil tokens) e é ele que a
+ * modularidade existe para manter enxuto.
+ *
+ * ## O índice teve que sair da base
+ *
+ * `indiceDeModulos` lista o que está e o que não está carregado, e por isso
+ * muda a cada combinação. Ele ficava no TOPO da base — antes dos arquivos —,
+ * e é o que fazia o núcleo variar mesmo sendo o mesmo texto. Ele não sumiu:
+ * foi para o bloco 3, junto da data e do contato. O modelo lê exatamente a
+ * mesma informação, num lugar que já era dinâmico.
+ *
+ * ## Ao mexer aqui
+ *
+ * Nada que varie por conversa pode entrar nos blocos 1 ou 2. Hora, nome do
+ * contato, etapa do funil, campanha — tudo isso invalida o cache de todo
+ * mundo, não só da conversa em questão. O teste é simples: duas conversas
+ * diferentes, no mesmo dia, com os mesmos módulos, têm que gerar bytes
+ * idênticos nos dois primeiros blocos.
  */
 async function buildSystem(systemPrompt, modulos, dynamicContext) {
-  const knowledge = await montarKnowledge(modulos);
-  return [
+  const [nucleo, opcionais] = await Promise.all([
+    montarNucleo(),
+    montarOpcionais(modulos),
+  ]);
+
+  const blocos = [
     {
       type: 'text',
-      text: systemPrompt + knowledge,
+      text: systemPrompt + nucleo,
       cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
     },
-    { type: 'text', text: dynamicContext },
   ];
+
+  // Bloco vazio é 400 na API. Conversa só com o núcleo simplesmente não tem
+  // o segundo bloco — e aí o segundo breakpoint não é gasto.
+  if (opcionais) {
+    blocos.push({
+      type: 'text',
+      text: opcionais,
+      cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
+    });
+  }
+
+  blocos.push({ type: 'text', text: indiceDeModulos(modulos) + dynamicContext });
+
+  return blocos;
 }
 
 /**

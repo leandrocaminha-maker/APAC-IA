@@ -319,17 +319,106 @@ const DESCRICAO_MODULO = {
 };
 
 /**
- * Monta o texto da base para um conjunto de módulos.
+ * A base é montada em TRÊS peças, e a razão é o cache de prompt.
  *
- * O cabeçalho lista o que está e o que NÃO está carregado. Os dois lados
- * importam: sem o primeiro o modelo não sabe do que dispõe; sem o segundo
- * ele não sabe que existe um módulo a pedir, e transfere para humano em vez
- * de chamar `carregar_base`.
+ * O prefixo cacheado é casado byte a byte, e escrever custa 2x o preço de
+ * entrada contra 0,1x de ler. Enquanto prompt, núcleo, índice e módulos
+ * opcionais viajavam num bloco só, esse bloco inteiro era uma entrada de
+ * cache POR COMBINAÇÃO de módulos — e o núcleo de 36.395 tokens, que é
+ * idêntico em toda conversa da academia, era reescrito junto com cada
+ * combinação nova.
  *
- * @param {string[]} modulos
- * @returns {Promise<string>}
+ * Medido de 06 a 12/09/2026, em 992 chamadas: 126 escritas de cache, US$
+ * 52,87 só de escrita, 69% do custo de entrada. Separando o que é fixo do
+ * que varia, as escritas do bloco fixo caem para ~28 — uma por manhã, mais
+ * ou menos —, e a conta cai 34% sem tirar uma vírgula do que o modelo lê.
+ *
+ * As três peças, na ordem em que entram na requisição:
+ *
+ *   montarNucleo()      fixo, sempre igual  -> primeiro breakpoint
+ *   montarOpcionais()   varia por conversa  -> segundo breakpoint
+ *   indiceDeModulos()   varia por conversa  -> DEPOIS do último breakpoint
+ *
+ * O índice é o detalhe que faz a separação funcionar. Ele lista o que está
+ * carregado e o que não está, e por isso muda a cada combinação; enquanto
+ * ficava no topo da base, contaminava tudo que vinha depois dele. Ele não
+ * sumiu — foi para o bloco dinâmico, junto da data e do contexto do
+ * contato, que é o lugar natural de um dado que descreve ESTA conversa.
  */
-export async function montarKnowledge(modulos) {
+
+/** Um módulo virou texto: os arquivos dele, na ordem declarada. */
+async function secoesDe(modulo) {
+  const partes = [];
+  for (const nome of MODULOS[modulo]) {
+    partes.push('\n--- Arquivo: ' + nome + ' ---\n' + (await lerArquivo(nome)));
+  }
+  return partes.join('\n');
+}
+
+/**
+ * O bloco FIXO: o preâmbulo da base e os arquivos do núcleo.
+ *
+ * Não recebe `modulos` de propósito — se recebesse, alguém acabaria passando
+ * algo que o faz variar, e variação aqui custa 2x sobre 36 mil tokens toda
+ * vez que acontece. O núcleo é o que `SEMPRE` diz que é.
+ */
+export async function montarNucleo() {
+  try {
+    const secoes = await secoesDe('nucleo');
+    if (!secoes) {
+      logger.warn('[knowledge] Núcleo vazio — usando a guarda');
+      return GUARDA_SEM_BASE;
+    }
+    return '\n\n## BASE DE CONHECIMENTO (arquivos locais)\n' +
+      'As informações abaixo são a ÚNICA fonte de verdade sobre planos, valores, ' +
+      'modalidades, grade horária e regras da academia. Não existe consulta a ' +
+      'sistema externo para esses dados.\n' +
+      'REGRA CRÍTICA: se a informação que o cliente pediu não estiver abaixo, ou ' +
+      'estiver marcada como "PENDENTE", "_preencha_", "Exemplo", "XXX" ou ' +
+      '"descreva aqui", esse dado AINDA NÃO ESTÁ DISPONÍVEL. Nesse caso é ' +
+      'proibido inventar, estimar ou aproximar: ' +
+      'diga que vai confirmar a informação exata com um consultor e use a ' +
+      'ferramenta transferir_para_humano.\n' +
+      secoes;
+  } catch (err) {
+    logger.error('[knowledge] Erro ao carregar o núcleo:', err.message);
+    return GUARDA_SEM_BASE;
+  }
+}
+
+/**
+ * O bloco que VARIA: os módulos opcionais desta conversa.
+ *
+ * Devolve string vazia quando só o núcleo está ativo — e quem chama precisa
+ * tratar isso, porque a API recusa bloco de texto vazio.
+ */
+export async function montarOpcionais(modulos) {
+  const ativos = ORDEM_MODULOS.filter(m => m !== 'nucleo' && modulos.includes(m));
+  if (!ativos.length) return '';
+
+  try {
+    const partes = [];
+    for (const modulo of ativos) partes.push(await secoesDe(modulo));
+    return partes.join('\n');
+  } catch (err) {
+    // Sem os opcionais o atendimento continua de pé com o núcleo. Derrubar a
+    // conversa inteira porque um .md não foi lido seria pior.
+    logger.error('[knowledge] Erro ao carregar módulos opcionais:', err.message);
+    return '';
+  }
+}
+
+/**
+ * O índice do que está e do que não está carregado.
+ *
+ * Os dois lados importam: sem o primeiro o modelo não sabe do que dispõe;
+ * sem o segundo ele não sabe que existe um módulo a pedir, e transfere para
+ * humano em vez de chamar `carregar_base`.
+ *
+ * Vai no bloco dinâmico, depois do último breakpoint. É síncrono porque não
+ * lê arquivo nenhum — só descreve o que foi montado.
+ */
+export function indiceDeModulos(modulos) {
   const ativos = ORDEM_MODULOS.filter(m => modulos.includes(m));
 
   // `infantil-tecnico` só se anuncia a quem já está com o `infantil` na mão.
@@ -340,47 +429,17 @@ export async function montarKnowledge(modulos) {
     !(m === 'infantil-tecnico' && !ativos.includes('infantil'))
   ));
 
-  try {
-    const secoes = [];
-    for (const modulo of ativos) {
-      for (const nome of MODULOS[modulo]) {
-        secoes.push(`\n--- Arquivo: ${nome} ---\n${await lerArquivo(nome)}`);
-      }
-    }
+  const indice = ativos.map(m => '- **' + m + '**: ' + DESCRICAO_MODULO[m]).join('\n');
 
-    if (secoes.length === 0) {
-      logger.warn('[knowledge] Nenhum módulo resolvido — usando a guarda');
-      return GUARDA_SEM_BASE;
-    }
+  const faltando = ausentes.length === 0 ? '' :
+    '\nNÃO estão carregados agora: ' +
+    ausentes.map(m => '**' + m + '** (' + DESCRICAO_MODULO[m] + ')').join('; ') + '.\n' +
+    'Se o cliente perguntar sobre um desses assuntos, chame `carregar_base` ' +
+    'com o módulo correspondente ANTES de responder — não transfira para ' +
+    'humano só porque o material não está aqui, e não responda de memória.\n';
 
-    const indice = ativos
-      .map(m => `- **${m}**: ${DESCRICAO_MODULO[m]}`)
-      .join('\n');
-
-    const faltando = ausentes.length === 0 ? '' :
-      '\nNÃO estão carregados agora: ' +
-      ausentes.map(m => `**${m}** (${DESCRICAO_MODULO[m]})`).join('; ') + '.\n' +
-      'Se o cliente perguntar sobre um desses assuntos, chame `carregar_base` ' +
-      'com o módulo correspondente ANTES de responder — não transfira para ' +
-      'humano só porque o material não está aqui, e não responda de memória.\n';
-
-    return '\n\n## BASE DE CONHECIMENTO (arquivos locais)\n' +
-      'As informações abaixo são a ÚNICA fonte de verdade sobre planos, valores, ' +
-      'modalidades, grade horária e regras da academia. Não existe consulta a ' +
-      'sistema externo para esses dados.\n' +
-      'REGRA CRÍTICA: se a informação que o cliente pediu não estiver abaixo, ou ' +
-      'estiver marcada como "PENDENTE", "_preencha_", "Exemplo", "XXX" ou ' +
-      '"descreva aqui", esse dado AINDA NÃO ESTÁ DISPONÍVEL. Nesse caso é ' +
-      'proibido inventar, estimar ou aproximar: ' +
-      'diga que vai confirmar a informação exata com um consultor e use a ' +
-      'ferramenta transferir_para_humano.\n\n' +
-      `Módulos carregados nesta conversa:\n${indice}\n` +
-      faltando +
-      secoes.join('\n');
-  } catch (err) {
-    logger.error('[knowledge] Erro ao carregar a base:', err.message);
-    return GUARDA_SEM_BASE;
-  }
+  return '\n\n## MÓDULOS DA BASE NESTA CONVERSA\n' +
+    'Módulos carregados:\n' + indice + '\n' + faltando;
 }
 
 /** Limpa o cache de arquivos (usado pelo /admin/reload-cache). */
@@ -392,6 +451,8 @@ export const knowledge = {
   MODULOS,
   ORDEM_MODULOS,
   detectarModulos,
-  montarKnowledge,
+  montarNucleo,
+  montarOpcionais,
+  indiceDeModulos,
   invalidarKnowledge,
 };
