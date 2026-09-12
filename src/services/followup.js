@@ -11,7 +11,9 @@
 import { config } from '../config.js';
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
-import { registrarEvento, definirTipoDeContato, FILTRO_ETAPAS_FECHADAS } from './funil.js';
+import {
+  registrarEvento, definirTipoDeContato, tocarAtividade, FILTRO_ETAPAS_FECHADAS,
+} from './funil.js';
 // Sem ciclo: `evolution.js` só importa config e logger.
 import { telefoneValido } from './evolution.js';
 import { evoClient } from './evo-client.js';
@@ -756,6 +758,202 @@ export async function varrerSilenciosos(opcoes = {}) {
   return { agendados, leads: selecionados, examinados };
 }
 
+/** Conversas do simulador não são atendimento — ficam fora da devolução. */
+const CANAL_SIMULADOR = 'web-test';
+
+/** Teto de conversas examinadas por devolução, para a varredura ser barata. */
+const TETO_EXAME_HANDOFF = 80;
+
+/**
+ * Devolve à Leia o handoff em que o cliente parou de responder.
+ *
+ * ## O buraco que ela fecha
+ *
+ * `aoConsultorAssumir` cala o bot (`status = 'human'`), e isso é o certo
+ * enquanto o atendimento está acontecendo. Mas nada nunca reabria essa
+ * porta: a varredura de silêncio filtra `status = 'active'`, o worker
+ * cancela o que já estava agendado ("conversa está com o consultor"), e as
+ * duas rotinas de encerramento não alcançam o caso — `encerrarSemResposta`
+ * exige uma segunda rodada que nunca foi enviada, e
+ * `encerrarRelacionamentosParados` só mexe na trilha que não é venda.
+ *
+ * Resultado: lead que vai para o consultor e some não é cutucado, não é
+ * encerrado e não sai do painel. Medido em 12/09/2026: 98 leads, mediana
+ * de 8,6 dias parados, 81 deles sem um único follow-up na vida.
+ *
+ * ## O que ela NÃO faz
+ *
+ * Não devolve quem está em `aguardando_consultor`: ali o handoff foi
+ * aberto e ninguém pegou. Isso é fila atrasada, não silêncio do cliente, e
+ * devolver para a Leia esconderia o problema em vez de resolvê-lo.
+ *
+ * Não devolve quando a última mensagem é do CLIENTE. Nesse caso quem sumiu
+ * foi o consultor, e a pessoa está esperando gente — mandar a Leia
+ * responder por cima é o pior dos dois mundos. Esse caso já tem dono: o
+ * cartão "aguardando resposta" de `atendimento.js`.
+ *
+ * Não muda a etapa nem o `assigned_to`. A etapa continua `com_consultor`
+ * porque é isso que aconteceu, e zerar o dono apagaria quem atendeu. O que
+ * muda é só quem tem a palavra agora — e, no ciclo seguinte, a régua de
+ * silêncio passa a enxergar o lead e faz o trabalho de sempre.
+ *
+ * @param {object}  opcoes
+ * @param {boolean} opcoes.simular  Não grava nada; só devolve quem entraria.
+ */
+export async function retomarHandoffsMudos(opcoes = {}) {
+  const cfg = config.followup.handoff;
+  const { dias = cfg.dias, lote = cfg.lote, simular = false } = opcoes;
+
+  // `habilitado` NÃO é conferido aqui, e sim em quem chama pelo worker —
+  // mesmo arranjo de `varrerSilenciosos`. A chave desliga a automação, não
+  // a régua: a simulação pelo painel precisa funcionar justamente enquanto
+  // ela está desligada, que é quando se decide se pode ligar.
+  if (!dias || dias <= 0) return { retomados: 0, leads: [] };
+
+  const corte = new Date(Date.now() - dias * DIA_MS).toISOString();
+
+  // `last_message` é só um pré-filtro barato: ele é encostado pela chegada
+  // da mensagem do cliente e pela resposta do painel, mas não pela resposta
+  // digitada no aparelho. Quem decide é a última mensagem de verdade, lida
+  // adiante — este corte serve para não trazer as 140 conversas humanas.
+  const { data: conversas, error } = await supabase
+    .from('wa_conversations')
+    .select('id, contact_id, assigned_to, last_message')
+    .eq('status', 'human')
+    .neq('channel', CANAL_SIMULADOR)
+    .not('last_message', 'is', null)
+    .lte('last_message', corte)
+    .order('last_message', { ascending: true })
+    .limit(TETO_EXAME_HANDOFF * 2);
+
+  if (error) {
+    logger.error('[followup] Devolução de handoff falhou:', error.message);
+    return { retomados: 0, leads: [] };
+  }
+  if (!conversas?.length) return { retomados: 0, leads: [] };
+
+  const { data: leads } = await supabase
+    .from('crm_leads')
+    .select('id, full_name, stage, contact_id')
+    .in('contact_id', conversas.map(c => c.contact_id))
+    .eq('trilha', 'lead')
+    .not('stage', 'in', FILTRO_ETAPAS_FECHADAS)
+    .neq('stage', 'aguardando_consultor');
+
+  const porContato = new Map((leads || []).map(l => [l.contact_id, l]));
+  const selecionados = [];
+  let examinadas = 0;
+  let noVacuo = 0;
+
+  for (const conversa of conversas) {
+    if (selecionados.length >= lote) break;
+    if (examinadas >= TETO_EXAME_HANDOFF) break;
+
+    const lead = porContato.get(conversa.contact_id);
+    if (!lead) continue;
+    examinadas++;
+
+    const { data: ultima } = await supabase
+      .from('wa_messages')
+      .select('direction, created_at, sent_by')
+      .eq('conversation_id', conversa.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const m = ultima?.[0];
+    if (!m) continue;
+
+    // Cliente falou por último: o vácuo é nosso, e não é esta régua que
+    // resolve.
+    if (m.direction === 'inbound') { noVacuo++; continue; }
+
+    // `last_message` podia estar atrasado em relação à conversa real.
+    const calado = Date.now() - new Date(m.created_at).getTime();
+    if (calado < dias * DIA_MS) continue;
+
+    selecionados.push({
+      lead_id: lead.id,
+      conversa_id: conversa.id,
+      nome: lead.full_name,
+      etapa: lead.stage,
+      consultor: conversa.assigned_to || null,
+      dias_parado: Math.floor(calado / DIA_MS),
+      ultima_fala_de: m.sent_by || null,
+    });
+  }
+
+  const resumo =
+    `${conversas.length} conversa(s) em modo humano no corte de ${dias}d, ` +
+    `${examinadas} examinada(s), ${selecionados.length} com o cliente calado` +
+    (noVacuo ? ` (${noVacuo} esperando o consultor, fora desta régua)` : '');
+
+  if (simular) {
+    logger.info(`[followup] Devolução de handoff (SIMULAÇÃO): ${resumo} — nada gravado`);
+    return { retomados: 0, leads: selecionados, simulado: true };
+  }
+
+  let retomados = 0;
+  for (const alvo of selecionados) {
+    const { error: falha } = await supabase
+      .from('wa_conversations')
+      .update({ status: 'active', ai_enabled: true })
+      .eq('id', alvo.conversa_id);
+
+    if (falha) {
+      logger.warn(`[followup] Não deu para devolver a conversa ${alvo.conversa_id}: ${falha.message}`);
+      continue;
+    }
+
+    await registrarEvento(alvo.lead_id, {
+      type: 'handoff_devolvido',
+      actor: 'sistema',
+      summary:
+        `Cliente sem responder há ${alvo.dias_parado} dia(s) desde a última fala nossa — ` +
+        'conversa devolvida à Leia para a régua de follow-up',
+      payload: {
+        conversa_id: alvo.conversa_id,
+        consultor: alvo.consultor,
+        dias_parado: alvo.dias_parado,
+        ultima_fala_de: alvo.ultima_fala_de,
+      },
+    }).catch(err => logger.warn(`[followup] Evento de devolução falhou: ${err.message}`));
+
+    // Sem isto a devolução não devolve nada.
+    //
+    // `varrerSilenciosos` usa `last_activity_at` como PISO da janela de 7
+    // dias, e o handoff mudo típico está calado há mais que isso — a
+    // mediana medida era 8,6 dias. A conversa voltaria para `active` e o
+    // lead continuaria invisível para a régua, que é exatamente o estado
+    // do qual estamos tirando ele.
+    //
+    // Encostar a coluna é honesto: ela responde "quando este lead se
+    // mexeu pela última vez", e reabrir o atendimento É movimento. O que
+    // o painel mostra como "parado há" é `stage_since`, e esse não se
+    // toca — a idade do travamento continua visível.
+    await tocarAtividade(alvo.lead_id);
+
+    retomados++;
+  }
+
+  logger.info(`[followup] Devolução de handoff: ${resumo} → ${retomados} devolvida(s) à Leia`);
+  return { retomados, leads: selecionados };
+}
+
+/**
+ * Quantas vezes um mesmo follow-up pode falhar antes de desistir.
+ *
+ * O número está em UM lugar porque ele aparece nos dois lados de uma
+ * mesma regra, e quando os dois lados discordam a linha some do mundo:
+ * `vencidos` deixa de enxergá-la, `registrarTentativa` deixa de mexer
+ * nela, e ela fica `pendente` para sempre. `rodadaDeSilencio` devolve
+ * `null` diante de qualquer pendente — então essa linha órfã não é só
+ * lixo, é uma proibição permanente de follow-up para aquele lead.
+ *
+ * Em 12/09/2026 havia 29 leads nesse estado, 27 deles por `Evolution API
+ * 400` (número que não existe no WhatsApp) numa única tarde de 31/08.
+ */
+const TETO_TENTATIVAS = 3;
+
 /** Follow-ups vencidos, prontos para envio. */
 export async function vencidos(limite = 20) {
   const { data, error } = await supabase
@@ -769,7 +967,7 @@ export async function vencidos(limite = 20) {
     `)
     .eq('status', 'pendente')
     .lte('scheduled_for', new Date().toISOString())
-    .lt('tentativas', 3)
+    .lt('tentativas', TETO_TENTATIVAS)
     .order('scheduled_for', { ascending: true })
     .limit(limite);
 
@@ -797,10 +995,24 @@ export async function registrarEnvio(followupId, { mensagem, presenca, erro = nu
 
 /** Incrementa tentativas sem mudar o status (para nova tentativa depois). */
 export async function registrarTentativa(followupId, tentativas, erro) {
+  const agora = tentativas + 1;
+  const esgotou = agora >= TETO_TENTATIVAS;
+
   await supabase
     .from('crm_followups')
-    .update({ tentativas: tentativas + 1, erro: String(erro).slice(0, 400) })
+    .update({
+      tentativas: agora,
+      erro: String(erro).slice(0, 400),
+      ...(esgotou ? { status: 'falhou' } : {}),
+    })
     .eq('id', followupId);
+
+  if (esgotou) {
+    logger.warn(
+      `[followup] Follow-up ${followupId} esgotou ${TETO_TENTATIVAS} tentativas — ` +
+      'marcado como falhou para não travar a régua do lead'
+    );
+  }
 }
 
 /** Anota o follow-up no razão do lead. */
@@ -817,5 +1029,6 @@ export const followup = {
   JANELA, JANELAS, janelaDoDia, dentroDaJanela, horarioDoLembrete,
   TIPOS_SILENCIO, TIPOS_REGUA,
   agendar, cancelar, aoAgendarExperimental, proximaSondagem, varrerSilenciosos,
+  retomarHandoffsMudos,
   vencidos, registrarEnvio, registrarTentativa, registrarNoFunil, situacaoComercial,
 };

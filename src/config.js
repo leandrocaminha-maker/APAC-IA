@@ -304,6 +304,58 @@ export const config = {
       intervaloMin: parseInt(env('FOLLOWUP_SILENCIO_INTERVALO_MIN', '7'), 10),
     },
 
+    // Devolução do handoff que emudeceu.
+    //
+    // Quando o consultor assume, a conversa vira `human` e a régua de
+    // silêncio para de enxergar o lead: a varredura só olha conversa
+    // `active`, e o worker cancela o que estava agendado. Isso está certo
+    // enquanto o atendimento está vivo — quem fala é o consultor, e a Leia
+    // entrando por cima já produziu estrago antes (25/08/2026, a conversa
+    // da Gisleide).
+    //
+    // O que faltava era o outro lado: nada devolvia a conversa quando o
+    // atendimento parava. O lead ficava sem cutucada E sem encerramento,
+    // porque `encerrarSemResposta` só fecha quem chegou à segunda rodada e
+    // `encerrarRelacionamentosParados` só mexe na outra trilha. Em
+    // 12/09/2026 eram 98 leads nesse limbo, com mediana de 8,6 dias.
+    //
+    // A devolução só vale quando o CLIENTE sumiu — última mensagem nossa.
+    // Quando quem sumiu foi o consultor (a última é do cliente), devolver
+    // para a Leia seria mandá-la responder alguém que espera uma pessoa;
+    // esse caso é do cartão "aguardando resposta" do painel, não desta
+    // régua.
+    handoff: {
+      // Nasce DESLIGADA, diferente da régua de silêncio.
+      //
+      // Não é timidez com a regra: é que o primeiro lote dela não é fluxo,
+      // é acumulado — 54 conversas paradas há até 20 dias, represadas
+      // porque nada nunca as devolveu. E entre elas há contato que nunca
+      // foi classificado: a simulação de 12/09/2026 trouxe "INOVSERVICE
+      // FACILITEIS" e "Mais Distribuidora" como leads de venda, porque
+      // `situacaoComercial` só sabe reconhecer ALUNO pelo contrato no EVO
+      // — fornecedor e convênio dependem de alguém ter marcado.
+      //
+      // Ligar junto com o deploy mandaria retomada de venda para uma
+      // distribuidora de toalha. A ordem certa é: simular pelo endpoint,
+      // classificar quem não é lead, e só então ligar. Depois disso o
+      // regime permanente é ligado, e o lote de 10 por varredura basta,
+      // porque o fluxo normal não produz 54 de uma vez.
+      habilitado: env('FOLLOWUP_HANDOFF_HABILITADO', 'false') === 'true',
+
+      // Dias desde a última fala NOSSA até a conversa voltar para a Leia.
+      //
+      // Mais folgado que os 2 dias da régua comum de propósito: o consultor
+      // trabalha em dias úteis e combina retorno ("te chamo na semana que
+      // vem"). Quatro dias passam por um fim de semana inteiro sem atropelar
+      // ninguém.
+      dias: parseInt(env('FOLLOWUP_HANDOFF_DIAS', '4'), 10),
+
+      // Teto de devoluções por varredura. Cada uma vira candidata da régua
+      // de silêncio no ciclo seguinte, e essa régua tem teto próprio — mas
+      // devolver 98 conversas de uma vez enche a fila dela por dias.
+      lote: parseInt(env('FOLLOWUP_HANDOFF_LOTE', '10'), 10),
+    },
+
     // Dias depois da SEGUNDA rodada até o lead ser dado como perdido.
     //
     // As duas rodadas saem com 2 dias de intervalo; esta é a espera pela

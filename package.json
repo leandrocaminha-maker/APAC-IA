@@ -13,7 +13,8 @@
     "test": "node --test src/**/*.test.js",
     "consultor": "node scripts/criar-consultor.js",
     "classificar": "node scripts/classificar-retroativo.js",
-    "campanha": "node scripts/campanha.js"
+    "campanha": "node scripts/campanha.js",
+    "regularizar": "node scripts/regularizar-parados.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

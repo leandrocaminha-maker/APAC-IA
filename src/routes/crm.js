@@ -502,6 +502,47 @@ router.post('/api/followups/varredura', rota(async (req, res) => {
   });
 }));
 
+/**
+ * Aciona à mão a devolução dos handoffs que emudeceram.
+ *
+ * Mesma forma da varredura de silêncio, e pelo mesmo motivo: é uma ação em
+ * lote sobre conversas de clientes reais, então **simula por padrão** e a
+ * ordem certa é ler a lista antes de liberar.
+ *
+ * Serve para o acumulado, que o worker drena devagar de propósito (10 por
+ * varredura): quem quiser devolver os 74 de uma vez faz por aqui, com
+ * `lote` maior, depois de ver quem são.
+ *
+ * Body (tudo opcional):
+ *   dias     dias de silêncio do cliente   (padrão: config; mínimo 1)
+ *   lote     máximo de devoluções          (padrão: config; teto de 100)
+ *   simular  false para gravar de verdade  (padrão: true)
+ */
+router.post('/api/followups/handoffs-mudos', rota(async (req, res) => {
+  const corpo = req.body || {};
+
+  const opcoes = {
+    simular: corpo.simular !== false,
+    ...(corpo.dias != null && { dias: Math.max(1, parseInt(corpo.dias, 10) || 4) }),
+    ...(corpo.lote != null && { lote: Math.min(100, Math.max(1, parseInt(corpo.lote, 10) || 10)) }),
+  };
+
+  const resultado = await followup.retomarHandoffsMudos(opcoes);
+
+  logger.info(
+    `[crm] ${req.usuario.email} rodou a devolução de handoff ` +
+    `(${opcoes.simular ? 'simulação' : 'valendo'}): ` +
+    `${resultado.leads.length} elegível(is), ${resultado.retomados} devolvida(s)`
+  );
+
+  res.json({
+    simulado: opcoes.simular,
+    elegiveis: resultado.leads.length,
+    devolvidas: resultado.retomados,
+    conversas: resultado.leads,
+  });
+}));
+
 // ──────────────────────────────────────────────
 // Conversas
 // ──────────────────────────────────────────────

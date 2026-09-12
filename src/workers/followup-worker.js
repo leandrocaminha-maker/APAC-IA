@@ -36,6 +36,15 @@ let rodando = false;
 const ETAPAS_MORTAS = new Set(['ganho', 'perdido', 'finalizado']);
 
 /**
+ * Quantas vezes o follow-up pós-aula espera o EVO fechar a sessão.
+ *
+ * Três adiamentos de 3h cobrem o dia inteiro de aula. Depois disso a
+ * presença é dada como desconhecida e a mensagem sai assim mesmo — a
+ * alternativa é não falar com quem fez aula experimental.
+ */
+const TETO_ADIAMENTOS = 3;
+
+/**
  * Trilhas que recebem follow-up de venda. Só uma.
  *
  * A varredura já não escolhe ninguém de fora dela, mas o worker confere de
@@ -268,11 +277,24 @@ async function enviarUm(item) {
     // Sessão ainda aberta: adiar vale a pena, porque a presença costuma
     // ser fechada ao longo do dia. Mas só até as 22h — depois disso a
     // finalização é automática e deixa de significar presença.
-    if (presenca === 'nao_finalizada' && item.tentativas < 3) {
+    //
+    // O contador de adiamentos mora no `contexto`, e NÃO em `tentativas`.
+    // Adiar não é falhar: são duas contagens com consequências opostas —
+    // `tentativas` é o que faz a régua desistir do envio, adiamento é o
+    // que a faz tentar de novo mais tarde. Enquanto as duas eram a mesma
+    // coluna, o terceiro adiamento empurrava a linha para `tentativas = 3`
+    // e ela saía do filtro de `vencidos` sem nunca ter falhado: ficava
+    // `pendente` para sempre, e o lead ficava proibido de receber qualquer
+    // follow-up, porque `rodadaDeSilencio` para diante de um pendente.
+    const adiamentos = Number(item.contexto?.adiamentos || 0);
+    if (presenca === 'nao_finalizada' && adiamentos < TETO_ADIAMENTOS) {
       const novaHora = followup.dentroDaJanela(new Date(Date.now() + 3 * 60 * 60 * 1000));
       await supabase
         .from('crm_followups')
-        .update({ scheduled_for: novaHora.toISOString(), tentativas: item.tentativas + 1 })
+        .update({
+          scheduled_for: novaHora.toISOString(),
+          contexto: { ...(item.contexto || {}), adiamentos: adiamentos + 1 },
+        })
         .eq('id', item.id);
       logger.info(`[followup] Lead ${lead.id}: sessão ainda aberta, reconsultando às ${novaHora.toISOString()}`);
       return;
@@ -389,12 +411,34 @@ async function encerrarSemResposta() {
 
   const limite = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
 
+  // O filtro de etapa vai no SQL, e a ordem é do mais antigo para o mais
+  // novo. Os dois detalhes são a diferença entre a função funcionar e ela
+  // parecer que funciona.
+  //
+  // Sem eles, a consulta casa com TODA segunda rodada já enviada — as
+  // linhas de lead fechado inclusive, que são a maioria, porque o lead
+  // fechado é justamente o que esta função produz e ela nunca apaga nada.
+  // O `.limit(50)` então enche de trabalho já feito e o `continue` do laço
+  // descarta tudo. Sem `order by` o Postgres ainda devolve praticamente as
+  // mesmas linhas a cada ciclo, então quem entra na fila atrás delas nunca
+  // é alcançado.
+  //
+  // Medido em 12/09/2026: 78 linhas casavam o filtro, 45 das 50 lidas eram
+  // de lead já encerrado — 5 vagas úteis por ciclo —, e 22 leads que já
+  // deviam estar `perdido` continuavam abertos, contando como pipeline
+  // parado no painel.
+  //
+  // `!inner` é obrigatório para o filtro na tabela embutida valer como
+  // filtro; com o join externo o PostgREST devolve a linha com `lead: null`
+  // em vez de omiti-la, e o entupimento volta com outra cara.
   const { data } = await supabase
     .from('crm_followups')
-    .select('lead_id, tipo, sent_at, lead:crm_leads ( id, stage, trilha, contact_id )')
+    .select('lead_id, tipo, sent_at, lead:crm_leads!inner ( id, stage, trilha, contact_id )')
     .in('tipo', ['sondagem_2', 'silencio_2'])
     .eq('status', 'enviado')
     .lte('sent_at', limite)
+    .not('lead.stage', 'in', funil.FILTRO_ETAPAS_FECHADAS)
+    .order('sent_at', { ascending: true })
     .limit(50);
 
   for (const f of data || []) {
@@ -475,6 +519,22 @@ async function talvezVarrer() {
   if (!(await controle.passouDe(MARCADOR_VARREDURA, cfg.minutos))) return;
 
   await controle.carimbarMarcador(MARCADOR_VARREDURA, { iniciada_em: new Date().toISOString() });
+
+  // A devolução vem ANTES da varredura, e no mesmo carimbo.
+  //
+  // Antes porque ela é o que torna o lead elegível: enquanto a conversa
+  // está `human`, `varrerSilenciosos` nem o examina. Rodando na ordem
+  // certa, o handoff que emudeceu já entra como candidato na mesma
+  // passada, em vez de esperar mais uma hora.
+  //
+  // No mesmo carimbo porque as duas custam o mesmo tipo de scan e medem a
+  // mesma coisa — silêncio, que não muda de minuto em minuto. Um relógio
+  // próprio só multiplicaria as idas ao banco para descobrir o mesmo.
+  if (config.followup.handoff.habilitado) {
+    await followup.retomarHandoffsMudos().catch(err =>
+      logger.error('[followup] Devolução de handoff falhou:', err.message));
+  }
+
   await followup.varrerSilenciosos().catch(err =>
     logger.error('[followup] Varredura de silêncio falhou:', err.message));
 }
