@@ -105,6 +105,11 @@ function aguardarVez() {
 /** Teto de reenvios num 429. Só para leitura — ver `evoFetch`. */
 const RETENTATIVAS_429 = 2;
 
+/** Cache da grade de horários. Ver `buscarGrade`. */
+const cacheGrade = new Map();
+const CACHE_GRADE_MS = 10 * 60 * 1000;
+const CACHE_GRADE_MAX = 200;
+
 /**
  * Erro de API do EVO com o status preservado.
  * Quem chama precisa distinguir "dado inválido" (4xx, não adianta repetir)
@@ -626,8 +631,26 @@ export async function listarAtividades(params = {}) {
  * existe — e aí atividade desativada aparece para o cliente.
  */
 export async function buscarGrade(params = {}) {
-  const lista = await evoFetch(`/api/v1/activities/schedule${qs(params)}`);
-  return (Array.isArray(lista) ? lista : []).filter(a => a?.inactive !== true);
+  // Cache por combinação de parâmetros, porque a grade de um dia não muda
+  // de minuto em minuto — e ela é pedida em rajada: o painel refaz a
+  // consulta a cada troca de data ou de atividade na gaveta do lead, e o
+  // agendamento de experimental pede a mesma grade que o consultor acabou
+  // de olhar. Era o único caminho de leitura do EVO sem cache nenhum; os
+  // catálogos do painel (planos, serviços, atividades, interesses) já
+  // tinham o deles.
+  const chave = qs(params);
+  const guardado = cacheGrade.get(chave);
+  if (guardado && Date.now() - guardado.em < CACHE_GRADE_MS) return guardado.dados;
+
+  const lista = await evoFetch(`/api/v1/activities/schedule${chave}`);
+  const dados = (Array.isArray(lista) ? lista : []).filter(a => a?.inactive !== true);
+
+  // Teto de entradas para o cache não virar vazamento: uma chave por
+  // combinação data+atividade cresce sem limite ao longo dos dias.
+  if (cacheGrade.size >= CACHE_GRADE_MAX) cacheGrade.clear();
+  cacheGrade.set(chave, { dados, em: Date.now() });
+
+  return dados;
 }
 
 // ──────────────────────────────────────────────

@@ -569,14 +569,37 @@ export async function guardarEventoWebhook(envelope) {
  * ⚠️ O que NÃO dá: mudança de etapa/status do prospect. O EVO não emite
  * evento para isso — quem cobre é o poller em `sincronizarProspects`.
  */
+/**
+ * Tipos que o `switch` abaixo sabe interpretar.
+ *
+ * É a lista que decide se vale pagar o ApiCallback. Ao dar regra a um tipo
+ * novo, ele precisa entrar AQUI também — senão o `case` recebe
+ * `detalhe = null` e não acha lead nenhum, em silêncio.
+ */
+const TIPOS_COM_REGRA = new Set([
+  'NewSale', 'RecurrentSale', 'CreateMembership', 'CreateMember', 'ActivityEnroll',
+]);
+
 export async function processarEventoWebhook(evento) {
   const tipo = evento.event_type;
   let lead = null;
   let detalhe = null;
 
   try {
-    // O envelope traz só ids. O dado real está atrás do ApiCallback.
-    if (evento.api_callback) {
+    // O envelope traz só ids. O dado real está atrás do ApiCallback — e
+    // buscá-lo custa UMA requisição ao EVO, por evento.
+    //
+    // Por isso o detalhe só é buscado para o que o `switch` sabe usar. A
+    // conta assinada não é a única que chega aqui: o EVO manda também
+    // eventos que ninguém pediu (`crm.segmentation.batch` respondeu por
+    // 122 dos 660 eventos guardados até 12/09/2026). Todos caíam no
+    // `default`, que não faz nada com o detalhe — mas o detalhe já tinha
+    // sido comprado, porque a busca acontecia antes de saber o tipo.
+    //
+    // O envelope continua sendo guardado igual, com ou sem detalhe: ele é
+    // o registro de que o evento chegou, e é o que permite reprocessar
+    // depois se um tipo novo ganhar regra.
+    if (evento.api_callback && TIPOS_COM_REGRA.has(tipo)) {
       detalhe = await buscarDetalhe(evento).catch(err => {
         logger.warn(`[evo-sync] ApiCallback de ${tipo} falhou: ${err.message}`);
         return null;
