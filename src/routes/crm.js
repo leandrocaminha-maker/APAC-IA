@@ -32,6 +32,7 @@ import { aiAgent } from '../services/ai-agent.js';
 import { saveMessage, reactivateBot } from '../services/contacts.js';
 import { rodarEnsaio, ultimaRodada } from '../services/acompanhamento/ensaio.js';
 import { ativadosComHorario, criarTeste, listarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
+import * as simuladorAcomp from '../services/acompanhamento/simulador.js';
 import {
   sendText, getConnectionStatus, getQrCode, criarInstancia, normalizePhone,
 } from '../services/evolution.js';
@@ -1146,6 +1147,41 @@ router.get('/api/acompanhamento/encaminhamentos', exigirAdmin, rota(async (req, 
     ativados,
     tetoBriefing: config.acompanhamento.briefingTetoDiario,
   });
+}));
+
+// O simulador da Leia no acompanhamento (A3): quem testa escreve como o
+// aluno; as ferramentas registram e não fazem nada (simulador.js).
+router.get('/api/acompanhamento/simulador', exigirAdmin, rota(async (req, res) => {
+  const [alunos, sessao] = await Promise.all([simuladorAcomp.alunosParaSimular(), simuladorAcomp.sessao(req.usuario)]);
+  res.json({ alunos, sessao });
+}));
+
+router.post('/api/acompanhamento/simulador/iniciar', exigirAdmin, rota(async (req, res) => {
+  const clienteId = String(req.body?.clienteId || '');
+  if (!clienteId) return res.status(400).json({ erro: 'Escolha o aluno.' });
+  try {
+    res.json(await simuladorAcomp.iniciar(req.usuario, clienteId));
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+}));
+
+router.post('/api/acompanhamento/simulador/mensagem', exigirAdmin, rota(async (req, res) => {
+  const mensagem = String(req.body?.mensagem || '').trim();
+  if (!mensagem) return res.status(400).json({ erro: 'Mensagem vazia.' });
+  if (mensagem.length > MAX_CHARS) return res.status(400).json({ erro: `Mensagem muito longa (máximo ${MAX_CHARS} caracteres).` });
+  // Cada turno gasta crédito de API, com raciocínio alto: o mesmo intervalo do simulador de vendas.
+  const agora = Date.now();
+  if (agora - (ultimaMsgPorUsuario.get(req.usuario.id) || 0) < INTERVALO_MIN_MS) {
+    return res.status(429).json({ erro: 'Espere um instante entre as mensagens.' });
+  }
+  ultimaMsgPorUsuario.set(req.usuario.id, agora);
+  try {
+    res.json(await simuladorAcomp.responder(req.usuario, mensagem));
+  } catch (err) {
+    logger.error('[acompanhamento] Simulador:', err.message);
+    res.status(400).json({ erro: err.message });
+  }
 }));
 
 router.post('/api/acompanhamento/briefing-teste', exigirAdmin, rota(async (req, res) => {

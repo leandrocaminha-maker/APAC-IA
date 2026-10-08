@@ -99,6 +99,10 @@
   .acomp-selo.aguardando, .acomp-selo.na_fila { color: var(--info); border-color: var(--info); }
   .acomp-selo.sem_destino, .acomp-selo.cancelado { color: var(--alerta); border-color: var(--alerta); }
   .acomp-historico { color: var(--suave); font-size: 12px; margin-top: 4px; }
+  #acomp-sim-log { display: flex; flex-direction: column; gap: 9px; margin: 12px 0; max-height: 520px; overflow: auto; }
+  .balao.regua { align-self: flex-end; background: #1e3a5f; border-bottom-right-radius: 4px; }
+  .acomp-sim-nota { align-self: flex-end; color: var(--suave); font-size: 12px; max-width: 72%; text-align: right; }
+  .acomp-sim-nota.alerta { color: var(--alerta); }
   .vista.ativa { display: block; }
   .vista.cheia { display: none; height: 100%; padding: 0; }
   .vista.cheia.ativa { display: flex; }
@@ -513,6 +517,24 @@
         </div>
       </div>
       <div id="acomp-encaminhamentos"></div>
+
+      <div class="cartao" style="margin-top:24px">
+        <h3 style="margin-top:0">Simulador da Leia — acompanhamento</h3>
+        <p class="nota" style="margin-top:0">
+          Escolha um aluno: a conversa começa com a última mensagem que a prévia gerou para ele, e você escreve
+          como se fosse o aluno. As ferramentas só registram — nada é encaminhado, pausado nem enviado.
+          Cada turno pensa com esforço alto: a resposta demora mais que a de vendas.
+        </p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <select class="campo" id="acomp-sim-aluno" style="width:auto"></select>
+          <button class="btn" id="btn-acomp-sim-iniciar">Começar conversa</button>
+        </div>
+        <div id="acomp-sim-log"></div>
+        <form class="responder" id="form-acomp-sim" style="padding:0; border:0">
+          <textarea class="campo" id="acomp-sim-texto" rows="1" placeholder="Escreva como se fosse o aluno…"></textarea>
+          <button class="btn primario" type="submit" id="btn-acomp-sim-enviar">Enviar</button>
+        </form>
+      </div>
     </section>
 
     <section class="vista" id="vista-ajustes">
@@ -828,7 +850,7 @@ async function mostrarVista(nome) {
   if (nome === 'conversas') await carregarConversas();
   if (nome === 'simulador') await carregarSimulador();
   if (nome === 'ajustes') await carregarAjustes();
-  if (nome === 'acompanhamento') await Promise.all([carregarAcompanhamento(), carregarEncaminhamentos()]);
+  if (nome === 'acompanhamento') await Promise.all([carregarAcompanhamento(), carregarEncaminhamentos(), carregarSimuladorAcomp()]);
 }
 
 $$('nav button').forEach(b => b.addEventListener('click', () =>
@@ -1820,6 +1842,107 @@ $('#btn-acomp-teste').addEventListener('click', async () => {
   } finally {
     b.disabled = false;
   }
+});
+
+// ── Simulador da Leia no acompanhamento ──
+
+const ROTULO_DESFECHO = {
+  reforco: 'reforço', informacao: 'informação', encaminhamento: 'encaminhamento', pausa: 'pausa',
+  consultor: 'consultor', outro: 'outro',
+};
+const ROTULO_CATEGORIA = {
+  dor_ou_lesao: 'dor ou lesão', saude: 'saúde', ajuste_de_treino: 'ajuste de treino',
+  ausencia_ou_desanimo: 'ausência ou desânimo', pedido_do_aluno: 'pedido do aluno', outro: 'outro',
+};
+
+function notaDoTurno(d) {
+  if (!d) return '';
+  const partes = [d.limite ? 'depois do limite' : `troca ${d.troca} de 3`];
+  partes.push(d.desfecho ? `desfecho: ${ROTULO_DESFECHO[d.desfecho.tipo] ?? d.desfecho.tipo} — ${d.desfecho.resumo}` : 'SEM DESFECHO');
+  for (const e of d.encaminhamentos || []) {
+    partes.push(`encaminhou ao professor: ${ROTULO_CATEGORIA[e.categoria] ?? e.categoria} (${e.urgencia === 'hoje' ? 'hoje' : 'próximos dias'}) — «${e.resumo}»`);
+  }
+  if (d.pausa) partes.push(`pausaria o acompanhamento${d.pausa.ate ? ' até ' + d.pausa.ate : ''}: ${d.pausa.motivo}`);
+  if (d.handoff) partes.push(`transferiria ao consultor: ${d.handoff.motivo}`);
+  const alerta = !d.desfecho || (d.encaminhamentos || []).some(e => e.urgencia === 'hoje');
+  return `<div class="acomp-sim-nota${alerta ? ' alerta' : ''}">${partes.map(esc).join('<br>')}</div>`;
+}
+
+function balaoDoSimulador(m) {
+  if (m.de === 'aluno') {
+    return `<div class="balao cliente">${esc(m.texto)}<span class="assinatura">aluno (você)</span></div>`
+      + (m.detalhes?.semResposta ? `<div class="acomp-sim-nota">A Leia não respondeu (papo depois do limite).</div>` + notaDoTurno(m.detalhes) : '');
+  }
+  const quem = m.de === 'regua' ? 'acompanhamento (régua)' : 'Leia';
+  return `<div class="balao ${m.de === 'regua' ? 'regua' : 'leia'}">${esc(m.texto)}<span class="assinatura">${quem}</span></div>`
+    + (m.de === 'leia' ? notaDoTurno(m.detalhes) : '');
+}
+
+function desenharSimuladorAcomp(sessao) {
+  const log = $('#acomp-sim-log');
+  log.innerHTML = sessao
+    ? `<div class="acomp-motivo">Conversa com ${esc(sessao.aluno)}</div>` + sessao.mensagens.map(balaoDoSimulador).join('')
+    : '<p class="nota">Nenhuma conversa em curso.</p>';
+  log.scrollTop = log.scrollHeight;
+}
+
+async function carregarSimuladorAcomp() {
+  try {
+    const r = await api('/acompanhamento/simulador');
+    $('#acomp-sim-aluno').innerHTML = r.alunos.map(a =>
+      `<option value="${esc(a.cliente_id)}"${a.temMensagem ? '' : ' disabled'}>${esc(a.nome)}${a.temMensagem ? '' : ' (sem mensagem na prévia)'}</option>`).join('');
+    desenharSimuladorAcomp(r.sessao);
+  } catch (err) {
+    $('#acomp-sim-log').textContent = `Simulador indisponível: ${err.message}`;
+  }
+}
+
+$('#btn-acomp-sim-iniciar').addEventListener('click', async () => {
+  const clienteId = $('#acomp-sim-aluno').value;
+  if (!clienteId) return;
+  try {
+    desenharSimuladorAcomp(await api('/acompanhamento/simulador/iniciar', { corpo: { clienteId } }));
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+});
+
+$('#form-acomp-sim').addEventListener('submit', async e => {
+  e.preventDefault();
+  const texto = $('#acomp-sim-texto').value.trim();
+  if (!texto) return;
+  const btn = $('#btn-acomp-sim-enviar');
+  btn.disabled = true;
+  $('#acomp-sim-texto').value = '';
+  const log = $('#acomp-sim-log');
+  log.insertAdjacentHTML('beforeend',
+    `<div class="balao cliente">${esc(texto)}<span class="assinatura">aluno (você)</span></div>
+     <div class="balao leia" id="acomp-sim-digitando"><i>Leia está pensando…</i></div>`);
+  log.scrollTop = log.scrollHeight;
+  try {
+    const r = await api('/acompanhamento/simulador/mensagem', { corpo: { mensagem: texto } });
+    $('#acomp-sim-digitando').remove();
+    if (r.comando) {
+      log.insertAdjacentHTML('beforeend',
+        (r.resposta ? `<div class="balao leia">${esc(r.resposta)}<span class="assinatura">resposta fixa</span></div>` : '')
+        + `<div class="acomp-sim-nota">${esc(r.explicacao)}</div>`);
+    } else if (r.detalhes.semResposta) {
+      log.insertAdjacentHTML('beforeend', `<div class="acomp-sim-nota">A Leia não respondeu (papo depois do limite).</div>` + notaDoTurno(r.detalhes));
+    } else {
+      log.insertAdjacentHTML('beforeend', balaoDoSimulador({ de: 'leia', texto: r.resposta, detalhes: r.detalhes }));
+    }
+    log.scrollTop = log.scrollHeight;
+  } catch (err) {
+    const d = $('#acomp-sim-digitando');
+    if (d) d.remove();
+    toast(err.message, 'erro');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#acomp-sim-texto').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#form-acomp-sim').requestSubmit(); }
 });
 
 $('#btn-acomp-rodar').addEventListener('click', async () => {

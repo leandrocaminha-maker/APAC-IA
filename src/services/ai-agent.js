@@ -36,6 +36,8 @@ import {
   detectarModulos, montarNucleo, montarOpcionais, indiceDeModulos, invalidarKnowledge,
 } from './knowledge.js';
 import { aiUsage } from './ai-usage.js';
+import { carregarPromptEBase, SEM_RESPOSTA } from './acompanhamento/prompt.js';
+import { FERRAMENTAS } from './acompanhamento/ferramentas.js';
 
 const MODEL = 'claude-opus-5';
 
@@ -963,6 +965,129 @@ export async function gerarMensagemCampanha({
   return { text };
 }
 
+// ──────────────────────────────────────────────
+// Acompanhamento — a Leia com o aluno do programa (etapa A3)
+// ──────────────────────────────────────────────
+
+/**
+ * Esforço ALTO, e não o `low` do atendimento de vendas: pedido do
+ * responsável em 08/10/2026 — o raciocínio na frente da velocidade, como o
+ * prompt de vendas diz e a configuração dele não deixa. O volume deste
+ * caminho é pequeno (só quem responde ao acompanhamento). O teto de tokens
+ * sobe junto, porque no Opus 5 ele limita raciocínio e resposta somados.
+ */
+const ACOMPANHAMENTO_EFFORT = 'high';
+const ACOMPANHAMENTO_MAX_TOKENS = 16_000;
+
+let cacheAcompanhamento = { em: 0, prompt: null, base: null };
+
+/** O histórico de uma conversa, como o atendimento de vendas o lê. */
+export function historicoDaConversa(conversationId, opcoes) {
+  return loadConversationHistory(conversationId, opcoes);
+}
+
+/**
+ * Um turno da Leia no acompanhamento.
+ *
+ * Diferente de `processMessage` em três pontos (§6.5 do plano):
+ *   - prompt e base próprios (`acompanhamento/prompt.js`), em cache próprio
+ *     — o `loadPrompt` guarda um prompt só, seja qual for o slug;
+ *   - ferramentas próprias, lista fixa (`acompanhamento/ferramentas.js`);
+ *   - o aluno vai no bloco 3, depois do breakpoint: muda por conversa.
+ *
+ * Termina quando a resposta traz texto: as ferramentas pedidas junto com ele
+ * executam, e não se volta ao modelo — o texto já é a resposta ao aluno, e
+ * outra volta só pagaria o prefixo para escrevê-la de novo.
+ *
+ * @param {object} p
+ * @param {string} p.mensagem           a mensagem do aluno (agrupada)
+ * @param {object[]} p.historico        [{ role, content }], sem a mensagem atual
+ * @param {string} p.contexto           o bloco do aluno (`contextoDoAluno`)
+ * @param {(nome: string, args: object) => Promise<object>} p.executar
+ * @returns {Promise<{ text: string|null, semResposta: boolean, handoff: object|null, ferramentas: string[] }>}
+ */
+export async function processarAcompanhamento({ mensagem, historico = [], contexto, executar, conversationId = null, origem = 'acompanhamento' }) {
+  if (!cacheAcompanhamento.prompt || Date.now() - cacheAcompanhamento.em > CACHE_MS) {
+    cacheAcompanhamento = { em: Date.now(), ...(await carregarPromptEBase()) };
+  }
+
+  const agora = new Date();
+  const formatar = (opcoes) => new Intl.DateTimeFormat('pt-BR', { timeZone: TIMEZONE, ...opcoes }).format(agora);
+  const system = [
+    {
+      type: 'text',
+      text: `${cacheAcompanhamento.prompt}\n\n${cacheAcompanhamento.base}`,
+      cache_control: { type: 'ephemeral', ttl: CACHE_TTL },
+    },
+    {
+      type: 'text',
+      text: [
+        '## AGORA',
+        `- ${formatar({ weekday: 'long' })}, ${formatar({ day: '2-digit', month: '2-digit', year: 'numeric' })}, ` +
+          `${formatar({ hour: '2-digit', minute: '2-digit' })} (horário de Brasília)`,
+        '',
+        contexto,
+      ].join('\n'),
+    },
+  ];
+
+  // A API exige que a conversa comece pelo usuário.
+  const messages = [...historico, { role: 'user', content: mensagem }];
+  while (messages.length && messages[0].role !== 'user') messages.shift();
+
+  const ferramentas = [];
+  for (let iteracao = 0; iteracao < MAX_TOOL_ITERATIONS; iteracao++) {
+    const inicio = Date.now();
+    const response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: ACOMPANHAMENTO_MAX_TOKENS,
+      output_config: { effort: ACOMPANHAMENTO_EFFORT },
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      system,
+      tools: FERRAMENTAS,
+      messages,
+    });
+    aiUsage.registrar({
+      usage: response.usage, modelo: MODEL, conversationId, origem, iteracao, modulos: ['acompanhamento'],
+      stopReason: response.stop_reason, duracaoMs: Date.now() - inicio,
+    });
+
+    if (response.stop_reason === 'refusal') {
+      logger.warn(`[ai-agent] Acompanhamento: recusa (${response.stop_details?.category || 'sem categoria'})`);
+      return {
+        text: 'Essa eu prefiro que alguém da equipe te responda 😊 Já estou chamando.',
+        semResposta: false, handoff: { motivo: 'Recusa do modelo' }, ferramentas,
+      };
+    }
+
+    const texto = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    const usos = response.content.filter(b => b.type === 'tool_use');
+    const resultados = [];
+    let handoff = null;
+    for (const uso of usos) {
+      ferramentas.push(uso.name);
+      const resultado = await executar(uso.name, uso.input || {});
+      if (resultado?.action === 'handoff') handoff = { motivo: resultado.motivo, mensagem: resultado.mensagem };
+      resultados.push({ type: 'tool_result', tool_use_id: uso.id, content: JSON.stringify(resultado) });
+    }
+
+    // A transferência encerra o turno com a despedida que o modelo escreveu.
+    if (handoff) return { text: texto || handoff.mensagem, semResposta: false, handoff, ferramentas };
+
+    if (texto || !usos.length) {
+      if (texto.replace(/[`"']/g, '').trim() === SEM_RESPOSTA) return { text: null, semResposta: true, handoff: null, ferramentas };
+      return { text: texto || FALLBACK_TEXT, semResposta: false, handoff: null, ferramentas };
+    }
+
+    messages.push({ role: 'assistant', content: response.content });
+    messages.push({ role: 'user', content: resultados });
+  }
+
+  logger.warn(`[ai-agent] Acompanhamento: limite de ${MAX_TOOL_ITERATIONS} iterações atingido`);
+  return { text: FALLBACK_TEXT, semResposta: false, handoff: null, ferramentas };
+}
+
 /**
  * Invalida todos os caches (prompt do banco + base de conhecimento).
  * Útil quando o admin edita o prompt ou os knowledge files são atualizados.
@@ -974,6 +1099,7 @@ export function invalidatePromptCache() {
   promptLoadedAt = 0;
   followupLoadedAt = 0;
   campanhaLoadedAt = 0;
+  cacheAcompanhamento = { em: 0, prompt: null, base: null };
   invalidarKnowledge();
   logger.info('[ai-agent] Cache de prompt e knowledge invalidado');
 }
@@ -982,5 +1108,6 @@ export const aiAgent = {
   processMessage,
   gerarFollowup,
   gerarMensagemCampanha,
+  processarAcompanhamento,
   invalidatePromptCache,
 };

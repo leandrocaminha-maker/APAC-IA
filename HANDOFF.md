@@ -69,6 +69,22 @@ vai dizer quando começar para valer.
   O worker solta a fila e confere prazos a cada
   `ACOMPANHAMENTO_ENCAMINHAMENTOS_MINUTOS` (5). Sem a lista do Prescrev não
   há horário: nada sai, e tenta de novo no ciclo seguinte.
+- **A Leia no acompanhamento** (etapa A3, só no simulador): prompt em
+  `src/prompts/acompanhamento.md` — a personalidade e o jeito de escrever são
+  CÓPIA LITERAL de `vendas.md` entre as marcas `<!-- vendas.md -->`, conferida
+  linha a linha por `acompanhamento-prompt.test.js` (mudou vendas, refaça a
+  cópia). Base curta (`acompanhamento/prompt.js`): funcionamento, agendamento,
+  grade de adulto e suporte do FITI, lidos dos mesmos arquivos de
+  `knowledge/`. `processarAcompanhamento` (`ai-agent.js`): esforço ALTO
+  (pedido do responsável: raciocínio antes de velocidade), ferramentas fixas
+  (`acompanhamento/ferramentas.js`), o aluno resumido no bloco 3
+  (`acompanhamento/conversa.js`). Até três trocas por rodada: na terceira ela
+  responde e encaminha ao professor; depois, só alerta, pergunta objetiva e o
+  que é do professor ou do consultor — papo fica sem resposta. Painel →
+  Acompanhamento → "Simulador da Leia": ferramentas só registram, nada é
+  enviado. `node --env-file=.env scripts/bateria-acompanhamento.js` roda os
+  casos da bateria com um aluno fictício. A porta do webhook (aluno real
+  caindo neste caminho) entra com a ativação, na A5.
 - Migration **011**: `acomp_fichas` (cópia da ficha) e `acomp_disparos` (uma
   linha por aluno e dia, com motivo — inclusive do que não sai).
 - Painel → aba **Acompanhamento** (só admin): a prévia de 7 dias, o botão
