@@ -17,7 +17,7 @@ import { createHmac } from 'node:crypto';
 import { config } from '../../config.js';
 
 /** As versões que este código sabe ler (FICHA_VERSION e MODELOS_VERSION do Prescrev). */
-export const FICHA_VERSAO_LIDA = 2;
+export const FICHA_VERSAO_LIDA = 3;
 export const MODELOS_VERSAO_LIDA = 1;
 
 async function buscar(caminho) {

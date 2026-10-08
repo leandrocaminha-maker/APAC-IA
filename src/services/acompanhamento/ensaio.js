@@ -82,12 +82,37 @@ async function carregarModelos() {
   }
 }
 
+/** O tipo do evento da automação "Sem presença" do CRM do EVO (§4.2 do plano). */
+export const EVENTO_SEM_PRESENCA = 'crm.automation.no_attendance';
+
+/**
+ * Os avisos "Sem presença" da última semana, por id de membro do EVO. Vêm
+ * crus de `crm_evo_webhook_events`, onde o /webhook/evo guarda todo evento.
+ * `dias` é o `daysOffset`; 0 ou ausente vira null — o da segmentação vinha
+ * 0, e o que ele significa aqui se confere com um aluno conhecido (§9.3).
+ */
+async function avisosSemPresenca() {
+  const desde = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { data, error } = await supabase.from('crm_evo_webhook_events')
+    .select('payload, created_at').eq('event_type', EVENTO_SEM_PRESENCA).gte('created_at', desde);
+  if (error) throw new Error(`crm_evo_webhook_events: ${error.message}`);
+  const porMembro = new Map();
+  for (const { payload, created_at } of data ?? []) {
+    const id = Number(payload?.person?.idMember);
+    if (!Number.isInteger(id)) continue;
+    const dias = Number(payload?.eventContext?.daysOffset);
+    const aviso = { dia: hojeSP(new Date(payload?.eventDate ?? created_at)), dias: dias > 0 ? dias : null };
+    porMembro.set(id, [...(porMembro.get(id) ?? []), aviso]);
+  }
+  return porMembro;
+}
+
 /** As mensagens que contam para a cadência: no ensaio, as simuladas antes de hoje. */
 async function historicoDe(ids, hoje) {
   const linhas = [];
   for (let i = 0; i < ids.length; i += 150) {
     const { data, error } = await supabase.from('acomp_disparos')
-      .select('cliente_id, dia, situacao, modelo_id')
+      .select('cliente_id, dia, situacao, modelo_id, valores')
       .in('cliente_id', ids.slice(i, i + 150))
       .eq('modo', MODO).eq('status', 'simulado').lt('dia', hoje);
     if (error) throw new Error(`acomp_disparos: ${error.message}`);
@@ -115,11 +140,13 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
   const { fichas, fonte, semFicha } = await carregarFichas();
   const { modelos, fonte: fonteModelos } = await carregarModelos();
   const historico = await historicoDe(fichas.map(f => f.cliente_id), hoje);
+  const avisos = await avisosSemPresenca();
 
   const decisoes = fichas.map(ficha => {
     const d = decidir({
       ficha, modelos, hoje, modo: MODO,
       historico: historico.filter(h => h.cliente_id === ficha.cliente_id),
+      sinais: avisos.get(Number(ficha.aluno?.evo_id)) ?? [],
     });
     const previsto = d.status === 'simulado' ? horaPrevista(ficha, hoje, janela) : null;
     return { ficha, d, previsto };
@@ -164,6 +191,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
   for (const l of linhas) contagem[l.status] = (contagem[l.status] ?? 0) + 1;
   Object.assign(resumo, {
     fichas: fichas.length, sem_ficha: semFicha, fonte_fichas: fonte, fonte_modelos: fonteModelos, contagem,
+    avisos_sem_presenca: [...avisos.values()].reduce((n, l) => n + l.length, 0),
   });
   await carimbarMarcador(MARCA_ENSAIO, resumo);
   logger.info(`[acompanhamento] Ensaio de ${hoje}: ${fichas.length} ficha(s) — ${JSON.stringify(contagem)}`);

@@ -21,9 +21,16 @@ vai dizer quando começar para valer.
 - `src/services/acompanhamento/`: `regua.js` e `render.js` puros, com os
   primeiros testes do repositório (`npm test`); `prescrev.js` busca fichas e
   modelos; `ensaio.js` roda o dia, põe hora, aplica o sub-teto e grava.
-- Situações desta etapa: boas-vindas (no ensaio, abre a linha do tempo de quem
-  chega), reavaliação (7 dias antes) e rotina (na cadência). Ausência, retorno,
-  ciclo e agenda esperam a leitura do EVO.
+- Situações: boas-vindas (no ensaio, abre a linha do tempo de quem chega),
+  ausência, retorno, reavaliação (7 dias antes), modalidade sem agendamento e
+  rotina (na cadência), uma por dia nessa ordem. Ausência vem do webhook
+  "Sem presença" do CRM do EVO (`crm.automation.no_attendance`, guardado cru em
+  `crm_evo_webhook_events` como todo evento): a regra ainda não existe no EVO —
+  criar três, 5, 7 e 14 dias. Retorno (com texto datado) e modalidade sem
+  agendamento leem as sessões que a ficha traz (ficha versão 3, carregadas pelo
+  sync de domingo do AQUAP); presença só em aula finalizada.
+  Ciclo em risco, mínimo cumprido e treino vencendo esperam o treino de
+  musculação do EVO.
 - Migration **011**: `acomp_fichas` (cópia da ficha) e `acomp_disparos` (uma
   linha por aluno e dia, com motivo — inclusive do que não sai).
 - Painel → aba **Acompanhamento** (só admin): a prévia de 7 dias e o botão
