@@ -83,6 +83,18 @@
 
   main { flex: 1; min-height: 0; overflow: auto; }
   .vista { display: none; padding: 18px; }
+
+  /* Acompanhamento (ensaio) */
+  .acomp-dia { margin: 18px 0 8px; color: var(--suave); font-size: 13px; text-transform: uppercase; letter-spacing: .5px; }
+  .acomp-linha { background: var(--painel); border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .acomp-topo { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+  .acomp-selo { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--borda); }
+  .acomp-selo.simulado { color: var(--acento); border-color: var(--acento-escuro); }
+  .acomp-selo.bloqueado { color: var(--alerta); border-color: var(--alerta); }
+  .acomp-selo.nada { color: var(--suave); }
+  .acomp-texto { margin: 8px 0 4px; padding: 8px 10px; background: var(--painel-2); border-radius: 8px; white-space: pre-wrap; }
+  .acomp-motivo { color: var(--suave); font-size: 13px; }
+  .acomp-bloqueio { color: var(--alerta); font-size: 13px; }
   .vista.ativa { display: block; }
   .vista.cheia { display: none; height: 100%; padding: 0; }
   .vista.cheia.ativa { display: flex; }
@@ -340,6 +352,7 @@
       <button data-vista="conversas">Conversas</button>
       <button data-vista="simulador">Simulador</button>
       <button data-vista="ajustes">Ajustes</button>
+      <button data-vista="acompanhamento" id="nav-acompanhamento" style="display:none">Acompanhamento</button>
     </nav>
     <div class="espaco"></div>
     <div class="quem"><b id="quem-nome"></b><span id="quem-papel"></span></div>
@@ -465,6 +478,24 @@
     </section>
 
     <!-- ── AJUSTES ────────────────────────────── -->
+    <!-- ── ACOMPANHAMENTO (admin) ─────────────── -->
+    <!--
+      A régua do acompanhamento dos alunos do Prescrev, em ensaio: o que
+      sairia para cada aluno, dia a dia, e por quê. Nada é enviado.
+    -->
+    <section class="vista" id="vista-acompanhamento">
+      <div class="cartao">
+        <h3 style="margin-top:0">Acompanhamento — ensaio</h3>
+        <p class="nota" style="margin-top:0">
+          Nada é enviado ao aluno. A cada dia a régua decide o que sairia para cada aluno com ficha
+          completa no Prescrev, e por quê.
+        </p>
+        <div id="acomp-estado" class="nota" style="margin-bottom:10px"></div>
+        <button class="btn primario" id="btn-acomp-rodar">Rodar o ensaio de hoje</button>
+      </div>
+      <div id="acomp-dias"></div>
+    </section>
+
     <section class="vista" id="vista-ajustes">
       <div class="grade-ajustes">
         <div class="cartao">
@@ -778,6 +809,7 @@ async function mostrarVista(nome) {
   if (nome === 'conversas') await carregarConversas();
   if (nome === 'simulador') await carregarSimulador();
   if (nome === 'ajustes') await carregarAjustes();
+  if (nome === 'acompanhamento') await carregarAcompanhamento();
 }
 
 $$('nav button').forEach(b => b.addEventListener('click', () =>
@@ -1634,6 +1666,84 @@ $('#sim-texto').addEventListener('keydown', e => {
 });
 
 // ══════════════════════════════════════════════════════
+// Acompanhamento (ensaio) — só admin
+// ══════════════════════════════════════════════════════
+
+const ROTULO_SITUACAO = {
+  boas_vindas: 'Boas-vindas', rotina: 'Rotina', reavaliacao: 'Reavaliação', ausencia: 'Ausência', retorno: 'Retorno',
+};
+const ROTULO_TRILHA = { adesao: 'Adesão', motivacional: 'Motivacional', tecnico: 'Técnico', desafiador: 'Desafiador' };
+const ORDEM_STATUS = { simulado: 0, bloqueado: 1, nada: 2 };
+
+function horaCurta(iso) {
+  return new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+}
+
+function diaPorExtenso(dia) {
+  return new Date(dia + 'T12:00:00-03:00').toLocaleDateString('pt-BR',
+    { timeZone: 'America/Sao_Paulo', weekday: 'short', day: '2-digit', month: '2-digit' });
+}
+
+async function carregarAcompanhamento() {
+  const r = await api('/acompanhamento?dias=7');
+  const c = r.config;
+  const rod = r.rodada;
+  $('#acomp-estado').innerHTML = [
+    `Worker diário: <b>${c.habilitado ? 'ligado' : 'desligado'}</b> · modo <b>${c.dryRun ? 'ensaio' : 'envio'}</b> · sub-teto ${c.tetoDiario}/dia`,
+    c.temSegredo ? '' : '<span style="color:var(--erro)">Falta ACOMPANHAMENTO_SECRET no .env: as fichas não chegam.</span>',
+    rod ? `Última rodada: ${esc(diaPorExtenso(rod.dia))}, ${esc(horaCurta(rod.rodado_em))} (${esc(rod.origem)})` +
+      (rod.sem_janela ? ' — dia sem janela de contato.' :
+        ` — ${rod.fichas} ficha(s), ${rod.sem_ficha ?? '?'} sem ficha completa no Prescrev. ` +
+        `Fichas: ${esc(rod.fonte_fichas)}. Modelos: ${esc(rod.fonte_modelos)}.`) : 'Ainda não rodou.',
+  ].filter(Boolean).join('<br>');
+
+  const porDia = new Map();
+  for (const l of r.linhas) {
+    if (!porDia.has(l.dia)) porDia.set(l.dia, []);
+    porDia.get(l.dia).push(l);
+  }
+
+  $('#acomp-dias').innerHTML = !r.linhas.length
+    ? '<p class="nota">Nada nos últimos 7 dias.</p>'
+    : [...porDia].map(([dia, linhas]) => {
+      linhas.sort((a, b) => (ORDEM_STATUS[a.status] ?? 9) - (ORDEM_STATUS[b.status] ?? 9)
+        || String(a.previsto_para).localeCompare(String(b.previsto_para)));
+      const sairiam = linhas.filter(l => l.status === 'simulado').length;
+      return `<div class="acomp-dia">${esc(diaPorExtenso(dia))} · ${sairiam} sairia(m)</div>` +
+        linhas.map(l => {
+          const nome = l.aluno?.nome ?? '—';
+          const link = `${c.prescrevUrl}/dashboard/clientes/${l.cliente_id}`;
+          const selo = l.status === 'simulado' ? `Sairia às ${horaCurta(l.previsto_para)}`
+            : l.status === 'bloqueado' ? 'Não sairia' : 'Nada hoje';
+          return `<div class="acomp-linha">
+            <div class="acomp-topo">
+              <b><a href="${esc(link)}" target="_blank" rel="noopener">${esc(nome)}</a></b>
+              <span class="acomp-motivo">${esc(ROTULO_TRILHA[l.trilha] ?? l.trilha ?? '')}${l.situacao ? ' · ' + esc(ROTULO_SITUACAO[l.situacao] ?? l.situacao) : ''}</span>
+              <span class="acomp-selo ${esc(l.status)}">${esc(selo)}</span>
+            </div>
+            ${l.texto ? `<div class="acomp-texto">${esc(l.texto)}</div>` : ''}
+            <div class="acomp-motivo">${esc(l.motivo)}</div>
+            ${(l.bloqueios || []).map(b => `<div class="acomp-bloqueio">${esc(b)}</div>`).join('')}
+          </div>`;
+        }).join('');
+    }).join('');
+}
+
+$('#btn-acomp-rodar').addEventListener('click', async () => {
+  const b = $('#btn-acomp-rodar');
+  b.disabled = true;
+  try {
+    const r = await api('/acompanhamento/ensaio', { corpo: {} });
+    toast(r.sem_janela ? 'Hoje não há janela de contato.' : `Ensaio rodado: ${r.fichas} ficha(s).`);
+    await carregarAcompanhamento();
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    b.disabled = false;
+  }
+});
+
+// ══════════════════════════════════════════════════════
 // Ajustes
 // ══════════════════════════════════════════════════════
 
@@ -1777,6 +1887,7 @@ async function iniciar() {
 
   $('#quem-nome').textContent = eu.usuario.nome;
   $('#quem-papel').textContent = eu.usuario.papel;
+  $('#nav-acompanhamento').style.display = eu.usuario.papel === 'admin' ? '' : 'none';
   if (eu.dryRun) $('#fita-dryrun').style.display = 'block';
 
   mostrarApp();

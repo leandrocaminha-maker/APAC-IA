@@ -22,6 +22,7 @@ import { startEvoSyncWorker } from './workers/evo-sync-worker.js';
 import { startFollowupWorker } from './workers/followup-worker.js';
 import { startWhatsappMonitor } from './services/whatsapp-monitor.js';
 import { startCampanhaWorker } from './workers/campanha-worker.js';
+import { startAcompanhamentoWorker } from './workers/acompanhamento-worker.js';
 
 const app = express();
 
@@ -153,6 +154,10 @@ app.listen(config.port, () => {
 
   // Campanha ativa: nasce desligada, ver config.campanha
   startCampanhaWorker();
+
+  // Acompanhamento dos alunos do Prescrev: nasce desligado e só ensaia,
+  // ver config.acompanhamento
+  startAcompanhamentoWorker();
 });
 
 /**

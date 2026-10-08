@@ -221,6 +221,39 @@ export const config = {
     carenciaDias: parseInt(env('CAMPANHA_CARENCIA_DIAS', '30'), 10),
   },
 
+  // Acompanhamento dos alunos avaliados no Prescrev (PLANO_ACOMPANHAMENTO.md,
+  // no repositório do Prescrev). O Prescrev publica a ficha de cada aluno e
+  // os modelos; a régua roda aqui.
+  //
+  // Etapa A2: a régua roda em ENSAIO. Decide e grava, todo dia, o que
+  // sairia para cada aluno e por quê — e não envia nada: o envio real não
+  // existe nesta etapa, e o worker recusa iniciar com DRY_RUN=false.
+  acompanhamento: {
+    // Chave geral do worker diário. Com false ele nem inicia; o painel
+    // ainda roda o ensaio à mão (Acompanhamento → "Rodar o ensaio de hoje").
+    habilitado: env('ACOMPANHAMENTO_HABILITADO', 'false') === 'true',
+
+    // Ensaio. Só deixa de ser quando alguém escrever false — e nesta etapa
+    // nem assim: o worker não inicia.
+    dryRun: env('ACOMPANHAMENTO_DRY_RUN', 'true') !== 'false',
+
+    // Intervalo em que o worker confere se o ensaio do dia já rodou. 0 desliga.
+    minutos: parseInt(env('ACOMPANHAMENTO_MINUTOS', '30'), 10),
+
+    // Hora de São Paulo a partir da qual o ensaio do dia roda — antes da
+    // janela de contato abrir, para a prévia do dia estar pronta às 9h.
+    hora: parseInt(env('ACOMPANHAMENTO_HORA', '7'), 10),
+
+    // Sub-teto do acompanhamento, dentro do teto do número (D5 do plano).
+    tetoDiario: parseInt(env('ACOMPANHAMENTO_TETO_DIARIO', '8'), 10),
+
+    prescrev: {
+      url: env('PRESCREV_URL', 'https://prescrev.apacademia.com.br'),
+      // O mesmo valor do ACOMPANHAMENTO_SECRET no .env do Prescrev.
+      segredo: env('ACOMPANHAMENTO_SECRET', ''),
+    },
+  },
+
   // Transcrição de áudio recebido no WhatsApp.
   //
   // O Claude não aceita áudio, então isto exige um serviço de fora — não é

@@ -6,6 +6,32 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## Acompanhamento dos alunos do Prescrev — a régua em ensaio (08/10/2026)
+
+O acompanhamento automatizado dos alunos avaliados no Prescrev roda aqui
+(plano em `PLANO_ACOMPANHAMENTO.md`, no repositório do Prescrev — decisões
+D1–D12 de 07/10/2026). O Prescrev publica a **ficha** de cada aluno (trilha,
+cadência, frequência, próxima avaliação, o que o aluno leu no relatório) e os
+**modelos** de mensagem, por duas rotas assinadas com HMAC; a régua decide aqui.
+
+**Etapa A2, em ENSAIO: nada é enviado.** Todo o sistema do Prescrev ainda está
+em teste — alunos reais, avaliações e prescrições simuladas —, e o responsável
+vai dizer quando começar para valer.
+
+- `src/services/acompanhamento/`: `regua.js` e `render.js` puros, com os
+  primeiros testes do repositório (`npm test`); `prescrev.js` busca fichas e
+  modelos; `ensaio.js` roda o dia, põe hora, aplica o sub-teto e grava.
+- Situações desta etapa: boas-vindas (no ensaio, abre a linha do tempo de quem
+  chega), reavaliação (7 dias antes) e rotina (na cadência). Ausência, retorno,
+  ciclo e agenda esperam a leitura do EVO.
+- Migration **011**: `acomp_fichas` (cópia da ficha) e `acomp_disparos` (uma
+  linha por aluno e dia, com motivo — inclusive do que não sai).
+- Painel → aba **Acompanhamento** (só admin): a prévia de 7 dias e o botão
+  "Rodar o ensaio de hoje". Worker diário em `ACOMPANHAMENTO_HABILITADO`
+  (padrão false); com `ACOMPANHAMENTO_DRY_RUN=false` ele se recusa a iniciar.
+- Para funcionar: `ACOMPANHAMENTO_SECRET` igual no `.env` daqui e no do
+  Prescrev (lá também `ACOMPANHAMENTO_TENANT_ID`), e a 011 aplicada.
+
 ## 🚨 A Meta restringiu o número — 31/08/2026
 
 **"Sua conta está restringida no momento."** Responder segue liberado; **iniciar

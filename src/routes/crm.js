@@ -30,6 +30,7 @@ import { evoSync } from '../services/evo-sync.js';
 import { evoClient } from '../services/evo-client.js';
 import { aiAgent } from '../services/ai-agent.js';
 import { saveMessage, reactivateBot } from '../services/contacts.js';
+import { rodarEnsaio, ultimaRodada } from '../services/acompanhamento/ensaio.js';
 import {
   sendText, getConnectionStatus, getQrCode, criarInstancia, normalizePhone,
 } from '../services/evolution.js';
@@ -1083,6 +1084,56 @@ router.post('/api/evo/webhooks', exigirAdmin, rota(async (req, res) => {
 
 router.post('/api/evo/sincronizar', exigirAdmin, rota(async (req, res) => {
   res.json(await evoSync.sincronizarProspects({ dias: parseInt(req.body?.dias || '7', 10) }));
+}));
+
+// ──────────────────────────────────────────────
+// Acompanhamento — admin
+//
+// A prévia da régua do acompanhamento (etapa A2, em ensaio): o que sairia
+// para cada aluno do Prescrev, dia a dia, e por quê. Só admin: traz o nome
+// do aluno, a trilha e o texto da mensagem, e é leitura de supervisão, não
+// de consultor.
+// ──────────────────────────────────────────────
+
+router.get('/api/acompanhamento', exigirAdmin, rota(async (req, res) => {
+  const dias = Math.min(Math.max(parseInt(req.query.dias || '7', 10) || 7, 1), 30);
+  const desde = new Date(Date.now() - dias * 86_400_000).toISOString().slice(0, 10);
+
+  const [{ data: linhas, error }, { data: fichas, error: errFichas }, rodada] = await Promise.all([
+    supabase.from('acomp_disparos')
+      .select('cliente_id, dia, modo, status, situacao, trilha, modelo_id, texto, motivo, bloqueios, previsto_para')
+      .gte('dia', desde).order('dia', { ascending: false }).order('previsto_para', { ascending: true }),
+    supabase.from('acomp_fichas').select('cliente_id, ficha'),
+    ultimaRodada(),
+  ]);
+  if (error || errFichas) return res.status(500).json({ erro: (error || errFichas).message });
+
+  const aluno = new Map((fichas || []).map(f => [f.cliente_id, {
+    nome: f.ficha?.aluno?.primeiro_nome ?? '—',
+    trilha: f.ficha?.trilha?.principal ?? null,
+    cadencia: f.ficha?.trilha?.cadencia_dias ?? null,
+  }]));
+
+  res.json({
+    config: {
+      habilitado: config.acompanhamento.habilitado,
+      dryRun: config.acompanhamento.dryRun,
+      tetoDiario: config.acompanhamento.tetoDiario,
+      prescrevUrl: config.acompanhamento.prescrev.url,
+      temSegredo: !!config.acompanhamento.prescrev.segredo,
+    },
+    rodada: rodada ? { ...rodada.valor, quando: rodada.quando } : null,
+    linhas: (linhas || []).map(l => ({ ...l, aluno: aluno.get(l.cliente_id) ?? null })),
+  });
+}));
+
+router.post('/api/acompanhamento/ensaio', exigirAdmin, rota(async (req, res) => {
+  try {
+    res.json(await rodarEnsaio({ origem: `painel:${req.usuario.nome}` }));
+  } catch (err) {
+    logger.error('[acompanhamento] Ensaio pelo painel falhou:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
 }));
 
 // ──────────────────────────────────────────────
