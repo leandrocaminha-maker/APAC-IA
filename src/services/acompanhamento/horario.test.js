@@ -57,3 +57,11 @@ test('quando o briefing sai', () => {
   assert.deepEqual(quandoEnviar({ horario: null, urgencia: 'proximos_dias', agora: sp('2026-10-08T09:30') }),
     { acao: 'indisponivel', motivo: 'sem horário de trabalho cadastrado' });
 });
+
+test('o master trabalha a qualquer hora: 00:00–24:00 nos sete dias (horarioEfetivo do Prescrev)', () => {
+  const SEMPRE = Object.fromEntries(['0', '1', '2', '3', '4', '5', '6'].map(d => [d, [['00:00', '24:00']]]));
+  assert.deepEqual(['2026-10-08T03:00', '2026-10-11T23:59', '2026-10-10T00:00'].map(s => emHorario(SEMPRE, sp(s))), [true, true, true]);
+  // 23h de "hoje": sai na hora, e o prazo atravessa a meia-noite
+  assert.equal(quandoEnviar({ horario: SEMPRE, urgencia: 'hoje', agora: sp('2026-10-08T23:00') }).acao, 'enviar');
+  assert.equal(iso(prazoDaResposta(SEMPRE, 'hoje', sp('2026-10-08T23:00'))), iso(sp('2026-10-09T01:00')));
+});
