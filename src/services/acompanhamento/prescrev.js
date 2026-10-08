@@ -53,3 +53,20 @@ export async function buscarModelos() {
   }
   return r;
 }
+
+const EQUIPE_CACHE_MS = 5 * 60_000;
+let cacheEquipe = { em: 0, equipe: null };
+
+/**
+ * A equipe da unidade: quem pode receber encaminhamentos, com o código
+ * EQUIPE de cada um (que vale como senha), o papel, o e-mail e o horário
+ * de trabalho. Guardada 5 minutos — a porta do webhook e o worker a leem a
+ * toda hora; `fresca` busca de novo (código recém-gerado).
+ * @returns {Promise<object[]>}
+ */
+export async function buscarEquipe({ fresca = false } = {}) {
+  if (!fresca && cacheEquipe.equipe && Date.now() - cacheEquipe.em < EQUIPE_CACHE_MS) return cacheEquipe.equipe;
+  const r = await buscar('/api/acompanhamento/equipe');
+  cacheEquipe = { em: Date.now(), equipe: r.equipe ?? [] };
+  return cacheEquipe.equipe;
+}

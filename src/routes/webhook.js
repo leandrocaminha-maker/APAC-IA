@@ -12,6 +12,7 @@ import { sendText, normalizePhone } from '../services/evolution.js';
 import { funil } from '../services/funil.js';
 import { evoSync } from '../services/evo-sync.js';
 import { campanhas } from '../services/campanhas.js';
+import { equipeAcompanhamento } from '../services/acompanhamento/equipe.js';
 import { transcreverAudio } from '../services/transcricao.js';
 
 const router = Router();
@@ -310,6 +311,19 @@ async function handleIncomingMessage(event) {
       { opt_out: true },
     );
     return;
+  }
+
+  // Equipe do acompanhamento (PLANO_ACOMPANHAMENTO.md do Prescrev, §7.2): o
+  // "EQUIPE <código>" de qualquer número, e toda mensagem de quem já é da
+  // equipe, não são conversa de venda — não entram no funil nem na Leia. A
+  // resposta é a mensagem recebida, e não conta no teto do número.
+  try {
+    if (await equipeAcompanhamento.tratarMensagemDaEquipe({
+      phone, contact, content,
+      responder: (texto) => sendAndSave(phone, texto, conversation.id, contact.id, { acompanhamento: 'equipe' }),
+    })) return;
+  } catch (err) {
+    logger.error('[webhook] Porta da equipe falhou — a mensagem segue o caminho normal:', err.message);
   }
 
   // Respondeu a uma campanha: ela para para essa pessoa, e a conversa segue

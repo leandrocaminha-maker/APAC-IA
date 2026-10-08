@@ -376,9 +376,12 @@ export const TIPOS_REGUA = ['ae_pos_aula', ...TIPOS_SONDAGEM, ...TIPOS_SILENCIO]
  *    consentimento dela, não esta. Tratar isso como silêncio transformaria
  *    a régua numa segunda campanha, para uma lista fria.
  *  - `simulador` / `teste-web` — conversa de teste não recebe follow-up.
+ *  - `bot:briefing` — o encaminhamento do acompanhamento ao professor. Se
+ *    o professor já foi lead, o briefing sem resposta não é silêncio de venda.
  */
 function ehNossaFala(sentBy) {
   const quem = String(sentBy || '');
+  if (quem === 'bot:briefing') return false;
   return quem === 'bot' || quem.startsWith('bot:') || quem.startsWith('human:');
 }
 

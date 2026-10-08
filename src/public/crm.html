@@ -96,6 +96,9 @@
   .acomp-motivo { color: var(--suave); font-size: 13px; }
   .acomp-bloqueio { color: var(--alerta); font-size: 13px; }
   .acomp-equipe { color: var(--info); font-size: 13px; }
+  .acomp-selo.aguardando, .acomp-selo.na_fila { color: var(--info); border-color: var(--info); }
+  .acomp-selo.sem_destino, .acomp-selo.cancelado { color: var(--alerta); border-color: var(--alerta); }
+  .acomp-historico { color: var(--suave); font-size: 12px; margin-top: 4px; }
   .vista.ativa { display: block; }
   .vista.cheia { display: none; height: 100%; padding: 0; }
   .vista.cheia.ativa { display: flex; }
@@ -495,6 +498,21 @@
         <button class="btn primario" id="btn-acomp-rodar">Rodar o ensaio de hoje</button>
       </div>
       <div id="acomp-dias"></div>
+
+      <div class="cartao" style="margin-top:24px">
+        <h3 style="margin-top:0">Encaminhamentos à equipe</h3>
+        <p class="nota" style="margin-top:0">
+          Em teste, os encaminhamentos da régua ficam abertos e <b>não são enviados</b>. O envio de teste manda um
+          briefing com aluno fictício a quem ativou o EQUIPE no WhatsApp: responder 1, 2 ou 3 confere o caminho inteiro.
+          Nada sai fora do horário de trabalho de quem recebe (cadastrado no Prescrev): fica na fila até o turno.
+        </p>
+        <div id="acomp-ativados" class="nota" style="margin-bottom:10px"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <select class="campo" id="acomp-teste-para" style="width:auto"></select>
+          <button class="btn" id="btn-acomp-teste">Enviar briefing de teste</button>
+        </div>
+      </div>
+      <div id="acomp-encaminhamentos"></div>
     </section>
 
     <section class="vista" id="vista-ajustes">
@@ -810,7 +828,7 @@ async function mostrarVista(nome) {
   if (nome === 'conversas') await carregarConversas();
   if (nome === 'simulador') await carregarSimulador();
   if (nome === 'ajustes') await carregarAjustes();
-  if (nome === 'acompanhamento') await carregarAcompanhamento();
+  if (nome === 'acompanhamento') await Promise.all([carregarAcompanhamento(), carregarEncaminhamentos()]);
 }
 
 $$('nav button').forEach(b => b.addEventListener('click', () =>
@@ -1734,6 +1752,75 @@ async function carregarAcompanhamento() {
         }).join('');
     }).join('');
 }
+
+const ROTULO_ENCAMINHAMENTO = {
+  simulado: 'Em ensaio — não enviado', na_fila: 'Na fila — fora do horário de trabalho', aguardando: 'Aguardando resposta', assumido: 'Assumido',
+  resolvido: 'Resolvido', sem_destino: 'Sem destino — na tela do Prescrev', cancelado: 'Cancelado',
+};
+const ESTADO_HORARIO = {
+  no_horario: 'no horário agora', fora: 'fora do horário, volta', sem_horario: 'sem horário no Prescrev: não recebe',
+  desconhecido: 'horário indisponível (o Prescrev não respondeu)',
+};
+const ROTULO_ORIGEM_DESTINO = { card: 'card', treino_evo: 'treino no EVO', avaliador: 'avaliador', teste: 'teste' };
+
+function quando(iso) {
+  return iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+}
+
+async function carregarEncaminhamentos() {
+  let r;
+  try {
+    r = await api('/acompanhamento/encaminhamentos');
+  } catch (err) {
+    $('#acomp-ativados').textContent = `Encaminhamentos indisponíveis: ${err.message}`;
+    return;
+  }
+  $('#acomp-ativados').innerHTML = r.ativados.length
+    ? 'Ativaram o EQUIPE: ' + r.ativados.map(a => `<b>${esc(a.nome)}</b>${a.papel === 'coordinator' ? ' (coordenação)' : ''}`
+        + ` — ${esc(ESTADO_HORARIO[a.horario] ?? a.horario)}${a.proximo_turno ? ' ' + esc(quando(a.proximo_turno)) : ''}`).join(', ')
+      + ` · teto de ${r.tetoBriefing} briefings por dia`
+    : 'Ninguém ativou o EQUIPE ainda: o código está na tela Acompanhamento do Prescrev.';
+  $('#acomp-teste-para').innerHTML = r.ativados.map(a => `<option value="${esc(a.profile_id)}">${esc(a.nome)}</option>`).join('');
+  $('#btn-acomp-teste').disabled = !r.ativados.length;
+
+  $('#acomp-encaminhamentos').innerHTML = !r.encaminhamentos.length
+    ? '<p class="nota">Nenhum encaminhamento nos últimos 30 dias.</p>'
+    : r.encaminhamentos.map(e => `<div class="acomp-linha">
+        <div class="acomp-topo">
+          <b>${esc(e.aluno)}</b>
+          <span class="acomp-motivo">${esc(e.motivo)} · ${e.urgencia === 'hoje' ? 'hoje' : 'próximos dias'}</span>
+          <span class="acomp-selo ${esc(e.status)}">${esc(ROTULO_ENCAMINHAMENTO[e.status] ?? e.status)}</span>
+        </div>
+        <div class="acomp-motivo">
+          Para ${esc(e.destinatario_nome ?? 'ninguém')}${e.destino_origem ? ` (${esc(ROTULO_ORIGEM_DESTINO[e.destino_origem] ?? e.destino_origem)})` : ''}
+          ${e.nivel === 'coordenacao' ? ' · na coordenação' : ''} · aberto ${esc(quando(e.created_at))}
+          ${e.enviar_em && (e.status === 'na_fila' || e.status === 'simulado') ? ` · ${e.status === 'simulado' ? 'sairia' : 'sai'} ${esc(quando(e.enviar_em))}` : ''}
+          ${e.prazo_resposta && e.status === 'aguardando' ? ` · prazo ${esc(quando(e.prazo_resposta))}` : ''}
+        </div>
+        <details><summary class="acomp-motivo">Briefing e histórico</summary>
+          <div class="acomp-texto">${esc(e.texto_briefing ?? '')}</div>
+          ${(e.historico || []).map(h => `<div class="acomp-historico">${esc(quando(h.em))} — ${esc(h.evento)}${h.detalhe ? ': ' + esc(h.detalhe) : ''}</div>`).join('')}
+        </details>
+      </div>`).join('');
+}
+
+$('#btn-acomp-teste').addEventListener('click', async () => {
+  const b = $('#btn-acomp-teste');
+  const profileId = $('#acomp-teste-para').value;
+  if (!profileId) return;
+  b.disabled = true;
+  try {
+    const r = await api('/acompanhamento/briefing-teste', { corpo: { profileId } });
+    toast(r.status === 'na_fila'
+      ? `${r.destinatario} está fora do horário de trabalho: o teste sai ${quando(r.enviar_em)}.`
+      : `Briefing de teste enviado a ${r.destinatario}.`);
+    await carregarEncaminhamentos();
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    b.disabled = false;
+  }
+});
 
 $('#btn-acomp-rodar').addEventListener('click', async () => {
   const b = $('#btn-acomp-rodar');

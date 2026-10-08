@@ -1,0 +1,22 @@
+-- ============================================================
+-- APAC-IA SALES — tipo de contato "equipe"
+--
+-- Rode no SQL Editor do Supabase, SOZINHA e ANTES da 014. É IDEMPOTENTE.
+--
+-- O Postgres não usa um valor novo de enum na mesma transação em que ele
+-- foi criado — é a lição das migrations 009 e 010. Por isso este valor vem
+-- numa migration só dele.
+--
+-- O QUE É
+--
+-- O professor que manda "EQUIPE <código>" ao WhatsApp da academia passa a
+-- receber os encaminhamentos do acompanhamento (PLANO_ACOMPANHAMENTO.md do
+-- Prescrev, §7.2, decisão D4). O contato dele é marcado como 'equipe': sem
+-- a marca, o "1" com que ele responde a um encaminhamento viraria lead no
+-- funil, e a Leia responderia a ele como a um cliente.
+--
+-- 'equipe' NÃO entra em TIPOS_CONTATO (funil.js): a Leia nunca classifica
+-- alguém como equipe. Só o código prova que o número é de alguém da equipe.
+-- ============================================================
+
+ALTER TYPE crm_tipo_contato ADD VALUE IF NOT EXISTS 'equipe';

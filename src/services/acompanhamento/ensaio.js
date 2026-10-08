@@ -36,7 +36,8 @@ import { carimbarMarcador, lerMarcador } from '../controle.js';
 import { janelaDoDia } from '../followup.js';
 import { hojeSP } from '../campanhas.js';
 import { evoClient } from '../evo-client.js';
-import { buscarFichas, buscarModelos } from './prescrev.js';
+import { buscarEquipe, buscarFichas, buscarModelos } from './prescrev.js';
+import { equipeAtivada, registrarDaRegua } from './encaminhamentos.js';
 import { PRIORIDADE, decidir, horaPrevista, resumirTreinos } from './regua.js';
 
 const MODO = 'ensaio';
@@ -217,12 +218,33 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
     valores: d.valores,
     motivo: d.motivo,
     bloqueios: d.bloqueios,
-    avisos_equipe: d.avisos_equipe ?? [],
+    avisos_equipe: (d.avisos_equipe ?? []).map(a => a.texto),
     previsto_para: previsto ? previsto.toISOString() : null,
   }));
   if (linhas.length) {
     const { error } = await supabase.from('acomp_disparos').upsert(linhas, { onConflict: 'cliente_id,dia,modo' });
     if (error) throw new Error(`acomp_disparos: ${error.message}`);
+  }
+
+  // Os avisos à equipe viram encaminhamentos — em ensaio, abertos e não
+  // enviados (decisão do responsável em 08/10/2026). Sem a 015, ou sem a
+  // lista da equipe, segue sem abrir e diz isso no resumo.
+  let notaEncaminhamentos;
+  try {
+    const comAviso = decisoes.filter(x => x.d.avisos_equipe?.length);
+    if (comAviso.length) {
+      const [equipe, ativos] = await Promise.all([buscarEquipe(), equipeAtivada()]);
+      let novos = 0;
+      for (const { ficha, d } of comAviso) {
+        novos += await registrarDaRegua({
+          ficha, avisos: d.avisos_equipe, treinos: treinos.get(ficha.cliente_id) ?? [], hoje, equipe, ativos,
+        });
+      }
+      notaEncaminhamentos = `${novos} aberto(s) em ensaio`;
+    }
+  } catch (err) {
+    logger.warn('[acompanhamento] Encaminhamentos não abertos:', err.message);
+    notaEncaminhamentos = `não abertos (${err.message})`;
   }
 
   const limite = new Date(Date.parse(hoje) - NADA_DURA_DIAS * 86_400_000).toISOString().slice(0, 10);
@@ -235,6 +257,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
     avisos_sem_presenca: [...avisos.values()].reduce((n, l) => n + l.length, 0),
     treinos: notaTreinos,
     avisos_equipe: linhas.reduce((n, l) => n + l.avisos_equipe.length, 0),
+    encaminhamentos: notaEncaminhamentos ?? null,
   });
   await carimbarMarcador(MARCA_ENSAIO, resumo);
   logger.info(`[acompanhamento] Ensaio de ${hoje}: ${fichas.length} ficha(s) — ${JSON.stringify(contagem)}`);

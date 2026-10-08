@@ -247,6 +247,15 @@ export const config = {
     // Sub-teto do acompanhamento, dentro do teto do número (D5 do plano).
     tetoDiario: parseInt(env('ACOMPANHAMENTO_TETO_DIARIO', '8'), 10),
 
+    // Teto próprio dos briefings à equipe, FORA do teto do número (D5): é
+    // mensagem para quem é da casa e abriu a conversa com o código EQUIPE.
+    briefingTetoDiario: parseInt(env('ACOMPANHAMENTO_BRIEFING_TETO_DIARIO', '20'), 10),
+
+    // De quantos em quantos minutos o worker solta a fila dos encaminhamentos
+    // (o que esperava o começo do turno de quem recebe) e confere os prazos.
+    // Curto de propósito: o prazo de "hoje" é de 2 horas de trabalho.
+    encaminhamentosMinutos: parseInt(env('ACOMPANHAMENTO_ENCAMINHAMENTOS_MINUTOS', '5'), 10),
+
     prescrev: {
       url: env('PRESCREV_URL', 'https://prescrev.apacademia.com.br'),
       // O mesmo valor do ACOMPANHAMENTO_SECRET no .env do Prescrev.

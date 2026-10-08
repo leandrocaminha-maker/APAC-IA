@@ -31,6 +31,7 @@ import { evoClient } from '../services/evo-client.js';
 import { aiAgent } from '../services/ai-agent.js';
 import { saveMessage, reactivateBot } from '../services/contacts.js';
 import { rodarEnsaio, ultimaRodada } from '../services/acompanhamento/ensaio.js';
+import { ativadosComHorario, criarTeste, listarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
 import {
   sendText, getConnectionStatus, getQrCode, criarInstancia, normalizePhone,
 } from '../services/evolution.js';
@@ -1133,6 +1134,29 @@ router.post('/api/acompanhamento/ensaio', exigirAdmin, rota(async (req, res) => 
   } catch (err) {
     logger.error('[acompanhamento] Ensaio pelo painel falhou:', err.message);
     res.status(500).json({ erro: err.message });
+  }
+}));
+
+// Os encaminhamentos ao professor (A4b) e quem ativou o EQUIPE. Em teste, os
+// da régua ficam 'simulado'; só o envio de teste sai, com aluno fictício.
+router.get('/api/acompanhamento/encaminhamentos', exigirAdmin, rota(async (req, res) => {
+  const [encaminhamentos, ativados] = await Promise.all([listarEncaminhamentos({ dias: 30 }), ativadosComHorario()]);
+  res.json({
+    encaminhamentos,
+    ativados,
+    tetoBriefing: config.acompanhamento.briefingTetoDiario,
+  });
+}));
+
+router.post('/api/acompanhamento/briefing-teste', exigirAdmin, rota(async (req, res) => {
+  const profileId = String(req.body?.profileId || '');
+  if (!profileId) return res.status(400).json({ erro: 'Escolha quem recebe.' });
+  try {
+    const enc = await criarTeste({ profileId });
+    logger.info(`[acompanhamento] Briefing de teste pelo painel (${req.usuario.nome}) para ${enc.destinatario_nome}: ${enc.status}`);
+    res.json({ ok: true, id: enc.id, destinatario: enc.destinatario_nome, status: enc.status, enviar_em: enc.enviar_em });
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
   }
 }));
 

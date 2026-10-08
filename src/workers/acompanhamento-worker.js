@@ -1,6 +1,9 @@
 /**
  * src/workers/acompanhamento-worker.js
- * Roda, uma vez por dia, o ensaio da régua do acompanhamento.
+ * Roda, uma vez por dia, o ensaio da régua do acompanhamento; e, a cada
+ * ACOMPANHAMENTO_ENCAMINHAMENTOS_MINUTOS, a fila e os prazos dos
+ * encaminhamentos à equipe — que só saem no horário de trabalho de quem
+ * recebe (encaminhamentos.js).
  *
  * Mesmo molde do `campanha-worker`: um setInterval dentro do servidor, que
  * a cada `ACOMPANHAMENTO_MINUTOS` confere se o ensaio de hoje já rodou
@@ -21,6 +24,7 @@ import { logger } from '../lib/logger.js';
 import { supabase } from '../lib/supabase.js';
 import { hojeSP } from '../services/campanhas.js';
 import { rodarEnsaio, ultimaRodada } from '../services/acompanhamento/ensaio.js';
+import { processarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
 
 let rodando = false;
 
@@ -42,6 +46,24 @@ async function ciclo() {
     logger.error('[acompanhamento] Ensaio falhou:', err.message);
   } finally {
     rodando = false;
+  }
+}
+
+/**
+ * Os encaminhamentos andam em ciclo próprio, mais curto: o que esperava o
+ * turno de quem recebe sai, e o que passou do prazo sem "1" vai à
+ * coordenação. O prazo de "hoje" é de 2 horas de trabalho.
+ */
+let encaminhando = false;
+async function cicloDosEncaminhamentos() {
+  if (encaminhando) return;
+  encaminhando = true;
+  try {
+    await processarEncaminhamentos();
+  } catch (err) {
+    logger.warn('[acompanhamento] Encaminhamentos:', err.message);
+  } finally {
+    encaminhando = false;
   }
 }
 
@@ -75,6 +97,11 @@ export async function startAcompanhamentoWorker() {
 
   setTimeout(ciclo, 150_000);
   setInterval(ciclo, c.minutos * 60_000);
+  if (c.encaminhamentosMinutos > 0) {
+    setTimeout(cicloDosEncaminhamentos, 60_000);
+    setInterval(cicloDosEncaminhamentos, c.encaminhamentosMinutos * 60_000);
+    logger.info(`[acompanhamento] Encaminhamentos: fila e prazos a cada ${c.encaminhamentosMinutos} min, só no horário de quem recebe`);
+  }
 }
 
 export const acompanhamentoWorker = { startAcompanhamentoWorker };

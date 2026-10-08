@@ -35,12 +35,44 @@ vai dizer quando começar para valer.
   vencendo e vencido sem treino novo vão em `acomp_disparos.avisos_equipe`,
   à parte da mensagem — quem manda é o briefing, que ainda não existe.
   ⚠️ Aplicar a 012 ANTES do deploy: o ensaio grava `avisos_equipe`.
-  Ciclo em risco, mínimo cumprido e treino vencendo esperam o treino de
-  musculação do EVO.
+- A equipe (migrations **013**, sozinha, e **014**): o professor gera no
+  Prescrev o código e manda "EQUIPE <código>"; a porta em
+  `acompanhamento/equipe.js`, logo depois do "SAIR" no webhook, confere na
+  lista do Prescrev, grava o número em `acomp_equipe`, marca o contato como
+  `equipe` e confirma. Mensagem de quem é da equipe não entra no funil nem na
+  Leia. 'equipe' não está em TIPOS_CONTATO: a Leia nunca classifica alguém
+  como equipe.
+- Os encaminhamentos (migration **015**, `acompanhamento/encaminhamentos.js`):
+  cada aviso à equipe da régua abre um em `acomp_encaminhamentos`, com o
+  destino (card do Prescrev → quem prescreveu o treino no EVO → avaliador) e o
+  briefing (modelo fixo em `comandos.js`). **Em teste ficam `simulado`, sem
+  envio** (decisão de 08/10/2026). O que sai é o envio de teste do painel:
+  aluno fictício, para quem ativou o EQUIPE. O professor responde 1 (assumo),
+  2 (resolvi) ou 3 (não é comigo); sem "1" no prazo (2h na janela para
+  "hoje", 24h para "próximos dias") ou com "3", vai ao coordenador de plantão
+  (papel `coordinator` no Prescrev, o que ativou primeiro); sem coordenação,
+  fica `sem_destino`, na tela Acompanhamento do Prescrev. O worker confere os
+  prazos a cada ciclo. O briefing sai como `bot:briefing`, com teto próprio
+  (`ACOMPANHAMENTO_BRIEFING_TETO_DIARIO`, 20), fora do teto do número, e não
+  conta como silêncio para o follow-up de venda.
+  O Prescrev lê os encaminhamentos por `GET /acompanhamento/encaminhamentos`
+  (`src/routes/acompanhamento.js`, assinada com o mesmo segredo), pela porta
+  local `127.0.0.1:3100`.
+- **Só no horário de trabalho** (migration **016**, decisão de 08/10/2026):
+  nada sai para a equipe fora do horário de quem recebe, cadastrado no
+  Prescrev (tela Acompanhamento, 043 de lá) e lido na lista da equipe. Fora
+  dele o encaminhamento fica `na_fila` até o começo do turno; urgência
+  "hoje" sem turno no resto do dia vai à coordenação que trabalha hoje; sem
+  horário a pessoa não recebe; o prazo de "hoje" conta 2 horas de trabalho.
+  Regra pura em `acompanhamento/horario.js` (o formato é o mesmo de
+  `src/lib/acompanhamento/horario.ts` do Prescrev — mudou um, mude o outro).
+  O worker solta a fila e confere prazos a cada
+  `ACOMPANHAMENTO_ENCAMINHAMENTOS_MINUTOS` (5). Sem a lista do Prescrev não
+  há horário: nada sai, e tenta de novo no ciclo seguinte.
 - Migration **011**: `acomp_fichas` (cópia da ficha) e `acomp_disparos` (uma
   linha por aluno e dia, com motivo — inclusive do que não sai).
-- Painel → aba **Acompanhamento** (só admin): a prévia de 7 dias e o botão
-  "Rodar o ensaio de hoje". Worker diário em `ACOMPANHAMENTO_HABILITADO`
+- Painel → aba **Acompanhamento** (só admin): a prévia de 7 dias, o botão
+  "Rodar o ensaio de hoje", e os encaminhamentos com o envio de teste. Worker diário em `ACOMPANHAMENTO_HABILITADO`
   (padrão false); com `ACOMPANHAMENTO_DRY_RUN=false` ele se recusa a iniciar.
 - Para funcionar: `ACOMPANHAMENTO_SECRET` igual no `.env` daqui e no do
   Prescrev (lá também `ACOMPANHAMENTO_TENANT_ID`), e a 011 aplicada.

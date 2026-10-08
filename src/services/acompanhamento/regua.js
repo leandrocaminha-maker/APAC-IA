@@ -323,21 +323,45 @@ function naoMarcaApp({ ficha, treinos, anteriores, agenda, hoje }) {
   };
 }
 
-/** O que iria à equipe hoje, à parte da mensagem ao aluno (briefing, A4). */
-export function avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao }) {
+/**
+ * O que iria à equipe hoje, à parte da mensagem ao aluno. Cada aviso vira um
+ * encaminhamento (`encaminhamentos.js`): `codigo` e `referencia` não deixam
+ * abrir o mesmo duas vezes — o treino vencendo aparece todo dia por uma
+ * semana, e é um encaminhamento só. `motivo` vai na linha "Motivo" do
+ * briefing; `texto`, no resumo e na prévia.
+ *
+ * @returns {{ codigo: string, motivo: string, texto: string, urgencia: 'hoje'|'proximos_dias', referencia: string }[]}
+ */
+export function avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores = {} }) {
   const avisos = [];
   const vig = treinoVigente(treinos, hoje);
   if (vig?.validade) {
     const faltam = diasEntre(hoje, vig.validade);
     if (faltam >= 0 && faltam <= TREINO_VENCENDO_DIAS) {
-      avisos.push(`Treino de musculação vence em ${faltam} dia(s), em ${ddmm(vig.validade)}: prescrever o ciclo seguinte.`);
+      avisos.push({
+        codigo: 'treino_vencendo', motivo: 'treino de musculação vencendo', urgencia: 'proximos_dias', referencia: String(vig.id),
+        texto: `Treino de musculação vence em ${faltam} dia(s), em ${ddmm(vig.validade)}: prescrever o ciclo seguinte.`,
+      });
     } else if (faltam < 0 && -faltam <= TREINO_VENCIDO_AVISA_DIAS) {
       // O último treino que começou já venceu: ninguém criou o seguinte.
-      avisos.push(`Treino de musculação vencido desde ${ddmm(vig.validade)}, sem treino novo no EVO.`);
+      avisos.push({
+        codigo: 'treino_vencido', motivo: 'treino de musculação vencido', urgencia: 'proximos_dias', referencia: String(vig.id),
+        texto: `Treino de musculação vencido desde ${ddmm(vig.validade)}, sem treino novo no EVO.`,
+      });
     }
   }
   if (situacao === 'ciclo_em_risco' && ficha.trilha.principal === 'adesao' && ciclo?.treino) {
-    avisos.push(`Ciclo em risco na trilha de adesão: ${ciclo.presencas} de ${ciclo.ciclo.minimo_treinos} treinos na metade do prazo.`);
+    avisos.push({
+      codigo: 'ciclo_em_risco', motivo: 'ciclo de musculação em risco', urgencia: 'proximos_dias', referencia: String(ciclo.treino.id),
+      texto: `Ciclo em risco na trilha de adesão: ${ciclo.presencas} de ${ciclo.ciclo.minimo_treinos} treinos na metade do prazo.`,
+    });
+  }
+  // D6: na adesão, a ausência sai ao aluno e ao professor ao mesmo tempo.
+  if (situacao === 'ausencia' && ficha.trilha.principal === 'adesao') {
+    avisos.push({
+      codigo: 'ausencia_adesao', motivo: 'ausência na trilha de adesão', urgencia: 'proximos_dias', referencia: hoje,
+      texto: `Aviso "Sem presença" do EVO${valores.dias ? `: ${valores.dias} dias sem vir` : ''}. O aluno recebeu uma mensagem leve; o contato do professor é o que a trilha de adesão promete.`,
+    });
   }
   return avisos;
 }
@@ -410,7 +434,7 @@ function reavaliacao({ ficha, anteriores, hoje }) {
  * @param {'ensaio'|'envio'} p.modo
  * @returns {{ status: 'simulado'|'pendente'|'bloqueado'|'nada', situacao: string|null, trilha: string,
  *   modelo_id: string|null, texto: string|null, valores: object, motivo: string, bloqueios: string[],
- *   avisos_equipe: string[] }}
+ *   avisos_equipe: object[] }} — ver `avisosDaEquipe`
  */
 export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], hoje, modo }) {
   const trilha = ficha.trilha.principal;
@@ -427,7 +451,7 @@ export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], 
   // não pode fazer o relógio andar duas vezes.
   const anteriores = historico.filter(h => h.dia < hoje).sort((a, b) => a.dia.localeCompare(b.dia));
   const { situacao, motivo, valores: doDia, ciclo } = situacaoDoDia({ ficha, anteriores, sinais, treinos, hoje, modo, modelos });
-  base.avisos_equipe = avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao });
+  base.avisos_equipe = avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores: doDia ?? {} });
   if (!situacao) return { ...base, status: 'nada', motivo };
 
   const valores = { ...valoresDaFicha(ficha, hoje), ...doDia };

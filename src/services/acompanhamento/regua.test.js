@@ -398,7 +398,7 @@ test('na adesão, o ciclo em risco também vai à equipe', () => {
   const f = comAgenda(treinou('2026-09-05', '2026-09-20', '2026-10-08'), { trilha: { ...ficha().trilha, principal: 'adesao' } });
   const d = decidirTreino(f, '2026-10-12', [treino('2026-09-02', '2026-10-28')]);
   assert.equal(d.situacao, 'ciclo_em_risco');
-  assert.match(d.avisos_equipe.join(' '), /Ciclo em risco na trilha de adesão: 3 de 10/);
+  assert.match(d.avisos_equipe.map(a => a.texto).join(' '), /Ciclo em risco na trilha de adesão: 3 de 10/);
 });
 
 test('mínimo cumprido: só na trilha que tem modelo; nas outras, a situação é pulada', () => {
@@ -435,7 +435,7 @@ test('treino vencendo vai à equipe, sem ocupar a mensagem do dia', () => {
   const f = comAgenda(treinou('2026-10-08'));
   const ts = [treino('2026-08-09', '2026-10-18', { ultima_concluida: '2026-10-08' })];
   const d = decidirTreino(f, '2026-10-12', ts);
-  assert.deepEqual(d.avisos_equipe, ['Treino de musculação vence em 6 dia(s), em 18/10: prescrever o ciclo seguinte.']);
+  assert.deepEqual(d.avisos_equipe.map(a => a.texto), ['Treino de musculação vence em 6 dia(s), em 18/10: prescrever o ciclo seguinte.']);
   assert.equal(d.status, 'nada');
   assert.deepEqual(avisosDaEquipe({ ficha: f, treinos: ts, ciclo: null, hoje: '2026-10-05', situacao: null }), []);
 });
@@ -451,9 +451,26 @@ test('D3: sem professor escolhido no card, {professor} é quem prescreveu o trei
 test('treino vencido sem treino novo segue avisando a equipe por 14 dias', () => {
   const f = comAgenda(treinou('2026-10-08'));
   const ts = [treino('2026-08-09', '2026-10-18', { ultima_concluida: '2026-10-08' })];
-  assert.deepEqual(decidirTreino(f, '2026-10-19', ts).avisos_equipe, ['Treino de musculação vencido desde 18/10, sem treino novo no EVO.']);
-  assert.deepEqual(decidirTreino(f, '2026-11-01', ts).avisos_equipe, ['Treino de musculação vencido desde 18/10, sem treino novo no EVO.']);
-  assert.deepEqual(decidirTreino(f, '2026-11-02', ts).avisos_equipe, []);   // 15 dias depois
+  assert.deepEqual(decidirTreino(f, '2026-10-19', ts).avisos_equipe.map(a => a.texto), ['Treino de musculação vencido desde 18/10, sem treino novo no EVO.']);
+  assert.deepEqual(decidirTreino(f, '2026-11-01', ts).avisos_equipe.map(a => a.texto), ['Treino de musculação vencido desde 18/10, sem treino novo no EVO.']);
+  assert.deepEqual(decidirTreino(f, '2026-11-02', ts).avisos_equipe.map(a => a.texto), []);   // 15 dias depois
   // com o treino novo criado, o aviso some
   assert.deepEqual(decidirTreino(f, '2026-10-20', [...ts, treino('2026-10-20', '2026-12-15', { id: 2 })]).avisos_equipe, []);
+});
+
+test('cada aviso à equipe leva código, urgência e referência, para virar um encaminhamento só', () => {
+  const f = comAgenda(treinou('2026-10-08'));
+  const ts = [treino('2026-08-09', '2026-10-18', { id: 32116, ultima_concluida: '2026-10-08' })];
+  const [a] = decidirTreino(f, '2026-10-12', ts).avisos_equipe;
+  assert.deepEqual([a.codigo, a.urgencia, a.referencia, a.motivo], ['treino_vencendo', 'proximos_dias', '32116', 'treino de musculação vencendo']);
+});
+
+test('D6: ausência na adesão também avisa o professor', () => {
+  const f = comAgenda([], { trilha: { ...ficha().trilha, principal: 'adesao' } });
+  const d = decidirAgenda(f, '2026-10-12', h0, avisoEVO('2026-10-12', 10));
+  assert.equal(d.situacao, 'ausencia');
+  assert.deepEqual(d.avisos_equipe.map(a => [a.codigo, a.referencia]), [['ausencia_adesao', '2026-10-12']]);
+  assert.match(d.avisos_equipe[0].texto, /10 dias sem vir/);
+  // fora da adesão, a ausência não vai à equipe
+  assert.deepEqual(decidirAgenda(semPresenca, '2026-10-12', h0, avisoEVO('2026-10-12', 8)).avisos_equipe, []);
 });

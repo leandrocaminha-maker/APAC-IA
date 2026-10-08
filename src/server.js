@@ -17,6 +17,7 @@ import apiRouter from './routes/api.js';
 import adminRouter from './routes/admin.js';
 import testeRouter from './routes/teste.js';
 import crmRouter from './routes/crm.js';
+import acompanhamentoRouter from './routes/acompanhamento.js';
 import { startQueueProcessor } from './workers/queue-processor.js';
 import { startEvoSyncWorker } from './workers/evo-sync-worker.js';
 import { startFollowupWorker } from './workers/followup-worker.js';
@@ -84,6 +85,9 @@ app.use('/teste', testeRouter);
 
 // Painel do consultor (auth por consultor, cookie assinado)
 app.use('/crm', crmRouter);
+
+// Rotas de máquina do acompanhamento (quem chama é o Prescrev; assinadas)
+app.use('/acompanhamento', acompanhamentoRouter);
 
 // A raiz do domínio é o painel — crm.apacademia.com.br leva direto a ele
 // em vez de cair no 404 genérico.
