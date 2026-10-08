@@ -1034,8 +1034,21 @@ export async function processarAcompanhamento({ mensagem, historico = [], contex
   // A API exige que a conversa comece pelo usuário.
   const messages = [...historico, { role: 'user', content: mensagem }];
   while (messages.length && messages[0].role !== 'user') messages.shift();
+  const conversa = [...messages];
 
   const ferramentas = [];
+  // Todo turno tem desfecho (§6.4): se o modelo respondeu sem registrar,
+  // uma chamada curta, forçada à ferramenta e sem raciocínio, registra. Só
+  // quando falta — e o texto ao aluno já está pronto.
+  const fechar = async (resultado) => {
+    if (!ferramentas.includes('registrar_desfecho')) {
+      await registrarDesfechoQueFaltou({
+        system, conversa, resposta: resultado.semResposta ? SEM_RESPOSTA : resultado.text,
+        ferramentas, executar, conversationId, origem,
+      });
+    }
+    return resultado;
+  };
   for (let iteracao = 0; iteracao < MAX_TOOL_ITERATIONS; iteracao++) {
     const inicio = Date.now();
     const response = await client.beta.messages.create({
@@ -1076,8 +1089,8 @@ export async function processarAcompanhamento({ mensagem, historico = [], contex
     if (handoff) return { text: texto || handoff.mensagem, semResposta: false, handoff, ferramentas };
 
     if (texto || !usos.length) {
-      if (texto.replace(/[`"']/g, '').trim() === SEM_RESPOSTA) return { text: null, semResposta: true, handoff: null, ferramentas };
-      return { text: texto || FALLBACK_TEXT, semResposta: false, handoff: null, ferramentas };
+      if (texto.replace(/[`"']/g, '').trim() === SEM_RESPOSTA) return fechar({ text: null, semResposta: true, handoff: null, ferramentas });
+      return fechar({ text: texto || FALLBACK_TEXT, semResposta: false, handoff: null, ferramentas });
     }
 
     messages.push({ role: 'assistant', content: response.content });
@@ -1086,6 +1099,46 @@ export async function processarAcompanhamento({ mensagem, historico = [], contex
 
   logger.warn(`[ai-agent] Acompanhamento: limite de ${MAX_TOOL_ITERATIONS} iterações atingido`);
   return { text: FALLBACK_TEXT, semResposta: false, handoff: null, ferramentas };
+}
+
+/**
+ * O desfecho que o modelo não registrou. Vê a conversa e a resposta dada (só
+ * texto: os blocos de raciocínio do turno não voltam numa chamada sem
+ * raciocínio), e as ferramentas já chamadas. Falha aqui não derruba nada: o
+ * turno fica "sem desfecho", visível na tela.
+ */
+async function registrarDesfechoQueFaltou({ system, conversa, resposta, ferramentas, executar, conversationId, origem }) {
+  const inicio = Date.now();
+  try {
+    const response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      thinking: { type: 'disabled' },
+      system,
+      tools: FERRAMENTAS,
+      tool_choice: { type: 'tool', name: 'registrar_desfecho' },
+      messages: [
+        ...conversa,
+        { role: 'assistant', content: resposta },
+        {
+          role: 'user',
+          content: '[sistema — o aluno não vê] Você respondeu sem registrar o desfecho. Registre agora o desfecho do ' +
+            `turno acima. Ferramentas já chamadas nele: ${ferramentas.join(', ') || 'nenhuma'}.`,
+        },
+      ],
+    });
+    aiUsage.registrar({
+      usage: response.usage, modelo: MODEL, conversationId, origem: `${origem}:desfecho`, iteracao: 0,
+      modulos: ['acompanhamento'], stopReason: response.stop_reason, duracaoMs: Date.now() - inicio,
+    });
+    const uso = response.content.find(b => b.type === 'tool_use' && b.name === 'registrar_desfecho');
+    if (uso) {
+      await executar(uso.name, uso.input || {});
+      ferramentas.push('registrar_desfecho');
+    }
+  } catch (err) {
+    logger.warn('[ai-agent] Acompanhamento: desfecho não registrado:', err.message);
+  }
 }
 
 /**

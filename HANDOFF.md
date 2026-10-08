@@ -80,7 +80,12 @@ vai dizer quando começar para valer.
   (`acompanhamento/ferramentas.js`), o aluno resumido no bloco 3
   (`acompanhamento/conversa.js`). Até três trocas por rodada: na terceira ela
   responde e encaminha ao professor; depois, só alerta, pergunta objetiva e o
-  que é do professor ou do consultor — papo fica sem resposta. Painel →
+  que é do professor ou do consultor — papo fica sem resposta. O professor
+  "fala com você hoje" ou "assim que possível" — nunca "nos próximos dias"
+  (pedido do responsável). Todo turno tem desfecho: se o modelo não o
+  registra, uma chamada curta forçada à ferramenta registra
+  (`registrarDesfechoQueFaltou`). Turno ~US$ 0,02; escrita do cache ~US$ 0,13
+  por hora de uso. Painel →
   Acompanhamento → "Simulador da Leia": ferramentas só registram, nada é
   enviado. `node --env-file=.env scripts/bateria-acompanhamento.js` roda os
   casos da bateria com um aluno fictício. A porta do webhook (aluno real
