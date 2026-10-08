@@ -29,6 +29,12 @@ vai dizer quando começar para valer.
   criar três, 5, 7 e 14 dias. Retorno (com texto datado) e modalidade sem
   agendamento leem as sessões que a ficha traz (ficha versão 3, carregadas pelo
   sync de domingo do AQUAP); presença só em aula finalizada.
+- O treino de musculação (migration **012**): lido do EVO uma vez por dia por
+  aluno com ficha (`evoClient.treinosDoAluno`, `acomp_treinos`). Ciclo em
+  risco, mínimo cumprido e "não marca no app" saem dele e da agenda; treino
+  vencendo e vencido sem treino novo vão em `acomp_disparos.avisos_equipe`,
+  à parte da mensagem — quem manda é o briefing, que ainda não existe.
+  ⚠️ Aplicar a 012 ANTES do deploy: o ensaio grava `avisos_equipe`.
   Ciclo em risco, mínimo cumprido e treino vencendo esperam o treino de
   musculação do EVO.
 - Migration **011**: `acomp_fichas` (cópia da ficha) e `acomp_disparos` (uma

@@ -8,13 +8,16 @@
  * 1. Busca as fichas e os modelos no Prescrev. Se ele não responder, roda
  *    sobre a última cópia (`acomp_fichas`, e os modelos em `crm_controle`)
  *    e diz isso no resumo.
- * 2. Para cada aluno, a régua (`regua.js`, pura) decide a situação do dia,
- *    o modelo e o texto — ou por que nada sai.
- * 3. Põe hora em cada mensagem: perto do começo do período preferido,
+ * 2. Lê o treino de musculação de cada aluno no EVO — uma chamada por aluno
+ *    por dia; rodar de novo no mesmo dia reaproveita a leitura
+ *    (`acomp_treinos`), e se o EVO falhar vale a última.
+ * 3. Para cada aluno, a régua (`regua.js`, pura) decide a situação do dia,
+ *    o modelo e o texto — ou por que nada sai — e o que iria à equipe.
+ * 4. Põe hora em cada mensagem: perto do começo do período preferido,
  *    dentro da janela de contato do dia (a mesma do follow-up de venda).
- * 4. Aplica o sub-teto do acompanhamento (D5): eventos antes da rotina, e
+ * 5. Aplica o sub-teto do acompanhamento (D5): eventos antes da rotina, e
  *    o que passar do teto fica "bloqueado", com o motivo.
- * 5. Grava uma linha por aluno em `acomp_disparos` e carimba o resumo em
+ * 6. Grava uma linha por aluno em `acomp_disparos` e carimba o resumo em
  *    `crm_controle` ('acomp:ensaio').
  *
  * Domingo não tem janela: a rodada só carimba o dia, e a cadência de quem
@@ -32,8 +35,9 @@ import { supabase } from '../../lib/supabase.js';
 import { carimbarMarcador, lerMarcador } from '../controle.js';
 import { janelaDoDia } from '../followup.js';
 import { hojeSP } from '../campanhas.js';
+import { evoClient } from '../evo-client.js';
 import { buscarFichas, buscarModelos } from './prescrev.js';
-import { PRIORIDADE, decidir, horaPrevista } from './regua.js';
+import { PRIORIDADE, decidir, horaPrevista, resumirTreinos } from './regua.js';
 
 const MODO = 'ensaio';
 const MARCA_ENSAIO = 'acomp:ensaio';
@@ -107,6 +111,40 @@ async function avisosSemPresenca() {
   return porMembro;
 }
 
+/**
+ * Os treinos de musculação de cada aluno, por cliente do Prescrev. Uma
+ * chamada ao EVO por aluno por dia: a leitura de hoje já gravada em
+ * `acomp_treinos` é reaproveitada, e se o EVO falhar vale a última que houver.
+ * Sem a migration 012, segue sem treino e diz isso no resumo.
+ */
+async function treinosDosAlunos(fichas, hoje) {
+  const porCliente = new Map();
+  const { data: guardados, error } = await supabase.from('acomp_treinos').select('cliente_id, treinos, lido_em');
+  if (error) return { porCliente, nota: `acomp_treinos indisponível (${error.message})` };
+  const guardado = new Map((guardados ?? []).map(g => [g.cliente_id, g]));
+  let lidos = 0, falhas = 0;
+  for (const ficha of fichas) {
+    const idMembro = Number(ficha.aluno?.evo_id);
+    if (!Number.isInteger(idMembro)) continue;
+    const g = guardado.get(ficha.cliente_id);
+    if (g && hojeSP(new Date(g.lido_em)) === hoje) { porCliente.set(ficha.cliente_id, g.treinos); continue; }
+    try {
+      const treinos = resumirTreinos(await evoClient.treinosDoAluno(idMembro));
+      const { error: errGravar } = await supabase.from('acomp_treinos').upsert(
+        { cliente_id: ficha.cliente_id, evo_member_id: idMembro, treinos, lido_em: new Date().toISOString() },
+        { onConflict: 'cliente_id' });
+      if (errGravar) logger.warn('[acompanhamento] Não deu para guardar o treino:', errGravar.message);
+      porCliente.set(ficha.cliente_id, treinos);
+      lidos++;
+    } catch (err) {
+      falhas++;
+      logger.warn(`[acompanhamento] Treino do membro ${idMembro} não lido: ${err.message}`);
+      if (g) porCliente.set(ficha.cliente_id, g.treinos);
+    }
+  }
+  return { porCliente, nota: `${lidos} lido(s) do EVO${falhas ? `, ${falhas} falha(s) (vale a última leitura)` : ''}` };
+}
+
 /** As mensagens que contam para a cadência: no ensaio, as simuladas antes de hoje. */
 async function historicoDe(ids, hoje) {
   const linhas = [];
@@ -141,12 +179,14 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
   const { modelos, fonte: fonteModelos } = await carregarModelos();
   const historico = await historicoDe(fichas.map(f => f.cliente_id), hoje);
   const avisos = await avisosSemPresenca();
+  const { porCliente: treinos, nota: notaTreinos } = await treinosDosAlunos(fichas, hoje);
 
   const decisoes = fichas.map(ficha => {
     const d = decidir({
       ficha, modelos, hoje, modo: MODO,
       historico: historico.filter(h => h.cliente_id === ficha.cliente_id),
       sinais: avisos.get(Number(ficha.aluno?.evo_id)) ?? [],
+      treinos: treinos.get(ficha.cliente_id) ?? [],
     });
     const previsto = d.status === 'simulado' ? horaPrevista(ficha, hoje, janela) : null;
     return { ficha, d, previsto };
@@ -177,6 +217,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
     valores: d.valores,
     motivo: d.motivo,
     bloqueios: d.bloqueios,
+    avisos_equipe: d.avisos_equipe ?? [],
     previsto_para: previsto ? previsto.toISOString() : null,
   }));
   if (linhas.length) {
@@ -192,6 +233,8 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
   Object.assign(resumo, {
     fichas: fichas.length, sem_ficha: semFicha, fonte_fichas: fonte, fonte_modelos: fonteModelos, contagem,
     avisos_sem_presenca: [...avisos.values()].reduce((n, l) => n + l.length, 0),
+    treinos: notaTreinos,
+    avisos_equipe: linhas.reduce((n, l) => n + l.avisos_equipe.length, 0),
   });
   await carimbarMarcador(MARCA_ENSAIO, resumo);
   logger.info(`[acompanhamento] Ensaio de ${hoje}: ${fichas.length} ficha(s) — ${JSON.stringify(contagem)}`);

@@ -491,6 +491,19 @@ export function ehJaAgendado(erro) {
 }
 
 /** Sessões já reservadas por um prospect numa janela de datas. */
+/**
+ * Os treinos de musculação de um aluno, inclusive os vencidos — o
+ * acompanhamento (PLANO_ACOMPANHAMENTO.md do Prescrev, §4.7). Uma chamada só:
+ * `inactive=true` traz o histórico junto. A academia prescreve na versão
+ * antiga do treino, e esta é a rota que a lê por aluno.
+ *
+ * @returns {Promise<object[]>} `workouts` do EVO, como vêm
+ */
+export async function treinosDoAluno(idClient, idBranch = ID_BRANCH_PADRAO) {
+  const r = await evoFetch(`/api/v2/workout/default-client-workout${qs({ idClient, idBranch, inactive: true })}`);
+  return Array.isArray(r?.workouts) ? r.workouts : [];
+}
+
 export async function sessoesDoProspect(idProspect, { de, ate } = {}) {
   return sessoesDaPessoa({ idProspect, de, ate });
 }
@@ -906,6 +919,7 @@ export const evoClient = {
   sessoesDoProspect,
   sessoesDaPessoa,
   presencaNaAula,
+  treinosDoAluno,
   listarAtividades,
   buscarGrade,
   // catálogo

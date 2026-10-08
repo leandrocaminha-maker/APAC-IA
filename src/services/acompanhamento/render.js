@@ -19,9 +19,23 @@
  *
  *   ficha  vem pronto em `ficha.marcadores` — exceto {dias_avaliacao}, que
  *          muda todo dia e se conta aqui de `ficha.proxima_avaliacao`
- *   evo    o APAC preenche com o que lê do EVO (agenda, treino). Ainda
- *          nenhum: entram com a leitura do EVO, na etapa seguinte
+ *   evo    o APAC preenche com o que lê do EVO, na régua: {dias} do aviso
+ *          "Sem presença"; {dia_retorno}, {atividade_retorno} e {modalidade}
+ *          da agenda; {treinos_ciclo} e {minimo_ciclo} do treino; e
+ *          {professor}, do treino, quando o card não escolheu ninguém (D3)
  */
+
+/**
+ * O primeiro nome como se escreve numa mensagem — a mesma regra do Prescrev
+ * (`primeiroNome` em acompanhamento/ficha.ts): "VANESSA ROBERT" vira "Vanessa".
+ * Para o nome do professor que vem do EVO, que chega como foi cadastrado.
+ */
+export function primeiroNome(nome) {
+  const p = String(nome ?? '').trim().split(/\s+/)[0] ?? '';
+  if (!p) return '';
+  if (p !== p.toUpperCase() && p !== p.toLowerCase()) return p;
+  return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+}
 
 /** Dias de `de` até `ate`, as duas datas 'AAAA-MM-DD'. Negativo se `ate` já passou. */
 export function diasEntre(de, ate) {

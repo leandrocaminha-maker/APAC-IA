@@ -95,6 +95,7 @@
   .acomp-texto { margin: 8px 0 4px; padding: 8px 10px; background: var(--painel-2); border-radius: 8px; white-space: pre-wrap; }
   .acomp-motivo { color: var(--suave); font-size: 13px; }
   .acomp-bloqueio { color: var(--alerta); font-size: 13px; }
+  .acomp-equipe { color: var(--info); font-size: 13px; }
   .vista.ativa { display: block; }
   .vista.cheia { display: none; height: 100%; padding: 0; }
   .vista.cheia.ativa { display: flex; }
@@ -1672,6 +1673,7 @@ $('#sim-texto').addEventListener('keydown', e => {
 const ROTULO_SITUACAO = {
   boas_vindas: 'Boas-vindas', rotina: 'Rotina', reavaliacao: 'Reavaliação', ausencia: 'Ausência', retorno: 'Retorno',
   sem_agendamento: 'Modalidade sem agendamento',
+  ciclo_em_risco: 'Ciclo em risco', minimo_cumprido: 'Mínimo cumprido', nao_marca_app: 'Não marca no app',
 };
 const ROTULO_TRILHA = { adesao: 'Adesão', motivacional: 'Motivacional', tecnico: 'Técnico', desafiador: 'Desafiador' };
 const ORDEM_STATUS = { simulado: 0, bloqueado: 1, nada: 2 };
@@ -1695,7 +1697,9 @@ async function carregarAcompanhamento() {
     rod ? `Última rodada: ${esc(diaPorExtenso(rod.dia))}, ${esc(horaCurta(rod.rodado_em))} (${esc(rod.origem)})` +
       (rod.sem_janela ? ' — dia sem janela de contato.' :
         ` — ${rod.fichas} ficha(s), ${rod.sem_ficha ?? '?'} sem ficha completa no Prescrev. ` +
-        `Fichas: ${esc(rod.fonte_fichas)}. Modelos: ${esc(rod.fonte_modelos)}.`) : 'Ainda não rodou.',
+        `Fichas: ${esc(rod.fonte_fichas)}. Modelos: ${esc(rod.fonte_modelos)}.` +
+        (rod.treinos ? ` Treinos: ${esc(rod.treinos)}.` : '') +
+        (rod.avisos_equipe ? ` Avisos à equipe: ${rod.avisos_equipe}.` : '')) : 'Ainda não rodou.',
   ].filter(Boolean).join('<br>');
 
   const porDia = new Map();
@@ -1725,6 +1729,7 @@ async function carregarAcompanhamento() {
             ${l.texto ? `<div class="acomp-texto">${esc(l.texto)}</div>` : ''}
             <div class="acomp-motivo">${esc(l.motivo)}</div>
             ${(l.bloqueios || []).map(b => `<div class="acomp-bloqueio">${esc(b)}</div>`).join('')}
+            ${(l.avisos_equipe || []).map(b => `<div class="acomp-equipe">À equipe: ${esc(b)}</div>`).join('')}
           </div>`;
         }).join('');
     }).join('');

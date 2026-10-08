@@ -1101,7 +1101,7 @@ router.get('/api/acompanhamento', exigirAdmin, rota(async (req, res) => {
 
   const [{ data: linhas, error }, { data: fichas, error: errFichas }, rodada] = await Promise.all([
     supabase.from('acomp_disparos')
-      .select('cliente_id, dia, modo, status, situacao, trilha, modelo_id, texto, motivo, bloqueios, previsto_para')
+      .select('cliente_id, dia, modo, status, situacao, trilha, modelo_id, texto, motivo, bloqueios, avisos_equipe, previsto_para')
       .gte('dia', desde).order('dia', { ascending: false }).order('previsto_para', { ascending: true }),
     supabase.from('acomp_fichas').select('cliente_id, ficha'),
     ultimaRodada(),

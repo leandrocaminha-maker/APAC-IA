@@ -19,12 +19,17 @@
  *   retorno          a primeira presença na agenda depois de uma ausência
  *                    avisada. A mensagem diz o dia e a atividade da volta: a
  *                    agenda é semanal, e a volta pode ter sido há dias.
+ *   ciclo_em_risco   passou a metade do treino de musculação do ciclo com
+ *                    menos da metade do mínimo de treinos (presença na agenda).
  *   reavaliacao      7 dias antes da próxima avaliação, uma vez por data.
+ *   minimo_cumprido  o mínimo de treinos do ciclo foi alcançado.
  *   sem_agendamento  modalidades do programa sem nenhum agendamento na agenda
  *                    do EVO em 3 semanas, passadas 3 semanas da entrega do
  *                    relatório. Todas numa mensagem só, e não se repete em 3
  *                    semanas — uma por modalidade, em dias seguidos, foi o que
  *                    a primeira simulação mostrou, e é insistência.
+ *   nao_marca_app    Musculação com presença na agenda e nada marcado como
+ *                    concluído no app em 14 dias: a mensagem reforça o hábito.
  *   rotina           passou a cadência do aluno desde a última mensagem. Toda
  *                    mensagem conta, de qualquer situação: evento zera o
  *                    relógio da rotina (§5.4 do plano).
@@ -42,16 +47,39 @@
  * (§9.3 do plano): se `daysOffset` é o N da regra, se conta aula ou catraca,
  * e se o EVO avisa também quando a pessoa sai da lista.
  *
+ * Situação sem modelo para a trilha do aluno é pulada, e não trava o dia:
+ * "mínimo cumprido" só tem modelo nas trilhas motivacional e desafiador
+ * (§5.2), por desenho.
+ *
+ * ## O treino de musculação
+ *
+ * Lido do EVO uma vez por dia (`treinos`, resumidos por `resumirTreinos`).
+ * Ciclo em risco e mínimo cumprido só se conferem num treino criado DEPOIS
+ * da entrega do relatório — o treino do ciclo prescrito. Treino anterior ao
+ * programa não tem o mínimo do ciclo como régua: medir 32 treinos de
+ * mínimo contra os dias que sobram dele seria acusar o aluno de algo que
+ * ninguém combinou. O n-ésimo treino do programa é o n-ésimo ciclo.
+ * Presença é a da agenda (Musculação), e não a marcada no app — que é o
+ * que "não marca no app" compara.
+ *
+ * Fora da mensagem ao aluno, `avisos_equipe`: treino vencendo (7 dias antes
+ * da validade: prescrever o ciclo seguinte), treino vencido sem treino novo
+ * (até 14 dias depois) e, na adesão, ciclo em risco. Quem
+ * os manda é o briefing (A4); aviso não ocupa a mensagem do dia.
+ *
+ * {professor}, quando o card do Prescrev não escolheu ninguém, é quem
+ * prescreveu o treino vigente no EVO (D3); sem treino, o avaliador.
+ *
  * ## O que ainda não está aqui
  *
- * Ciclo em risco, mínimo cumprido, treino vencendo e "não marca no app"
- * esperam o treino de musculação do EVO; a troca da adesão pela secundária
- * quando a presença estabiliza (§5.3), também. A trilha é a principal.
+ * A troca da adesão pela secundária quando a presença estabiliza (§5.3). A
+ * trilha é a principal.
  */
-import { diasEntre, preencher, valoresDaFicha } from './render.js';
+import { diasEntre, preencher, primeiroNome, valoresDaFicha } from './render.js';
 
 export const PRIORIDADE = {
-  boas_vindas: 0, ausencia: 1, retorno: 2, reavaliacao: 3, sem_agendamento: 4, rotina: 5,
+  boas_vindas: 0, ausencia: 1, retorno: 2, ciclo_em_risco: 3, reavaliacao: 4, minimo_cumprido: 5,
+  sem_agendamento: 6, nao_marca_app: 7, rotina: 8,
 };
 
 /** Quantos dias antes da próxima avaliação sai o aviso. Convenção desta casa (§5.2). */
@@ -60,6 +88,13 @@ export const REAVALIACAO_ANTES_DIAS = 7;
 export const AVISO_AUSENCIA_VALE_DIAS = 2;
 /** Janela da modalidade sem agendamento, e o mínimo de programa para olhá-la. */
 export const SEM_AGENDAMENTO_DIAS = 21;
+/** Aviso à equipe quando o treino vence em até este tanto de dias (§5.2). */
+export const TREINO_VENCENDO_DIAS = 7;
+/** Depois da validade, o aviso "vencido, sem treino novo" segue por este tanto de dias. */
+export const TREINO_VENCIDO_AVISA_DIAS = 14;
+/** Janela do "não marca no app", e de quanto em quanto tempo ele pode repetir. */
+export const NAO_MARCA_DIAS = 14;
+export const NAO_MARCA_REPETE_DIAS = 30;
 
 const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const SEMANA = ['no domingo', 'na segunda', 'na terça', 'na quarta', 'na quinta', 'na sexta', 'no sábado'];
@@ -98,6 +133,62 @@ export function leituraDaAgenda(ficha) {
 export function modalidadesNaAgenda(ficha) {
   return (ficha.modalidades ?? []).filter(m => m.atividades_evo?.length
     && ((m.frequencia_semanal ?? 0) > 0 || (m.slug === 'musculacao' && (ficha.ciclos ?? []).length > 0)));
+}
+
+/**
+ * Os treinos do EVO (`default-client-workout`), resumidos no que a régua lê.
+ * Excluídos saem; data sem hora, como o EVO grava (horário local, sem fuso).
+ */
+export function resumirTreinos(workouts) {
+  return (workouts ?? [])
+    .filter(w => w && !w.isDeleted && w.startDate)
+    .map(w => ({
+      id: w.idWorkout,
+      inicio: String(w.startDate).slice(0, 10),
+      validade: w.expiryDate ? String(w.expiryDate).slice(0, 10) : null,
+      previstas: w.totalSessions ?? null,
+      concluidas: w.completedSessions ?? 0,
+      ultima_concluida: w.lastCompletedSessionDate ? String(w.lastCompletedSessionDate).slice(0, 10) : null,
+      frequencia: w.weeklyFrequency ?? null,
+      semanas: w.weeklyQuantity ?? null,
+      professor_id: w.idInstructor ?? null,
+      professor: w.instructorName ?? null,
+    }))
+    .sort((a, b) => a.inicio.localeCompare(b.inicio));
+}
+
+/** O treino em curso: o último que já começou. `vigente` = ainda dentro da validade. */
+export function treinoVigente(treinos, hoje) {
+  const t = (treinos ?? []).filter(x => x.inicio <= hoje).at(-1);
+  return t ? { ...t, vigente: !t.validade || t.validade >= hoje } : null;
+}
+
+/** Os ids da Musculação na agenda do EVO, se ela está no programa. */
+function idsDaMusculacao(ficha) {
+  return (ficha.modalidades ?? []).find(m => m.slug === 'musculacao')?.atividades_evo ?? [];
+}
+
+/**
+ * O ciclo em curso: o último treino do EVO criado depois da entrega do
+ * relatório, o ciclo da ficha na mesma posição, e as presenças de
+ * Musculação na agenda desde o início dele. Sem treino do programa, o motivo.
+ */
+export function cicloDoTreino(ficha, treinos, agenda, hoje) {
+  const ids = idsDaMusculacao(ficha);
+  if (!ids.length || !(ficha.ciclos ?? []).length || !agenda?.inicio) return null;
+  const doPrograma = (treinos ?? []).filter(x => x.inicio >= agenda.inicio && x.inicio <= hoje);
+  if (!doPrograma.length) {
+    const vig = treinoVigente(treinos, hoje);
+    return {
+      treino: null,
+      nota: vig ? `Treino de musculação no EVO de ${ddmm(vig.inicio)}, anterior ao programa: o ciclo se confere no treino novo.`
+        : 'Sem treino de musculação no EVO.',
+    };
+  }
+  const treino = doPrograma.at(-1);
+  const ciclo = ficha.ciclos[Math.min(doPrograma.length - 1, ficha.ciclos.length - 1)];
+  const presencas = agenda.presentes.filter(x => ids.includes(x.atividade_evo) && x.dia >= treino.inicio).length;
+  return { treino, ciclo, numero: doPrograma.length, presencas };
 }
 
 /**
@@ -188,8 +279,71 @@ function semAgendamento({ ficha, anteriores, agenda, hoje }) {
   };
 }
 
+function cicloEmRisco({ ciclo, anteriores, hoje }) {
+  const { treino, presencas } = ciclo;
+  const minimo = ciclo.ciclo?.minimo_treinos;
+  if (!minimo || !treino.validade || hoje > treino.validade) return null;
+  const meio = somar(treino.inicio, Math.floor(diasEntre(treino.inicio, treino.validade) / 2));
+  if (hoje < meio || presencas * 2 >= minimo) return null;
+  if (anteriores.some(h => h.situacao === 'ciclo_em_risco' && h.dia >= treino.inicio)) return null;
+  return {
+    situacao: 'ciclo_em_risco',
+    valores: { treinos_ciclo: String(presencas), minimo_ciclo: String(minimo) },
+    motivo: `Metade do treino do ${ciclo.numero}º ciclo (${ddmm(treino.inicio)} a ${ddmm(treino.validade)}) com ` +
+      `${presencas} de ${minimo} treinos de musculação na agenda.`,
+  };
+}
+
+function minimoCumprido({ ciclo, anteriores }) {
+  const { treino, presencas } = ciclo;
+  const minimo = ciclo.ciclo?.minimo_treinos;
+  if (!minimo || presencas < minimo) return null;
+  if (anteriores.some(h => h.situacao === 'minimo_cumprido' && h.dia >= treino.inicio)) return null;
+  return {
+    situacao: 'minimo_cumprido',
+    valores: { treinos_ciclo: String(presencas), minimo_ciclo: String(minimo) },
+    motivo: `${presencas} treinos de musculação na agenda desde ${ddmm(treino.inicio)}: mínimo de ${minimo} do ${ciclo.numero}º ciclo cumprido.`,
+  };
+}
+
+function naoMarcaApp({ ficha, treinos, anteriores, agenda, hoje }) {
+  const ids = idsDaMusculacao(ficha);
+  const vig = treinoVigente(treinos, hoje);
+  if (!ids.length || !vig) return null;
+  const de = somar(agenda.carga, -NAO_MARCA_DIAS);
+  const naAgenda = agenda.presentes.filter(x => ids.includes(x.atividade_evo) && x.dia >= de).length;
+  if (naAgenda < 2) return null;
+  if (vig.ultima_concluida && vig.ultima_concluida >= de) return null;
+  if (anteriores.some(h => h.situacao === 'nao_marca_app' && diasEntre(h.dia, hoje) < NAO_MARCA_REPETE_DIAS)) return null;
+  return {
+    situacao: 'nao_marca_app',
+    valores: {},
+    motivo: `${naAgenda} treinos de musculação na agenda de ${ddmm(de)} a ${ddmm(agenda.carga)}, e nenhum marcado no app ` +
+      (vig.ultima_concluida ? `(último em ${ddmm(vig.ultima_concluida)}).` : '(nenhum no treino vigente).'),
+  };
+}
+
+/** O que iria à equipe hoje, à parte da mensagem ao aluno (briefing, A4). */
+export function avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao }) {
+  const avisos = [];
+  const vig = treinoVigente(treinos, hoje);
+  if (vig?.validade) {
+    const faltam = diasEntre(hoje, vig.validade);
+    if (faltam >= 0 && faltam <= TREINO_VENCENDO_DIAS) {
+      avisos.push(`Treino de musculação vence em ${faltam} dia(s), em ${ddmm(vig.validade)}: prescrever o ciclo seguinte.`);
+    } else if (faltam < 0 && -faltam <= TREINO_VENCIDO_AVISA_DIAS) {
+      // O último treino que começou já venceu: ninguém criou o seguinte.
+      avisos.push(`Treino de musculação vencido desde ${ddmm(vig.validade)}, sem treino novo no EVO.`);
+    }
+  }
+  if (situacao === 'ciclo_em_risco' && ficha.trilha.principal === 'adesao' && ciclo?.treino) {
+    avisos.push(`Ciclo em risco na trilha de adesão: ${ciclo.presencas} de ${ciclo.ciclo.minimo_treinos} treinos na metade do prazo.`);
+  }
+  return avisos;
+}
+
 /** A situação devida hoje, ou o motivo de nada estar devido. */
-export function situacaoDoDia({ ficha, anteriores, sinais = [], hoje, modo }) {
+export function situacaoDoDia({ ficha, anteriores, sinais = [], treinos = [], hoje, modo, modelos = null }) {
   if (!anteriores.length) {
     return modo === 'ensaio'
       ? { situacao: 'boas_vindas', valores: {}, motivo: 'Primeira mensagem. No envio real, sai quando o aluno ativa pelo código.' }
@@ -198,21 +352,30 @@ export function situacaoDoDia({ ficha, anteriores, sinais = [], hoje, modo }) {
 
   const agenda = leituraDaAgenda(ficha);
   const falta = ausencia({ ficha, anteriores, sinais, agenda, hoje });
-  const evento = (falta?.situacao && falta)
-    || (agenda && retorno({ ficha, anteriores, agenda }))
-    || reavaliacao({ ficha, anteriores, hoje })
-    || (agenda && semAgendamento({ ficha, anteriores, agenda, hoje }));
-  if (evento) return evento;
+  const ciclo = cicloDoTreino(ficha, treinos, agenda, hoje);
+  // Com os modelos à mão, situação sem modelo para a trilha é pulada.
+  const temModelo = (e) => !modelos || candidatosDe(modelos, e.situacao, ficha.trilha.principal).length > 0;
+  const evento = [
+    falta?.situacao ? falta : null,
+    agenda && retorno({ ficha, anteriores, agenda }),
+    ciclo?.treino && cicloEmRisco({ ciclo, anteriores, hoje }),
+    reavaliacao({ ficha, anteriores, hoje }),
+    ciclo?.treino && minimoCumprido({ ciclo, anteriores }),
+    agenda && semAgendamento({ ficha, anteriores, agenda, hoje }),
+    agenda && naoMarcaApp({ ficha, treinos, anteriores, agenda, hoje }),
+  ].filter(Boolean).find(temModelo);
+  if (evento) return { ...evento, ciclo };
 
   const ultimo = anteriores[anteriores.length - 1];
   const desde = diasEntre(ultimo.dia, hoje);
   const cadencia = ficha.trilha.cadencia_dias;
   if (desde >= cadencia) {
-    return { situacao: 'rotina', valores: {}, motivo: `${desde} dia(s) desde a última mensagem; cadência de ${cadencia}.` };
+    return { situacao: 'rotina', valores: {}, ciclo, motivo: `${desde} dia(s) desde a última mensagem; cadência de ${cadencia}.` };
   }
-  const nota = (falta && !falta.situacao ? ` ${falta.motivo}` : '') + (!agenda ? ' Agenda do EVO ainda não carregada.' : '');
+  const nota = (falta && !falta.situacao ? ` ${falta.motivo}` : '') + (!agenda ? ' Agenda do EVO ainda não carregada.' : '')
+    + (ciclo?.nota ? ` ${ciclo.nota}` : '');
   return {
-    situacao: null,
+    situacao: null, ciclo,
     motivo: `Próxima rotina em ${cadencia - desde} dia(s): cadência de ${cadencia}, última em ${ddmm(ultimo.dia)}.${nota}`,
   };
 }
@@ -241,14 +404,17 @@ function reavaliacao({ ficha, anteriores, hoje }) {
  *   simuladas; no envio, as enviadas): `{ dia, situacao, modelo_id, valores }`
  * @param {object[]} [p.sinais] os avisos "Sem presença" do EVO para este
  *   aluno: `{ dia, dias }`
+ * @param {object[]} [p.treinos] os treinos de musculação do aluno no EVO,
+ *   resumidos por `resumirTreinos`
  * @param {string} p.hoje       'AAAA-MM-DD', em São Paulo
  * @param {'ensaio'|'envio'} p.modo
  * @returns {{ status: 'simulado'|'pendente'|'bloqueado'|'nada', situacao: string|null, trilha: string,
- *   modelo_id: string|null, texto: string|null, valores: object, motivo: string, bloqueios: string[] }}
+ *   modelo_id: string|null, texto: string|null, valores: object, motivo: string, bloqueios: string[],
+ *   avisos_equipe: string[] }}
  */
-export function decidir({ ficha, modelos, historico, sinais = [], hoje, modo }) {
+export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], hoje, modo }) {
   const trilha = ficha.trilha.principal;
-  const base = { trilha, situacao: null, modelo_id: null, texto: null, valores: {}, bloqueios: [] };
+  const base = { trilha, situacao: null, modelo_id: null, texto: null, valores: {}, bloqueios: [], avisos_equipe: [] };
 
   if (ficha.estado?.encerrado) {
     return { ...base, status: 'nada', motivo: 'Acompanhamento encerrado no Prescrev.' };
@@ -260,10 +426,14 @@ export function decidir({ ficha, modelos, historico, sinais = [], hoje, modo }) 
   // Só o que veio antes de hoje: rodar o ensaio duas vezes no mesmo dia
   // não pode fazer o relógio andar duas vezes.
   const anteriores = historico.filter(h => h.dia < hoje).sort((a, b) => a.dia.localeCompare(b.dia));
-  const { situacao, motivo, valores: doDia } = situacaoDoDia({ ficha, anteriores, sinais, hoje, modo });
+  const { situacao, motivo, valores: doDia, ciclo } = situacaoDoDia({ ficha, anteriores, sinais, treinos, hoje, modo, modelos });
+  base.avisos_equipe = avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao });
   if (!situacao) return { ...base, status: 'nada', motivo };
 
   const valores = { ...valoresDaFicha(ficha, hoje), ...doDia };
+  // D3: sem professor escolhido no card, quem prescreveu o treino vigente no EVO.
+  const vig = treinoVigente(treinos, hoje);
+  if (ficha.professor?.origem !== 'card' && vig?.professor) valores.professor = primeiroNome(vig.professor) || valores.professor;
   const ultimoId = [...anteriores].reverse().find(h => h.situacao === situacao)?.modelo_id ?? null;
   const candidatos = emRodizio(candidatosDe(modelos, situacao, trilha), ultimoId);
 
