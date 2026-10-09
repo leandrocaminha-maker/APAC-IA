@@ -21,6 +21,7 @@
  *                           aviso de espera ao aluno quando não há Leia
  */
 import { emHorario, proximoInicio } from './horario.js';
+import { OPCOES_DO_BRIEFING } from './comandos.js';
 
 export const SENT_BY_PONTE = 'bot:ponte';
 export const sentByProfessor = (profileId) => `professor:${profileId}`;
@@ -52,15 +53,22 @@ export function idDaCitacao(data) {
   return null;
 }
 
+const normalizar = (t) => String(t ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
 /**
- * "1", "2" ou "3" sozinho. Citando o briefing, é o comando daquele
- * encaminhamento; com qualquer texto junto, é mensagem ao aluno — "2 vezes
- * por semana está ótimo" não pode virar "já resolvi".
+ * "1", "2" ou "3" sozinho — ou a linha da opção copiada do briefing ("1 -
+ * vou responder mais tarde ou pessoalmente"). Citando o briefing, é o
+ * comando daquele encaminhamento; com qualquer outro texto junto, é mensagem
+ * ao aluno — "2 vezes por semana está ótimo" não pode virar "está resolvido".
  * @returns {'1'|'2'|'3'|null}
  */
 export function comandoSozinho(texto) {
   const m = /^\s*([123])\s*[.!]?\s*$/.exec(String(texto ?? ''));
-  return m ? m[1] : null;
+  if (m) return m[1];
+  const n = normalizar(texto);
+  const opcao = Object.entries(OPCOES_DO_BRIEFING).find(([num, rotulo]) => n === normalizar(`${num} ${rotulo}`));
+  return opcao ? opcao[0] : null;
 }
 
 /** O que o aluno lê: assinado como o painel do CRM assina ("*Shirlei:*"). */

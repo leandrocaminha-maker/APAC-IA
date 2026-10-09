@@ -66,19 +66,37 @@ test('o briefing: modelo fixo, com o mínimo de dado de saúde', () => {
     '*Combinado:* 5× por semana: Musculação, Mat Pilates',
     '*Acompanhamento:* desafiadora (2ª técnica) · reavaliação 21/11',
     'Ficha: https://prescrev/x',
-    'Responda *1* eu assumo · *2* já resolvi · *3* não é comigo',
+    'Suas opções, digite:',
+    '1 - vou responder mais tarde ou pessoalmente',
+    '2 - está resolvido',
+    '3 - Não é comigo',
   ].join('\n'));
   assert.match(textoDoBriefing({ teste: true, aluno: 'Aluno de teste', motivo: 'x', urgencia: 'hoje' }),
     /^🧪 \*TESTE — não é de um aluno de verdade\*\n.*\n.*\n\*Motivo:\* x — \*responder hoje\*/);
 });
 
-test('o briefing não leva o número do aluno: com a ponte, diz como falar com ele (A5d)', () => {
-  const t = textoDoBriefing({ aluno: 'Claudia', motivo: 'dor ou lesão', urgencia: 'hoje', ponte: true, linkFicha: 'https://prescrev/x' });
+test('o briefing não leva o número do aluno: com a ponte, as opções do responsável (A5d)', () => {
+  const t = textoDoBriefing({
+    aluno: 'Claudia', motivo: 'dor ou lesão', urgencia: 'hoje', resumo: 'dor no joelho.', ponte: true, linkFicha: 'https://prescrev/x',
+  });
   assert.doesNotMatch(t, /wa\.me|\d{10,}/);
-  assert.match(t, /Para falar com Claudia, responda a esta mensagem \(arraste para o lado\): vai pelo número da academia, com o seu nome\./);
-  // A instrução vem antes do 1/2/3, que segue sendo a última linha.
-  assert.match(t, /com o seu nome\.\nResponda \*1\* eu assumo/);
-  assert.doesNotMatch(textoDoBriefing({ aluno: 'Claudia', motivo: 'x', urgencia: 'hoje' }), /Para falar com/);
+  // O bloco final, literal (texto do responsável em 09/10/2026).
+  assert.ok(t.endsWith([
+    'Ficha: https://prescrev/x',
+    'Suas opções:',
+    'Converse com o cliente, através do whats da AP, arrastando pro lado esta mensagem e respondendo ou digite:',
+    '1 - vou responder mais tarde ou pessoalmente',
+    '2 - está resolvido',
+    '3 - Não é comigo',
+  ].join('\n')), t);
+  assert.doesNotMatch(textoDoBriefing({ aluno: 'Claudia', motivo: 'x', urgencia: 'hoje' }), /Converse com o cliente/);
+});
+
+test('a linha da opção copiada do briefing é o número, sem nota', () => {
+  assert.deepEqual(lerRespostaDoBriefing('1 - vou responder mais tarde ou pessoalmente'), { numero: '1', nota: null });
+  assert.deepEqual(lerRespostaDoBriefing('2 - Está resolvido'), { numero: '2', nota: null });
+  assert.deepEqual(lerRespostaDoBriefing('3 - nao e comigo'), { numero: '3', nota: null });
+  assert.deepEqual(lerRespostaDoBriefing('1 - falo com ela na quinta'), { numero: '1', nota: 'falo com ela na quinta' });
 });
 
 test('a resposta ao briefing: o número sozinho, e o resto vira nota', () => {

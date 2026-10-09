@@ -145,7 +145,17 @@ export function acompanhamentoDaFicha(ficha) {
  * Não leva o número do aluno (A5d, 09/10/2026): o professor fala com ele
  * citando este briefing, pelo número da academia, e ninguém vê o número de
  * ninguém. `ponte` diz se há WhatsApp do aluno para isso.
+ *
+ * O bloco das opções é texto do responsável (09/10/2026), literal: conversar
+ * pela ponte já vale como assumir, e o "1" fica para quem vai responder
+ * depois ou pessoalmente.
  */
+export const OPCOES_DO_BRIEFING = {
+  1: 'vou responder mais tarde ou pessoalmente',
+  2: 'está resolvido',
+  3: 'Não é comigo',
+};
+
 export function textoDoBriefing({
   teste = false, repasse = null, aluno, idade = null, motivo, urgencia, resumo = null,
   combinado = null, acompanhamento = null, ponte = false, linkFicha = null,
@@ -160,10 +170,9 @@ export function textoDoBriefing({
     combinado ? `*Combinado:* ${combinado}` : null,
     acompanhamento ? `*Acompanhamento:* ${acompanhamento}` : null,
     linkFicha ? `Ficha: ${linkFicha}` : null,
-    ponte
-      ? `💬 Para falar com ${aluno}, responda a esta mensagem (arraste para o lado): vai pelo número da academia, com o seu nome.`
-      : null,
-    'Responda *1* eu assumo · *2* já resolvi · *3* não é comigo',
+    ponte ? 'Suas opções:' : 'Suas opções, digite:',
+    ponte ? 'Converse com o cliente, através do whats da AP, arrastando pro lado esta mensagem e respondendo ou digite:' : null,
+    ...Object.entries(OPCOES_DO_BRIEFING).map(([n, t]) => `${n} - ${t}`),
   ].filter(Boolean).join('\n');
 }
 
@@ -175,8 +184,14 @@ export function textoDoBriefing({
 export function lerRespostaDoBriefing(texto) {
   const m = /^\s*([123])(?![0-9])\s*[-.:,)]?\s*([\s\S]*)$/.exec(String(texto ?? ''));
   if (!m) return null;
-  return { numero: m[1], nota: m[2].trim() || null };
+  const nota = m[2].trim() || null;
+  // A linha da opção copiada do briefing não é nota: é o próprio número.
+  const soRotulo = nota && semAcento(nota) === semAcento(OPCOES_DO_BRIEFING[m[1]]);
+  return { numero: m[1], nota: soRotulo ? null : nota };
 }
+
+const semAcento = (t) => String(t ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 /** O que volta ao professor depois do 1/2/3. */
 export function textoDaResposta({ numero, aluno, nivel = 'professor', repassadoA = null }) {

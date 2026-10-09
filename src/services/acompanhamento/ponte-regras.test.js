@@ -29,6 +29,15 @@ test('citando, só o número sozinho é comando — com texto, é mensagem ao al
     [null, null, null, null, null, null]);
 });
 
+test('citando, a linha da opção copiada do briefing também é o comando', () => {
+  assert.deepEqual([
+    '1 - vou responder mais tarde ou pessoalmente', '1- Vou responder mais tarde ou pessoalmente.',
+    '2 - está resolvido', '2 - esta resolvido', '3 - Não é comigo',
+  ].map(comandoSozinho), ['1', '1', '2', '2', '3']);
+  // Parte da linha, ou outra coisa depois do número, vai ao aluno.
+  assert.deepEqual(['1 - vou responder mais tarde', '2 - está resolvido, qualquer coisa me chama'].map(comandoSozinho), [null, null]);
+});
+
 test('o remetente do professor não é humano nem bot', () => {
   const s = sentByProfessor('p-rafa');
   assert.equal(s, 'professor:p-rafa');
