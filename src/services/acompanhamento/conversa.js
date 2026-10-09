@@ -73,7 +73,20 @@ export function proximasSessoes(ficha, hoje) {
  * Leia precisa para responder, e nada do que ela não pode dizer além do
  * nome da trilha (que decide o tom, e o prompt proíbe dizer).
  */
-export function contextoDoAluno({ ficha, hoje, troca, ultimaDoAcompanhamento = null, encaminhamentoAberto = null, simulacao = false }) {
+/** A situação do professor hoje (`professorHoje` de horario.js), numa linha do contexto. */
+export function textoDoProfessorHoje(situacao) {
+  if (situacao === undefined) return '';
+  if (situacao === null) return ' — sem horário cadastrado: quem recebe o encaminhamento é a equipe';
+  if (situacao.estado === 'agora') return ` — trabalhando agora, até ${situacao.ate}`;
+  if (situacao.estado === 'mais_tarde') return ` — chega hoje às ${situacao.as}`;
+  const quando = situacao.volta === 'amanhã' ? 'amanhã'
+    : `${['sábado', 'domingo'].includes(situacao.volta) ? 'no' : 'na'} ${situacao.volta}`;
+  return ` — não trabalha mais hoje; volta ${quando} às ${situacao.as}`;
+}
+
+export function contextoDoAluno({
+  ficha, hoje, troca, ultimaDoAcompanhamento = null, encaminhamentoAberto = null, simulacao = false, situacaoDoProfessor,
+}) {
   const a = ficha.aluno ?? {};
   const professor = primeiroNome(ficha.marcadores?.professor ?? ficha.professor?.nome ?? '');
   const freq = ficha.frequencia?.dias_semana;
@@ -86,7 +99,7 @@ export function contextoDoAluno({ ficha, hoje, troca, ultimaDoAcompanhamento = n
   const linhas = [
     '## O ALUNO',
     `- Nome: ${a.primeiro_nome ?? 'não informado'}${a.idade ? `, ${a.idade} anos` : ''}`,
-    `- Professor: ${professor || 'não definido — fale da "equipe", sem nome'}`,
+    `- Professor: ${professor ? `${professor}${textoDoProfessorHoje(situacaoDoProfessor)}` : 'não definido — fale da "equipe", sem nome'}`,
     `- Combinado: ${[freq ? `${freq}× por semana` : null, modalidades || null].filter(Boolean).join(' — ') || 'não informado'}`,
     `- Trilha (decide o tom; nunca diga o nome): ${TRILHA[t.principal] ?? 'não informada'}${t.secundaria ? ` (2ª: ${TRILHA[t.secundaria]})` : ''}`,
     `- Próxima reavaliação: ${reav ? `${ddmm(reav)}/${reav.slice(0, 4)}` : 'sem data marcada'}`,

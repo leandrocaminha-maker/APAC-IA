@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   acompanhamentoDaFicha, combinadoDaFicha, coordenadorDePlantao, destinoDoAluno, lerComandoEquipe, lerRespostaDoBriefing,
-  rotear, textoDaResposta, textoDeConfirmacao, textoDoBriefing,
+  rotear, textoDaResposta, textoDeConfirmacao, textoDoBriefing, lerComandoAtivar, mesmoNumero, textoDoAceite, cadenciaPorExtenso,
 } from './comandos.js';
 
 test('o comando EQUIPE, com espaços e caixa à vontade', () => {
@@ -141,10 +141,41 @@ test('rotear: o professor no horário; fora do resto de hoje, a coordenação; s
   // próximos dias: espera a manhã do Rafael
   assert.deepEqual(r('2026-10-08T14:00', 'proximos_dias'), { para: 'Rafael', nivel: 'professor', acao: 'fila', notas: [] });
   // 22h e "hoje": ninguém trabalha mais hoje
-  assert.equal(r('2026-10-08T22:00', 'hoje').para, null);
+  // urgente às 22h: ninguém da coordenação trabalha mais hoje — vai ao professor, no próximo turno
+  assert.deepEqual(r('2026-10-08T22:00', 'hoje'), {
+    para: 'Rafael', nivel: 'professor', acao: 'fila',
+    notas: ['Rafael: fora do horário de trabalho no resto de hoje', 'ninguém da coordenação trabalha mais hoje: vai ao professor no próximo turno'],
+  });
   // professor sem EQUIPE: coordenação
   assert.deepEqual(r('2026-10-08T14:00', 'proximos_dias', { professorId: 'outro' }).notas, ['o professor ainda não ativou o EQUIPE']);
   // o teste não vai à coordenação: espera o turno de quem vai testar
   const t = rotear({ urgencia: 'hoje', origem: 'teste', professorId: 'prof', ativos, horarios, agora: sp('2026-10-08T22:00') });
   assert.deepEqual([t.pessoa.nome, t.quando.acao, t.quando.enviarEm.toISOString()], ['Rafael', 'fila', sp('2026-10-09T06:00').toISOString()]);
+});
+
+// ---- ativação do aluno ----
+
+test('ATIVAR: só seis caracteres têm cara de código — "ativar meu plano" é de cliente', () => {
+  assert.deepEqual(['ATIVAR K7P2QX', 'ativar k7p2qx', ' Ativar  K7P 2QX '].map(lerComandoAtivar), ['K7P2QX', 'K7P2QX', 'K7P2QX']);
+  assert.deepEqual(['ATIVAR K7P2Q0', 'ativar cartao'].map(lerComandoAtivar), ['', '']);
+  assert.deepEqual(['ativar meu plano', 'ativar', 'quero ativar K7P2QX', 'ATIVAR K7P2QX agora', 'Ativar o app?'].map(lerComandoAtivar),
+    [null, null, null, null, null]);
+});
+
+test('o mesmo número, com ou sem DDI e nono dígito', () => {
+  assert.equal(mesmoNumero('5511987654321', '(11) 98765-4321'), true);
+  assert.equal(mesmoNumero('551187654321', '11987654321'), true); // sem o nono dígito
+  assert.equal(mesmoNumero('5511987654321', '11987650000'), false);
+  assert.equal(mesmoNumero('5511987654321', null), false);
+});
+
+test('o aceite: cadência por extenso, professor só pelo nome, e como parar', () => {
+  const t = textoDoAceite({ nome: 'Marta', professor: 'Rafael', cadenciaDias: 7 });
+  assert.match(t, /^Pronto, Marta! Seu acompanhamento está ativo/);
+  assert.match(t, /mais ou menos uma vez por semana/);
+  assert.match(t, /Rafael, que acompanha você na academia, fica sabendo/);
+  assert.match(t, /\*PAUSAR ACOMPANHAMENTO\*.*\*SAIR\*/);
+  assert.doesNotMatch(t, /\bo Rafael\b|\ba Rafael\b/);
+  assert.match(textoDoAceite({ nome: null, professor: null, cadenciaDias: null }), /de tempos em tempos[\s\S]*a equipe que acompanha você/);
+  assert.deepEqual([3, 7, 14, 11].map(cadenciaPorExtenso), ['a cada 3 dias', 'uma vez por semana', 'a cada duas semanas', 'a cada 11 dias']);
 });

@@ -194,6 +194,52 @@ export async function registrarDaRegua({ ficha, avisos, treinos, hoje, equipe, a
   return novos;
 }
 
+const MOTIVO_DA_CATEGORIA = {
+  dor_ou_lesao: 'dor ou lesão', saude: 'saúde', ajuste_de_treino: 'ajuste de treino',
+  ausencia_ou_desanimo: 'ausência ou desânimo', pedido_do_aluno: 'o aluno quer falar com você', outro: 'conversa com o aluno',
+};
+
+/**
+ * O encaminhamento que a Leia abre na conversa com o aluno (§6.4). Com
+ * `encaminhamentosReais` desligado (fase de teste), abre 'simulado' com a
+ * previsão de quem receberia e quando; ligado, roteia e entrega como os da
+ * régua — no horário de quem recebe.
+ * @returns {Promise<object>} { status, destinatario, enviarEm }
+ */
+export async function registrarDaLeia({ ficha, categoria, urgencia, resumo, phoneAluno, treinos = [], hoje }) {
+  const [equipe, ativos] = await Promise.all([buscarEquipe(), equipeAtivada()]);
+  const horarios = await horariosDaEquipe(equipe);
+  const professor = destinoDoAluno({ ficha, treinos, hoje, equipe });
+  const rota = rotear({ urgencia, origem: 'leia', professorId: professor?.profile_id ?? null, ativos, horarios, agora: agora() });
+  const motivo = MOTIVO_DA_CATEGORIA[categoria] ?? 'conversa com o aluno';
+  const texto = textoDoBriefing({
+    aluno: ficha.aluno?.primeiro_nome ?? 'Aluno', idade: ficha.aluno?.idade ?? null, motivo, urgencia, resumo,
+    combinado: combinadoDaFicha(ficha), acompanhamento: acompanhamentoDaFicha(ficha),
+    whatsappAluno: phoneAluno ?? ficha.aluno?.celular_cadastro ?? null,
+    linkFicha: `${config.acompanhamento.prescrev.url.replace(/\/$/, '')}/dashboard/clientes/${ficha.cliente_id}`,
+  });
+  const real = config.acompanhamento.encaminhamentosReais;
+  const enc = {
+    id: randomUUID(), chave: `leia:${ficha.cliente_id}:${randomUUID()}`, origem: 'leia', cliente_id: ficha.cliente_id,
+    aluno: ficha.aluno?.primeiro_nome ?? 'Aluno', motivo_codigo: categoria, motivo, urgencia, resumo,
+    professor_profile_id: professor?.profile_id ?? null, professor_nome: professor?.nome ?? null,
+    destino_origem: professor?.origem ?? null, nivel: rota.nivel,
+    destinatario_profile_id: rota.pessoa?.profile_id ?? null, destinatario_nome: rota.pessoa?.nome ?? null,
+    destinatario_phone: rota.pessoa?.phone ?? null,
+    status: !real ? 'simulado' : rota.pessoa ? 'na_fila' : 'sem_destino',
+    texto_briefing: texto, enviar_em: !real ? rota.quando?.enviarEm?.toISOString() ?? null : null,
+  };
+  const historico = [evento(real ? 'aberto pela Leia' : 'aberto pela Leia, em ensaio', [real ? null : previsao(rota), ...rota.notas].filter(Boolean).join(' · '))];
+  const { error } = await supabase.from('acomp_encaminhamentos').insert({ ...enc, historico });
+  if (error) throw new Error(`acomp_encaminhamentos: ${error.message}`);
+
+  let status = enc.status;
+  if (real && rota.pessoa) {
+    status = await entregar(enc, rota.pessoa, horarios.get(rota.pessoa.profile_id) ?? null, { nivel: rota.nivel, texto, historico });
+  }
+  return { status, destinatario: rota.pessoa?.nome ?? null, nivel: rota.nivel, enviarEm: rota.quando?.enviarEm ?? null };
+}
+
 /**
  * O envio de teste do painel: um briefing com aluno fictício para quem
  * ativou o EQUIPE. Valida o caminho inteiro — chegar, responder, repassar —

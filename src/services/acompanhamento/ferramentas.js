@@ -53,7 +53,10 @@ export const FERRAMENTAS = [
         urgencia: {
           type: 'string',
           enum: ['hoje', 'proximos_dias'],
-          description: '"hoje" para sinal de alerta, dor forte ou nova, ou o que não pode esperar; senão "proximos_dias".',
+          description: '"hoje" SÓ para o que não pode esperar o próximo dia de trabalho do professor: sinal de alerta, ' +
+            'dor forte ou que impede o movimento, lesão com queda ou pancada — é o que vai à coordenação quando o ' +
+            'professor não trabalha mais hoje. Dor nova que não impede, desconforto, dúvida, desânimo, pedido: ' +
+            '"proximos_dias".',
         },
         resumo_para_professor: {
           type: 'string',

@@ -378,10 +378,12 @@ export const TIPOS_REGUA = ['ae_pos_aula', ...TIPOS_SONDAGEM, ...TIPOS_SILENCIO]
  *  - `simulador` / `teste-web` — conversa de teste não recebe follow-up.
  *  - `bot:briefing` — o encaminhamento do acompanhamento ao professor. Se
  *    o professor já foi lead, o briefing sem resposta não é silêncio de venda.
+ *  - `bot:acompanhamento` (e a Leia dele) — mensagem ao aluno do programa:
+ *    aluno que não respondeu ao acompanhamento não é lead em silêncio.
  */
 function ehNossaFala(sentBy) {
   const quem = String(sentBy || '');
-  if (quem === 'bot:briefing') return false;
+  if (quem === 'bot:briefing' || quem.startsWith('bot:acompanhamento')) return false;
   return quem === 'bot' || quem.startsWith('bot:') || quem.startsWith('human:');
 }
 

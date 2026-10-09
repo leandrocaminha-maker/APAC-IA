@@ -96,6 +96,28 @@ export function mesmoDiaSP(a, b) {
   return diaSP(a.getTime()).meiaNoite === diaSP(b.getTime()).meiaNoite;
 }
 
+const hhmmSP = (ms) => new Date(ms + OFFSET_SP_MS).toISOString().slice(11, 16);
+
+const DIA_DA_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+
+/**
+ * Onde o professor está hoje, para a Leia dizer QUANDO ele fica sabendo — e
+ * não prometer o que não vai acontecer ("ele te procura ainda hoje" de quem
+ * já saiu). Fora do turno, quando ele volta: "amanhã" ou o dia da semana.
+ * @returns {{ estado: 'agora', ate: string } | { estado: 'mais_tarde', as: string }
+ *   | { estado: 'nao_hoje', volta: string, as: string } | null}  null = sem horário cadastrado
+ */
+export function professorHoje(horario, agora = new Date()) {
+  const t = agora.getTime();
+  for (const [ini, fim] of turnos(horario, t)) {
+    if (ini <= t) return { estado: 'agora', ate: hhmmSP(fim) };
+    if (mesmoDiaSP(new Date(ini), agora)) return { estado: 'mais_tarde', as: hhmmSP(ini) };
+    const dias = Math.round((diaSP(ini).meiaNoite - diaSP(t).meiaNoite) / DIA_MS);
+    return { estado: 'nao_hoje', volta: dias === 1 ? 'amanhã' : DIA_DA_SEMANA[diaSP(ini).diaSemana], as: hhmmSP(ini) };
+  }
+  return null;
+}
+
 /** O prazo de resposta de um briefing enviado em `enviadoEm`. */
 export function prazoDaResposta(horario, urgencia, enviadoEm) {
   if (urgencia === 'hoje') return somarTrabalho(horario, enviadoEm, PRAZO_HOJE_MS);

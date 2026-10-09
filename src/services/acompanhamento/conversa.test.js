@@ -93,3 +93,17 @@ test('as ferramentas: lista fixa, e a simulação só registra', async () => {
   assert.equal((await exec('registrar_desfecho', { tipo: 'xpto', resumo: '' })).success, false);
   assert.equal((await exec('agendar_aula_experimental', {})).success, false);
 });
+
+test('a linha do professor diz se ele ainda trabalha hoje', async () => {
+  const { textoDoProfessorHoje } = await import('./conversa.js');
+  assert.equal(textoDoProfessorHoje({ estado: 'agora', ate: '21:00' }), ' — trabalhando agora, até 21:00');
+  assert.equal(textoDoProfessorHoje({ estado: 'mais_tarde', as: '17:00' }), ' — chega hoje às 17:00');
+  assert.equal(textoDoProfessorHoje({ estado: 'nao_hoje', volta: 'amanhã', as: '06:00' }), ' — não trabalha mais hoje; volta amanhã às 06:00');
+  assert.equal(textoDoProfessorHoje({ estado: 'nao_hoje', volta: 'segunda', as: '06:00' }), ' — não trabalha mais hoje; volta na segunda às 06:00');
+  assert.equal(textoDoProfessorHoje({ estado: 'nao_hoje', volta: 'sábado', as: '08:00' }), ' — não trabalha mais hoje; volta no sábado às 08:00');
+  assert.match(textoDoProfessorHoje(null), /sem horário cadastrado/);
+  assert.equal(textoDoProfessorHoje(undefined), '');
+  const ctx = contextoDoAluno({ ficha: FICHA, hoje: '2026-10-08', troca: { troca: 1, respondidas: 0, limiteAtingido: false },
+    situacaoDoProfessor: { estado: 'nao_hoje', volta: 'amanhã', as: '06:00' } });
+  assert.match(ctx, /- Professor: Rafael — não trabalha mais hoje/);
+});

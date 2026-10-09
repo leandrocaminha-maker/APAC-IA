@@ -502,6 +502,7 @@ export async function processMessage({
   promptSlug = 'vendas',
   origem = 'webhook',
   campanha = null,
+  alunoAcompanhamento = null,
 }) {
   // Camada 1: Prompt base do banco
   const systemPrompt = await loadPrompt(promptSlug);
@@ -536,6 +537,19 @@ export async function processMessage({
   // bloco estável invalidaria o prefixo de todo mundo.
   if (campanha?.oferta) {
     dynamicContext += montarContextoCampanha(campanha);
+  }
+
+  // Aluno do acompanhamento fora da conversa do acompanhamento (§6.1): a
+  // Leia de vendas precisa saber que não é lead. Camada 3, por conversa.
+  if (alunoAcompanhamento) {
+    dynamicContext += SEPARADOR + [
+      '',
+      '## ALUNO EM ACOMPANHAMENTO',
+      `Esta pessoa${alunoAcompanhamento.nome ? ` (${alunoAcompanhamento.nome})` : ''} é aluna da AP e está no programa de ` +
+        `acompanhamento${alunoAcompanhamento.professor ? `, com ${alunoAcompanhamento.professor}` : ''}. Trate como aluno matriculado, ` +
+        'não como lead: nada de oferta de plano nem de aula experimental, a não ser que ela peça.',
+      'Dor, treino ou saúde: diga que vai avisar a equipe e use `transferir_para_humano`.',
+    ].join(SEPARADOR);
   }
 
   // Camadas 1 + 2, com o breakpoint de cache.

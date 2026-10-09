@@ -43,6 +43,77 @@ export function textoDeConfirmacao(membro) {
 }
 
 // ──────────────────────────────────────────────
+// Ativação do aluno: "ATIVAR <código>" (A5, §5.1 do plano)
+// ──────────────────────────────────────────────
+
+/**
+ * O código de "ATIVAR K7P2QX". Mais estreito que o EQUIPE, porque quem manda
+ * é qualquer pessoa: só seis letras e números fazem cara de código — "ativar
+ * meu plano" é de cliente, e segue para o funil.
+ *
+ *   'K7P2QX'  comando com código no formato
+ *   ''        seis caracteres fora do alfabeto: a resposta ensina
+ *   null      não é comando
+ */
+export function lerComandoAtivar(texto) {
+  const m = /^\s*ativar\s+([a-z0-9 ]+?)\s*$/i.exec(String(texto ?? ''));
+  if (!m) return null;
+  const codigo = m[1].replace(/\s+/g, '').toUpperCase();
+  if (codigo.length !== 6) return null;
+  return ALFABETO.test(codigo) ? codigo : '';
+}
+
+/**
+ * O mesmo número? Pelos 8 últimos dígitos: o WhatsApp às vezes chega sem o
+ * nono dígito do celular, e o cadastro do EVO às vezes vem sem o DDI.
+ */
+export function mesmoNumero(a, b) {
+  const [x, y] = [a, b].map(n => String(n ?? '').replace(/\D/g, '').slice(-8));
+  return x.length === 8 && x === y;
+}
+
+/** "a cada 3 dias", "uma vez por semana", "a cada duas semanas". */
+export function cadenciaPorExtenso(dias) {
+  if (dias === 7) return 'uma vez por semana';
+  if (dias === 14) return 'a cada duas semanas';
+  if (dias === 1) return 'todo dia';
+  return `a cada ${dias} dias`;
+}
+
+/**
+ * O aceite, na hora do ATIVAR (decisão do responsável em 08/10/2026): o mesmo
+ * para todos, com o nome do professor e a cadência. É o que o aluno aceita —
+ * o que vai receber, de quanto em quanto tempo, que o professor fica sabendo
+ * quando ele conta dor ou dificuldade, e como parar. A boas-vindas da trilha
+ * vem depois, pela régua. O professor só pelo nome: o cadastro não diz gênero.
+ */
+export function textoDoAceite({ nome, professor, cadenciaDias }) {
+  return [
+    `Pronto${nome ? `, ${nome}` : ''}! Seu acompanhamento está ativo 🙌`,
+    '',
+    `Por aqui você vai receber mensagens sobre o seu programa — ${cadenciaDias ? `mais ou menos ${cadenciaPorExtenso(cadenciaDias)}` : 'de tempos em tempos'}, ` +
+      'e também perto da reavaliação ou quando você ficar uns dias sem vir. Pode responder quando quiser.',
+    '',
+    professor
+      ? `Se contar alguma dor ou dificuldade, ${professor}, que acompanha você na academia, fica sabendo e fala com você.`
+      : 'Se contar alguma dor ou dificuldade, a equipe que acompanha você na academia fica sabendo e fala com você.',
+    '',
+    'Para pausar, mande *PAUSAR ACOMPANHAMENTO*. Para não receber mais nada, *SAIR*.',
+  ].join('\n');
+}
+
+/** Respostas da ativação. Sem o nome do aluno onde o número ainda não é dele. */
+export const TEXTOS_ATIVACAO = {
+  pendente: 'Recebi o código 👍 Como este número é diferente do que está no cadastro da academia, a equipe confirma ' +
+    'antes de o acompanhamento começar. Avisamos por aqui.',
+  invalido: 'Código não reconhecido. Confira o código no seu relatório, ou fale com a equipe na academia.',
+  formato: 'Para ativar, mande ATIVAR seguido do código de 6 letras e números que está no seu relatório.',
+  jaAtivo: 'Seu acompanhamento já está ativo por aqui 😊',
+  aguardando: 'O código já chegou: a equipe ainda vai confirmar este número. Avisamos por aqui.',
+  outroAluno: 'Este número já está com o acompanhamento de outra pessoa. Fale com a equipe na academia.',
+};
+
+// ──────────────────────────────────────────────
 // Encaminhamentos: o briefing e as respostas 1/2/3
 // ──────────────────────────────────────────────
 
@@ -185,6 +256,16 @@ export function rotear({ urgencia, origem, professorId, ativos, horarios, agora 
 
   const coord = coordenadorDePlantao(ativos, prof?.phone ?? null, { horarios, agora, urgencia, exigirHoje });
   if (coord) return { pessoa: coord, nivel: 'coordenacao', quando: coord.envio, notas };
+  // Urgente e ninguém trabalha mais hoje: vai ao professor, no próximo turno
+  // dele — melhor do que ficar sem destino. Quem resolve o urgente na hora,
+  // no sinal de alerta, é o atendimento médico que a Leia orienta.
+  if (prof && exigirHoje) {
+    const proximoTurno = quandoEnviar({ horario: horarios.get(prof.profile_id) ?? null, urgencia, agora, exigirHoje: false });
+    if (proximoTurno.acao !== 'indisponivel') {
+      notas.push('ninguém da coordenação trabalha mais hoje: vai ao professor no próximo turno');
+      return { pessoa: prof, nivel: 'professor', quando: proximoTurno, notas };
+    }
+  }
   notas.push('nenhuma coordenação com EQUIPE ativado e horário que sirva');
   return { pessoa: null, nivel: 'professor', quando: null, notas };
 }

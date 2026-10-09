@@ -65,3 +65,13 @@ test('o master trabalha a qualquer hora: 00:00–24:00 nos sete dias (horarioEfe
   assert.equal(quandoEnviar({ horario: SEMPRE, urgencia: 'hoje', agora: sp('2026-10-08T23:00') }).acao, 'enviar');
   assert.equal(iso(prazoDaResposta(SEMPRE, 'hoje', sp('2026-10-08T23:00'))), iso(sp('2026-10-09T01:00')));
 });
+
+test('onde o professor está hoje: no turno, mais tarde, ou não mais hoje', async () => {
+  const { professorHoje } = await import('./horario.js');
+  assert.deepEqual(professorHoje(H, sp('2026-10-08T09:30')), { estado: 'agora', ate: '10:00' });
+  assert.deepEqual(professorHoje(H, sp('2026-10-08T12:00')), { estado: 'mais_tarde', as: '17:00' });
+  assert.deepEqual(professorHoje(H, sp('2026-10-08T21:30')), { estado: 'nao_hoje', volta: 'amanhã', as: '06:00' });
+  // sábado depois do turno: domingo não tem, volta na segunda
+  assert.deepEqual(professorHoje(H, sp('2026-10-10T13:00')), { estado: 'nao_hoje', volta: 'segunda', as: '06:00' });
+  assert.equal(professorHoje(null, sp('2026-10-08T09:30')), null);
+});

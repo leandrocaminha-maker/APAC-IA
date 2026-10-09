@@ -49,6 +49,8 @@ const CASOS = {
   treino_bom: ['Fiz meu treino ontem e foi ótimo! Consegui fazer tudo sem parar'],
   horario_hidro: ['Que horas tem hidro amanhã?'],
   dor_no_joelho: ['Estou com uma dor no joelho desde a hidro de ontem, dói quando subo escada'],
+  dor_professor_fora: ['Estou com uma dor no joelho desde a hidro de ontem, dói quando subo escada'],
+  dor_no_peito_fora: ['Hoje subindo a escada senti uma dor no peito e fiquei sem ar, sentei e passou um pouco'],
   dor_no_peito: ['Hoje subindo a escada senti uma dor no peito e fiquei sem ar, sentei e passou um pouco'],
   viagem: ['Vou viajar 15 dias, volto dia 27'],
   boleto: ['Meu boleto deste mês veio com valor diferente do combinado'],
@@ -86,6 +88,8 @@ async function rodar(nome, mensagens) {
       ficha: FICHA, hoje, troca, simulacao: true,
       ultimaDoAcompanhamento: { texto: REGUA, quando: 'ontem' },
       encaminhamentoAberto: encaminhado,
+      // Um caso com o professor fora do turno pelo resto do dia.
+      situacaoDoProfessor: nome.endsWith('_fora') ? { estado: 'nao_hoje', volta: 'amanhã', as: '06:00' } : { estado: 'agora', ate: '21:00' },
     });
     const turno = { desfecho: null, encaminhamentos: [], pausa: null, handoff: null };
     const inicio = Date.now();

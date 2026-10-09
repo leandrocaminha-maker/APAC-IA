@@ -251,6 +251,12 @@ export const config = {
     // mensagem para quem é da casa e abriu a conversa com o código EQUIPE.
     briefingTetoDiario: parseInt(env('ACOMPANHAMENTO_BRIEFING_TETO_DIARIO', '20'), 10),
 
+    // Encaminhamentos de VERDADE: o briefing sai para o professor. Com false
+    // (o padrão, a fase de teste — decisão de 08/10/2026), os da régua e os
+    // da Leia abrem como 'simulado', com o texto e o horário em que sairiam.
+    // O envio de teste do painel sai sempre.
+    encaminhamentosReais: env('ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS', 'false') === 'true',
+
     // De quantos em quantos minutos o worker solta a fila dos encaminhamentos
     // (o que esperava o começo do turno de quem recebe) e confere os prazos.
     // Curto de propósito: o prazo de "hoje" é de 2 horas de trabalho.

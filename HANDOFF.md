@@ -90,6 +90,20 @@ vai dizer quando começar para valer.
   enviado. `node --env-file=.env scripts/bateria-acompanhamento.js` roda os
   casos da bateria com um aluno fictício. A porta do webhook (aluno real
   caindo neste caminho) entra com a ativação, na A5.
+- **Ativação e a Leia de verdade** (etapa A5, migration **017**, envio da
+  régua ainda DESLIGADO — decisão de 08/10/2026): "ATIVAR <código>" (só seis
+  caracteres; porta depois da do EQUIPE, `acompanhamento/ativacao.js`)
+  confere o código na ficha; número igual ao do cadastro (8 últimos dígitos)
+  nasce ativo e recebe o aceite fixo (`textoDoAceite`) como
+  `bot:acompanhamento`; diferente fica pendente até a equipe confirmar no card
+  do Prescrev (`POST /acompanhamento/inscricoes/:id/confirmar`, assinada).
+  "PAUSAR ACOMPANHAMENTO" pausa; SAIR encerra. A porta da Leia
+  (`acompanhamento/leia.js`, em `responderTurno`): inscrição ativa ou pausada e
+  mensagem do acompanhamento em 7 dias (ou encaminhamento aberto) vai à Leia
+  do acompanhamento, com as ferramentas valendo; fora disso, a de vendas
+  recebe "aluno em acompanhamento". Encaminhamento da Leia e da régua abre
+  'simulado' até `ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS=true`. O contexto diz
+  se o professor ainda trabalha hoje.
 - Migration **011**: `acomp_fichas` (cópia da ficha) e `acomp_disparos` (uma
   linha por aluno e dia, com motivo — inclusive do que não sai).
 - Painel → aba **Acompanhamento** (só admin): a prévia de 7 dias, o botão

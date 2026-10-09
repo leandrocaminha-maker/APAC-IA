@@ -12,6 +12,9 @@ import { sendText, normalizePhone } from '../services/evolution.js';
 import { funil } from '../services/funil.js';
 import { evoSync } from '../services/evo-sync.js';
 import { campanhas } from '../services/campanhas.js';
+import * as ativacaoAcompanhamento from '../services/acompanhamento/ativacao.js';
+import * as leiaAcompanhamento from '../services/acompanhamento/leia.js';
+import { SENT_BY_LEIA } from '../services/acompanhamento/conversa.js';
 import { equipeAcompanhamento } from '../services/acompanhamento/equipe.js';
 import { transcreverAudio } from '../services/transcricao.js';
 
@@ -302,6 +305,10 @@ async function handleIncomingMessage(event) {
 
     logger.info(`[webhook] ${phone} pediu para sair (${canceladas} agendada(s) cancelada(s))`);
 
+    // SAIR encerra também o acompanhamento (§6.1 do plano do Prescrev).
+    await ativacaoAcompanhamento.encerrarPorSaida(phone).catch(err =>
+      logger.warn('[webhook] SAIR não encerrou o acompanhamento:', err.message));
+
     await sendAndSave(
       phone,
       'Prontinho, não te mando mais mensagem por aqui 👍\n\n' +
@@ -324,6 +331,18 @@ async function handleIncomingMessage(event) {
     })) return;
   } catch (err) {
     logger.error('[webhook] Porta da equipe falhou — a mensagem segue o caminho normal:', err.message);
+  }
+
+  // Aluno do acompanhamento (§5.1 e §6.1): "ATIVAR <código>" e "PAUSAR
+  // ACOMPANHAMENTO" não passam pelo funil nem pela Leia. O aceite vai como
+  // bot:acompanhamento, para a resposta do aluno ir à Leia do acompanhamento.
+  try {
+    const responder = (texto, sentBy = 'bot') =>
+      sendAndSave(phone, texto, conversation.id, contact.id, { acompanhamento: 'ativacao' }, sentBy);
+    if (await ativacaoAcompanhamento.tratarAtivacao({ phone, contact, content, responder })) return;
+    if (await ativacaoAcompanhamento.tratarPausa({ phone, content, responder })) return;
+  } catch (err) {
+    logger.error('[webhook] Porta da ativação falhou — a mensagem segue o caminho normal:', err.message);
   }
 
   // Respondeu a uma campanha: ela para para essa pessoa, e a conversa segue
@@ -517,6 +536,32 @@ async function responderBuffer(chave) {
  */
 async function responderTurno({ phone, contact, conversation, content, savedIds }) {
   try {
+    // Aluno do acompanhamento (§6.1 do plano do Prescrev): a conversa do
+    // acompanhamento vai à Leia dele; fora dela, a de vendas fica sabendo que
+    // é aluno. Se a leitura falhar, segue vendas — que é o que era antes.
+    let rotaAcomp = null;
+    try {
+      rotaAcomp = await leiaAcompanhamento.caminhoDoContato({ phone, contactId: contact.id });
+    } catch (err) {
+      logger.warn('[webhook] Caminho do acompanhamento não lido — segue a Leia de vendas:', err.message);
+    }
+    if (rotaAcomp?.caminho === 'acompanhamento') {
+      const r = await leiaAcompanhamento.responderNoAcompanhamento({
+        phone, contact, conversation, content, savedIds, rota: rotaAcomp,
+      });
+      if (r.handoff) {
+        await handoffToHuman(conversation.id, contact.id, `[acompanhamento] ${r.handoff.motivo ?? ''}`);
+        await moverFunil(() => funil.aoAbrirHandoff(contact, r.handoff.motivo));
+      }
+      if (r.text) {
+        await sendAndSave(phone, r.text, conversation.id, contact.id, {
+          acompanhamento: r.detalhes,
+          ...(r.handoff ? { handoff: true, motivo_handoff: r.handoff.motivo } : {}),
+        }, SENT_BY_LEIA);
+      }
+      return;
+    }
+
     // A campanha que trouxe esta pessoa, se houver. É o que impede o agente
     // de oferecer plano da tabela comum a quem recebeu condição especial.
     const campanha = await campanhas.campanhaDoContato(phone);
@@ -534,6 +579,7 @@ async function responderTurno({ phone, contact, conversation, content, savedIds 
       },
       origem: 'webhook',
       campanha,
+      alunoAcompanhamento: rotaAcomp?.aluno ?? null,
     });
 
     // Se IA solicitou handoff
@@ -850,7 +896,7 @@ async function registrarMensagemDeSaida({ phone, content, contentType, evolution
  * `exportar-conversas.js` contava o handoff no cabeçalho sem marcar em que
  * ponto da conversa ele aconteceu.
  */
-async function sendAndSave(phone, text, conversationId, contactId, metadata = {}) {
+async function sendAndSave(phone, text, conversationId, contactId, metadata = {}, sentBy = 'bot') {
   const result = await sendText(phone, text);
 
   await saveMessage({
@@ -859,7 +905,7 @@ async function sendAndSave(phone, text, conversationId, contactId, metadata = {}
     direction: 'outbound',
     content: text,
     contentType: 'text',
-    sentBy: 'bot',
+    sentBy,
     evolutionMsgId: result?.key?.id || null,
     status: 'sent',
     metadata,
