@@ -10,8 +10,8 @@
  * 2. Aqui o código é conferido contra a ficha (a cópia em `acomp_fichas`, e
  *    o Prescrev quando o código acabou de ser gerado).
  * 3. Número igual ao do cadastro: a inscrição nasce ATIVA, o contato vira
- *    aluno e a resposta é o aceite — gravado como `bot:acompanhamento`, para
- *    que a resposta do aluno vá à Leia do acompanhamento (conversa.js).
+ *    aluno e a resposta é o aceite — gravado como `bot:acompanhamento:aceite`,
+ *    para que a resposta do aluno vá à Leia do acompanhamento (conversa.js).
  * 4. Número diferente: PENDENTE, até a equipe confirmar no card do Prescrev
  *    (`confirmar`). O código está impresso, e quem pegar o papel não pode
  *    passar a receber o acompanhamento de outra pessoa — por isso a resposta
@@ -34,7 +34,7 @@ import { getOrCreateContact, getOrCreateConversation, saveMessage } from '../con
 import { buscarFichas } from './prescrev.js';
 import { primeiroNome } from './render.js';
 import { TEXTOS_ATIVACAO, lerComandoAtivar, mesmoNumero, textoDoAceite } from './comandos.js';
-import { SENT_BY_REGUA, TEXTO_PAUSA, ehPedidoDePausa } from './conversa.js';
+import { SENT_BY_ACEITE, TEXTO_PAUSA, ehPedidoDePausa } from './conversa.js';
 
 const VIVAS = ['ativa', 'pendente', 'pausada'];
 const TENTATIVAS_MAX = 5;
@@ -133,7 +133,7 @@ export async function tratarAtivacao({ phone, contact, content, responder }) {
     await supabase.from('acomp_inscricoes').update({
       status: 'ativa', pausado_ate: null, historico: [...(doNumero.historico ?? []), evento('retomado', 'ATIVAR de novo')],
     }).eq('id', doNumero.id);
-    await responder(aceiteDaFicha(ficha), SENT_BY_REGUA);
+    await responder(aceiteDaFicha(ficha), SENT_BY_ACEITE);
     logger.info(`[ativacao] ${ficha.aluno?.primeiro_nome}: acompanhamento retomado`);
     return true;
   }
@@ -156,7 +156,7 @@ export async function tratarAtivacao({ phone, contact, content, responder }) {
 
   if (doCadastro) {
     await virarAluno(contact?.id);
-    await responder(aceiteDaFicha(ficha), SENT_BY_REGUA);
+    await responder(aceiteDaFicha(ficha), SENT_BY_ACEITE);
     logger.info(`[ativacao] ${ficha.aluno?.primeiro_nome}: acompanhamento ativo`);
   } else {
     await responder(TEXTOS_ATIVACAO.pendente);
@@ -214,7 +214,7 @@ export async function confirmar(inscricaoId, por) {
   const r = await sendText(inscricao.phone, texto);
   await saveMessage({
     conversationId: conversa.id, contactId: contato.id, direction: 'outbound', content: texto, contentType: 'text',
-    sentBy: SENT_BY_REGUA, evolutionMsgId: r?.key?.id || null, status: 'sent', metadata: { acompanhamento: 'aceite' },
+    sentBy: SENT_BY_ACEITE, evolutionMsgId: r?.key?.id || null, status: 'sent', metadata: { acompanhamento: 'aceite' },
   });
   logger.info(`[ativacao] ${copia.ficha.aluno?.primeiro_nome}: número confirmado por ${por}`);
 }

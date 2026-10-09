@@ -145,9 +145,49 @@ test('modelo com marcador sem valor passa ao seguinte; nenhum, bloqueia e diz o 
   assert.deepEqual(d.bloqueios, ['Nenhum modelo de rotina com todos os marcadores: falta {dias_avaliacao}, {frequencia}.']);
 });
 
+const ATIVA = { status: 'ativa', ativadoEm: '2026-09-30', pausadoAte: null };
+const decidirNoEnvio = (hoje, historico, mudar = {}) =>
+  decidir({ ficha: ficha(), modelos, historico, hoje, modo: 'envio', inscricao: ATIVA, ...mudar });
+
 test('no envio a decisão fica pendente, e não simulada', () => {
   const h = [{ dia: '2026-10-01', situacao: 'rotina', modelo_id: 'x' }];
-  assert.equal(decidirEm('2026-10-20', h, ficha(), 'envio').status, 'pendente');
+  assert.equal(decidirNoEnvio('2026-10-20', h).status, 'pendente');
+});
+
+test('no envio, só quem ativou: sem inscrição nada sai; no ensaio, o motivo avisa', () => {
+  const h = [{ dia: '2026-10-01', situacao: 'rotina', modelo_id: 'x' }];
+  assert.deepEqual(['status', 'motivo'].map(k => decidirNoEnvio('2026-10-20', h, { inscricao: null })[k]),
+    ['nada', 'O aluno não ativou o WhatsApp.']);
+  const ensaio = decidir({ ficha: ficha(), modelos, historico: h, hoje: '2026-10-20', modo: 'ensaio', inscricao: null });
+  assert.equal(ensaio.status, 'simulado');
+  assert.match(ensaio.motivo, /No envio real não sairia: o aluno ainda não ativou o WhatsApp\.$/);
+});
+
+test('a boas-vindas da trilha sai no dia seguinte ao aceite', () => {
+  assert.equal(decidirNoEnvio('2026-10-08', [], { inscricao: { ...ATIVA, ativadoEm: '2026-10-08' } }).motivo,
+    'Ativou hoje: a boas-vindas da trilha sai amanhã.');
+  const amanha = decidirNoEnvio('2026-10-09', [], { inscricao: { ...ATIVA, ativadoEm: '2026-10-08' } });
+  assert.deepEqual([amanha.status, amanha.situacao], ['pendente', 'boas_vindas']);
+});
+
+test('pausa do aluno cala a régua até a data — e depois dela, volta', () => {
+  const h = [{ dia: '2026-10-01', situacao: 'rotina', modelo_id: 'x' }];
+  const pausada = { ...ATIVA, status: 'pausada', pausadoAte: '2026-10-25' };
+  assert.equal(decidirNoEnvio('2026-10-20', h, { inscricao: pausada }).motivo, 'Pausado pelo aluno até 25/10.');
+  assert.equal(decidirNoEnvio('2026-10-26', h, { inscricao: pausada }).status, 'pendente');
+  assert.equal(decidirNoEnvio('2026-10-26', h, { inscricao: { ...pausada, pausadoAte: null } }).status, 'nada');
+});
+
+test('freio: três sem resposta e sem presença param a rotina — aviso na adesão, pausa nas outras', () => {
+  const h = [{ dia: '2026-10-01', situacao: 'rotina', modelo_id: 'x' }];
+  const outra = decidirNoEnvio('2026-10-20', h, { semResposta: 3 });
+  assert.deepEqual([outra.status, outra.freio, outra.avisos_equipe.length], ['nada', 'pausa', 0]);
+  const adesao = decidir({ ficha: ficha({ trilha: { ...ficha().trilha, principal: 'adesao', cadencia_dias: 3 } }),
+    modelos, historico: h, hoje: '2026-10-20', modo: 'envio', inscricao: ATIVA, semResposta: 3 });
+  assert.deepEqual([adesao.status, adesao.freio], ['nada', 'aviso']);
+  assert.deepEqual(adesao.avisos_equipe.map(a => [a.codigo, a.referencia]), [['tres_sem_resposta', '2026-10-01']]);
+  // duas sem resposta ainda não freiam
+  assert.equal(decidirNoEnvio('2026-10-20', h, { semResposta: 2 }).status, 'pendente');
 });
 
 test('trilha sem modelo da situação bloqueia com o motivo', () => {

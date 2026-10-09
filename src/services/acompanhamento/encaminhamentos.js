@@ -147,7 +147,8 @@ function previsao(rota) {
 }
 
 /**
- * Abre, em ensaio, os encaminhamentos dos avisos à equipe de um aluno.
+ * Abre os encaminhamentos dos avisos à equipe de um aluno — em ensaio
+ * ('simulado') até `ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS`.
  * Um por `chave`: o mesmo aviso em dias seguidos não abre outro.
  * @returns {Promise<number>} quantos novos
  */
@@ -174,20 +175,30 @@ export async function registrarDaRegua({ ficha, avisos, treinos, hoje, equipe, a
       whatsappAluno: ficha.aluno?.celular_cadastro ?? null,
       linkFicha: `${config.acompanhamento.prescrev.url.replace(/\/$/, '')}/dashboard/clientes/${ficha.cliente_id}`,
     });
-    const { error } = await supabase.from('acomp_encaminhamentos').insert({
-      chave, origem: 'regua', cliente_id: ficha.cliente_id, aluno: ficha.aluno?.primeiro_nome ?? 'Aluno',
+    // Fase de teste: 'simulado'. Com ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS, o
+    // briefing sai — no horário de quem recebe.
+    const real = config.acompanhamento.encaminhamentosReais;
+    const enc = {
+      id: randomUUID(), chave, origem: 'regua', cliente_id: ficha.cliente_id, aluno: ficha.aluno?.primeiro_nome ?? 'Aluno',
       motivo_codigo: aviso.codigo, motivo: aviso.motivo, urgencia: aviso.urgencia, resumo: aviso.texto,
       professor_profile_id: professor?.profile_id ?? null, professor_nome: professor?.nome ?? null,
       destino_origem: professor?.origem ?? null,
       nivel: rota.nivel,
       destinatario_profile_id: rota.pessoa?.profile_id ?? null, destinatario_nome: rota.pessoa?.nome ?? null,
       destinatario_phone: rota.pessoa?.phone ?? null,
-      status: 'simulado', texto_briefing: texto, enviar_em: rota.quando?.enviarEm?.toISOString() ?? null,
-      historico: [evento('aberto em ensaio', [previsao(rota), ...rota.notas].join(' · '))],
-    });
+      status: !real ? 'simulado' : rota.pessoa ? 'na_fila' : 'sem_destino',
+      texto_briefing: texto, enviar_em: !real ? rota.quando?.enviarEm?.toISOString() ?? null : null,
+    };
+    const historico = [evento(real ? 'aberto pela régua' : 'aberto em ensaio',
+      [real ? null : previsao(rota), ...rota.notas].filter(Boolean).join(' · '))];
+    const { error } = await supabase.from('acomp_encaminhamentos').insert({ ...enc, historico });
     if (error) {
       if (error.code !== '23505') logger.warn('[encaminhamento] Não deu para abrir:', error.message);
       continue;
+    }
+    if (real && rota.pessoa) {
+      await entregar(enc, rota.pessoa, horarios.get(rota.pessoa.profile_id) ?? null, { nivel: rota.nivel, texto, historico })
+        .catch(err => logger.warn(`[encaminhamento] ${enc.id} aberto e não entregue: ${err.message}`));
     }
     novos++;
   }

@@ -12,8 +12,11 @@
  *
  * ## Quem falou o quê
  *
- *   bot:acompanhamento        a mensagem da régua (o que abre a rodada)
- *   bot:acompanhamento:leia   a resposta da Leia nesta conversa
+ *   bot:acompanhamento         a mensagem da régua (abre a rodada; conta no
+ *                              teto do número, limite-envio.js)
+ *   bot:acompanhamento:aceite  o aceite do ATIVAR (abre a rodada; é resposta,
+ *                              e não conta no teto)
+ *   bot:acompanhamento:leia    a resposta da Leia nesta conversa
  *
  * Uma troca é uma mensagem do aluno e a resposta da Leia. A contagem
  * recomeça a cada mensagem da régua.
@@ -23,6 +26,9 @@ import { primeiroNome } from './render.js';
 import { LIMITE_DE_TROCAS } from './prompt.js';
 
 export const SENT_BY_REGUA = 'bot:acompanhamento';
+export const SENT_BY_ACEITE = 'bot:acompanhamento:aceite';
+/** O que abre uma rodada de trocas: a mensagem da régua e o aceite. */
+export const ABRE_RODADA = [SENT_BY_REGUA, SENT_BY_ACEITE];
 export const SENT_BY_LEIA = 'bot:acompanhamento:leia';
 
 const TRILHA = { adesao: 'adesão', motivacional: 'motivacional', tecnico: 'técnico', desafiador: 'desafiador' };
@@ -39,7 +45,7 @@ const diaDaSemana = (dia) => SEMANA[new Date(`${dia}T12:00:00Z`).getUTCDay()];
 export function trocaAtual(mensagens) {
   const lista = mensagens ?? [];
   let inicio = -1;
-  lista.forEach((m, i) => { if (m.direction === 'outbound' && m.sent_by === SENT_BY_REGUA) inicio = i; });
+  lista.forEach((m, i) => { if (m.direction === 'outbound' && ABRE_RODADA.includes(m.sent_by)) inicio = i; });
   const respondidas = lista.slice(inicio + 1).filter(m => m.direction === 'outbound' && m.sent_by === SENT_BY_LEIA).length;
   return { troca: respondidas + 1, respondidas, limiteAtingido: respondidas >= LIMITE_DE_TROCAS };
 }

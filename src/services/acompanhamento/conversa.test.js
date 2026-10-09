@@ -107,3 +107,10 @@ test('a linha do professor diz se ele ainda trabalha hoje', async () => {
     situacaoDoProfessor: { estado: 'nao_hoje', volta: 'amanhã', as: '06:00' } });
   assert.match(ctx, /- Professor: Rafael — não trabalha mais hoje/);
 });
+
+test('o aceite abre a rodada como a mensagem da régua', async () => {
+  const { SENT_BY_ACEITE } = await import('./conversa.js');
+  const aceite = { direction: 'outbound', sent_by: SENT_BY_ACEITE };
+  assert.deepEqual(trocaAtual([aceite, aluno]), { troca: 1, respondidas: 0, limiteAtingido: false });
+  assert.equal(trocaAtual([regua, aluno, leia, aluno, leia, aceite, aluno]).troca, 1);
+});

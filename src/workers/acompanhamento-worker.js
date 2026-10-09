@@ -1,9 +1,9 @@
 /**
  * src/workers/acompanhamento-worker.js
- * Roda, uma vez por dia, o ensaio da régua do acompanhamento; e, a cada
- * ACOMPANHAMENTO_ENCAMINHAMENTOS_MINUTOS, a fila e os prazos dos
- * encaminhamentos à equipe — que só saem no horário de trabalho de quem
- * recebe (encaminhamentos.js).
+ * Roda, uma vez por dia, a régua do acompanhamento (ensaio, ou a rodada de
+ * envio); e, a cada ACOMPANHAMENTO_ENCAMINHAMENTOS_MINUTOS, o envio do que
+ * chegou à hora (envio.js, só com o envio real ligado) e a fila e os prazos
+ * dos encaminhamentos à equipe — que só saem no horário de quem recebe.
  *
  * Mesmo molde do `campanha-worker`: um setInterval dentro do servidor, que
  * a cada `ACOMPANHAMENTO_MINUTOS` confere se o ensaio de hoje já rodou
@@ -13,8 +13,10 @@
  * ## Três interruptores
  *
  * 1. `ACOMPANHAMENTO_HABILITADO` (padrão false) — o worker nem inicia.
- * 2. `ACOMPANHAMENTO_DRY_RUN` (padrão true) — e com false ele também não
- *    inicia: o envio real não existe nesta etapa.
+ * 2. `ACOMPANHAMENTO_DRY_RUN` (padrão true) — ensaio: a régua grava o que
+ *    sairia e nada vai ao aluno. Com false, ENVIO REAL (A5c): só para quem
+ *    ativou o WhatsApp, reconferido antes de cada mensagem. É a chave do
+ *    início, que o responsável declara.
  * 3. `ACOMPANHAMENTO_SECRET` — sem ele não há como buscar as fichas.
  *
  * Os padrões são os seguros de propósito: subir o código não liga nada.
@@ -23,7 +25,8 @@ import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { supabase } from '../lib/supabase.js';
 import { hojeSP } from '../services/campanhas.js';
-import { rodarEnsaio, ultimaRodada } from '../services/acompanhamento/ensaio.js';
+import { modoAtual, rodarEnsaio, ultimaRodada } from '../services/acompanhamento/ensaio.js';
+import { enviarDisparos } from '../services/acompanhamento/envio.js';
 import { processarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
 
 let rodando = false;
@@ -40,7 +43,9 @@ async function ciclo() {
   try {
     if (horaSP() < config.acompanhamento.hora) return;
     const marca = await ultimaRodada();
-    if (marca?.valor?.dia === hojeSP()) return;
+    // O dia já rodou neste modo. Ligar o envio no meio do dia faz rodar de
+    // novo, agora como envio.
+    if (marca?.valor?.dia === hojeSP() && (marca.valor.modo ?? 'ensaio') === modoAtual()) return;
     await rodarEnsaio({ origem: 'worker' });
   } catch (err) {
     logger.error('[acompanhamento] Ensaio falhou:', err.message);
@@ -59,6 +64,7 @@ async function cicloDosEncaminhamentos() {
   if (encaminhando) return;
   encaminhando = true;
   try {
+    await enviarDisparos().catch(err => logger.warn('[acompanhamento] Envio:', err.message));
     await processarEncaminhamentos();
   } catch (err) {
     logger.warn('[acompanhamento] Encaminhamentos:', err.message);
@@ -75,11 +81,6 @@ export async function startAcompanhamentoWorker() {
     logger.info('[acompanhamento] Worker desligado (ACOMPANHAMENTO_HABILITADO=false ou ACOMPANHAMENTO_MINUTOS=0)');
     return;
   }
-  if (!c.dryRun) {
-    logger.error('[acompanhamento] ACOMPANHAMENTO_DRY_RUN=false, mas o envio real não existe nesta etapa — ' +
-      'worker NÃO iniciado. Volte para true.');
-    return;
-  }
   if (!c.prescrev.segredo) {
     logger.warn('[acompanhamento] Worker não iniciado: falta ACOMPANHAMENTO_SECRET (o mesmo do Prescrev).');
     return;
@@ -92,7 +93,12 @@ export async function startAcompanhamentoWorker() {
     return;
   }
 
-  logger.warn('[acompanhamento] Em ENSAIO — a régua decide e grava o que sairia; nada é enviado.');
+  if (c.dryRun) {
+    logger.warn('[acompanhamento] Em ENSAIO — a régua decide e grava o que sairia; nada é enviado.');
+  } else {
+    logger.warn(`[acompanhamento] ENVIO REAL ligado — a régua manda para quem ativou o WhatsApp, até ${c.tetoDiario} por dia.` +
+      (c.encaminhamentosReais ? ' Encaminhamentos reais.' : ' Encaminhamentos ainda simulados.'));
+  }
   logger.info(`[acompanhamento] Worker iniciado (confere a cada ${c.minutos} min, roda a partir das ${c.hora}h)`);
 
   setTimeout(ciclo, 150_000);

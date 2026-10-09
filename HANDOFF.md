@@ -104,6 +104,18 @@ vai dizer quando começar para valer.
   recebe "aluno em acompanhamento". Encaminhamento da Leia e da régua abre
   'simulado' até `ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS=true`. O contexto diz
   se o professor ainda trabalha hoje.
+- **Envio real da régua** (A5c, DESLIGADO): com `ACOMPANHAMENTO_DRY_RUN=false`
+  a rodada do dia (`ensaio.js`, modo `envio`) decide só para inscrição ativa
+  e grava 'pendente'; `acompanhamento/envio.js`, no ciclo de 5 min do worker,
+  manda o que chegou à hora, reconferindo inscrição, supressão,
+  encaminhamento aberto, consultor na conversa e mensagem do aluno em 24 h,
+  com o sub-teto (`ACOMPANHAMENTO_TETO_DIARIO`, 8) e o teto do número —
+  `bot:acompanhamento` agora conta em `limite-envio.js`; o aceite é
+  `bot:acompanhamento:aceite` e não conta. Freio: três seguidas sem resposta
+  e sem presença param a rotina (adesão → aviso ao professor; outras →
+  pausa). **Para o início:** `ACOMPANHAMENTO_DRY_RUN=false`,
+  `ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS=true` e `ENVIO_TETO_DIARIO` de 30 para
+  38 (D5), recriando o container.
 - Migration **011**: `acomp_fichas` (cópia da ficha) e `acomp_disparos` (uma
   linha por aluno e dia, com motivo — inclusive do que não sai).
 - Painel → aba **Acompanhamento** (só admin): a prévia de 7 dias, o botão

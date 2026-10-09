@@ -367,11 +367,16 @@ export function avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores 
 }
 
 /** A situação devida hoje, ou o motivo de nada estar devido. */
-export function situacaoDoDia({ ficha, anteriores, sinais = [], treinos = [], hoje, modo, modelos = null }) {
+export function situacaoDoDia({ ficha, anteriores, sinais = [], treinos = [], hoje, modo, modelos = null, ativadoEm = null }) {
   if (!anteriores.length) {
-    return modo === 'ensaio'
-      ? { situacao: 'boas_vindas', valores: {}, motivo: 'Primeira mensagem. No envio real, sai quando o aluno ativa pelo código.' }
-      : { situacao: null, motivo: 'Aguardando a ativação pelo código.' };
+    if (modo === 'ensaio') {
+      return { situacao: 'boas_vindas', valores: {}, motivo: 'Primeira mensagem. No envio real, sai no dia seguinte à ativação pelo código.' };
+    }
+    // O aceite sai na hora do ATIVAR; a boas-vindas da trilha, no dia
+    // seguinte (decisão do responsável em 08/10/2026).
+    if (!ativadoEm) return { situacao: null, motivo: 'Aguardando a ativação pelo código.' };
+    if (ativadoEm >= hoje) return { situacao: null, motivo: 'Ativou hoje: a boas-vindas da trilha sai amanhã.' };
+    return { situacao: 'boas_vindas', valores: {}, motivo: `Ativou em ${ddmm(ativadoEm)}: a boas-vindas da trilha, depois do aceite.` };
   }
 
   const agenda = leituraDaAgenda(ficha);
@@ -436,7 +441,17 @@ function reavaliacao({ ficha, anteriores, hoje }) {
  *   modelo_id: string|null, texto: string|null, valores: object, motivo: string, bloqueios: string[],
  *   avisos_equipe: object[] }} — ver `avisosDaEquipe`
  */
-export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], hoje, modo }) {
+/** Quantas mensagens seguidas sem resposta e sem presença param a rotina (§5.4). */
+export const FREIO_SEM_RESPOSTA = 3;
+
+/**
+ * @param {object} p
+ * @param {{ status: string, ativadoEm: string, pausadoAte: string|null } | null} [p.inscricao]
+ *   a inscrição do aluno no WhatsApp (A5). No envio real, sem ela nada sai; no
+ *   ensaio, `null` explícito anota no motivo que no envio real não sairia.
+ * @param {number} [p.semResposta]  mensagens seguidas sem resposta e sem presença
+ */
+export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], hoje, modo, inscricao, semResposta = 0 }) {
   const trilha = ficha.trilha.principal;
   const base = { trilha, situacao: null, modelo_id: null, texto: null, valores: {}, bloqueios: [], avisos_equipe: [] };
 
@@ -446,13 +461,43 @@ export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], 
   if (ficha.estado?.pausado_ate && ficha.estado.pausado_ate >= hoje) {
     return { ...base, status: 'nada', motivo: `Pausado até ${ddmm(ficha.estado.pausado_ate)}.` };
   }
+  if (modo === 'envio') {
+    if (!inscricao) return { ...base, status: 'nada', motivo: 'O aluno não ativou o WhatsApp.' };
+    if (inscricao.status === 'pausada' && (!inscricao.pausadoAte || inscricao.pausadoAte >= hoje)) {
+      return { ...base, status: 'nada', motivo: `Pausado pelo aluno${inscricao.pausadoAte ? ` até ${ddmm(inscricao.pausadoAte)}` : ''}.` };
+    }
+  }
 
   // Só o que veio antes de hoje: rodar o ensaio duas vezes no mesmo dia
   // não pode fazer o relógio andar duas vezes.
   const anteriores = historico.filter(h => h.dia < hoje).sort((a, b) => a.dia.localeCompare(b.dia));
-  const { situacao, motivo, valores: doDia, ciclo } = situacaoDoDia({ ficha, anteriores, sinais, treinos, hoje, modo, modelos });
+  const { situacao, motivo: motivoDoDia, valores: doDia, ciclo } = situacaoDoDia({
+    ficha, anteriores, sinais, treinos, hoje, modo, modelos, ativadoEm: inscricao?.ativadoEm ?? null,
+  });
+  const motivo = modo === 'ensaio' && inscricao === null && situacao
+    ? `${motivoDoDia} No envio real não sairia: o aluno ainda não ativou o WhatsApp.`
+    : motivoDoDia;
   base.avisos_equipe = avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores: doDia ?? {} });
   if (!situacao) return { ...base, status: 'nada', motivo };
+
+  // Freio (§5.4): três mensagens seguidas sem resposta e sem presença — a
+  // rotina para. Insistir com quem não responde nem aparece é cobrança. Na
+  // adesão o contato passa ao professor; nas outras trilhas, pausa.
+  if (modo === 'envio' && situacao === 'rotina' && semResposta >= FREIO_SEM_RESPOSTA) {
+    const naAdesao = trilha === 'adesao';
+    const ultimo = anteriores[anteriores.length - 1]?.dia ?? hoje;
+    return {
+      ...base, status: 'nada', freio: naAdesao ? 'aviso' : 'pausa',
+      motivo: `${semResposta} mensagens seguidas sem resposta e sem presença: a rotina para. ` +
+        (naAdesao ? 'Na adesão, o professor é avisado.' : 'O acompanhamento pausa.'),
+      avisos_equipe: naAdesao
+        ? [...base.avisos_equipe, {
+          codigo: 'tres_sem_resposta', motivo: 'mensagens sem resposta', urgencia: 'proximos_dias', referencia: ultimo,
+          texto: `${semResposta} mensagens do acompanhamento seguidas sem resposta e sem presença: a régua parou a rotina.`,
+        }]
+        : base.avisos_equipe,
+    };
+  }
 
   const valores = { ...valoresDaFicha(ficha, hoje), ...doDia };
   // D3: sem professor escolhido no card, quem prescreveu o treino vigente no EVO.

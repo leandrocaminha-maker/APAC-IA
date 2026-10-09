@@ -61,8 +61,14 @@ export function inicioDoDiaSP(agora = new Date()) {
  * `app:*` cobre `app:campanha:<slug>` e os apps irmãos de uma vez — o
  * `queue-processor` grava todos com esse prefixo. No PostgREST o curinga
  * do `like` é `*`, não `%`.
+ *
+ * `bot:acompanhamento` é a mensagem da régua do acompanhamento: quem
+ * começa somos nós, e ela conta (D5 — o sub-teto dela é à parte, e por
+ * dentro deste). O aceite do ATIVAR e a Leia do acompanhamento
+ * (`bot:acompanhamento:aceite`, `:leia`) respondem a quem escreveu, e o
+ * `eq` os deixa de fora.
  */
-const AUTOMATICOS = 'sent_by.eq.bot:followup,sent_by.like.app:*';
+const AUTOMATICOS = 'sent_by.eq.bot:followup,sent_by.like.app:*,sent_by.eq.bot:acompanhamento';
 
 /**
  * Quantas conversas a máquina já iniciou hoje.

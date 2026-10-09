@@ -89,7 +89,8 @@
   .acomp-linha { background: var(--painel); border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
   .acomp-topo { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
   .acomp-selo { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--borda); }
-  .acomp-selo.simulado { color: var(--acento); border-color: var(--acento-escuro); }
+  .acomp-selo.simulado, .acomp-selo.pendente, .acomp-selo.enviado { color: var(--acento); border-color: var(--acento-escuro); }
+  .acomp-selo.cancelado, .acomp-selo.falhou { color: var(--alerta); border-color: var(--alerta); }
   .acomp-selo.bloqueado { color: var(--alerta); border-color: var(--alerta); }
   .acomp-selo.nada { color: var(--suave); }
   .acomp-texto { margin: 8px 0 4px; padding: 8px 10px; background: var(--painel-2); border-radius: 8px; white-space: pre-wrap; }
@@ -1716,7 +1717,7 @@ const ROTULO_SITUACAO = {
   ciclo_em_risco: 'Ciclo em risco', minimo_cumprido: 'Mínimo cumprido', nao_marca_app: 'Não marca no app',
 };
 const ROTULO_TRILHA = { adesao: 'Adesão', motivacional: 'Motivacional', tecnico: 'Técnico', desafiador: 'Desafiador' };
-const ORDEM_STATUS = { simulado: 0, bloqueado: 1, nada: 2 };
+const ORDEM_STATUS = { enviado: 0, pendente: 1, simulado: 2, falhou: 3, cancelado: 4, bloqueado: 5, nada: 6 };
 
 function horaCurta(iso) {
   return new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
@@ -1753,12 +1754,16 @@ async function carregarAcompanhamento() {
     : [...porDia].map(([dia, linhas]) => {
       linhas.sort((a, b) => (ORDEM_STATUS[a.status] ?? 9) - (ORDEM_STATUS[b.status] ?? 9)
         || String(a.previsto_para).localeCompare(String(b.previsto_para)));
-      const sairiam = linhas.filter(l => l.status === 'simulado').length;
+      const sairiam = linhas.filter(l => ['simulado', 'pendente', 'enviado'].includes(l.status)).length;
       return `<div class="acomp-dia">${esc(diaPorExtenso(dia))} · ${sairiam} sairia(m)</div>` +
         linhas.map(l => {
           const nome = l.aluno?.nome ?? '—';
           const link = `${c.prescrevUrl}/dashboard/clientes/${l.cliente_id}`;
           const selo = l.status === 'simulado' ? `Sairia às ${horaCurta(l.previsto_para)}`
+            : l.status === 'pendente' ? `Sai às ${horaCurta(l.previsto_para)}`
+            : l.status === 'enviado' ? 'Enviada'
+            : l.status === 'cancelado' ? 'Cancelada'
+            : l.status === 'falhou' ? 'Falhou'
             : l.status === 'bloqueado' ? 'Não sairia' : 'Nada hoje';
           return `<div class="acomp-linha">
             <div class="acomp-topo">

@@ -23,11 +23,16 @@
  * Domingo não tem janela: a rodada só carimba o dia, e a cadência de quem
  * vencia nele anda para segunda.
  *
- * ## Por que não envia
+ * ## Ensaio e envio (A5)
  *
- * Esta é a etapa A2 do plano do acompanhamento: ler uma semana de prévia
- * antes de a régua falar com alguém. Não há chamada à Evolution neste
- * arquivo nem fila — o envio real é outra etapa, com outro código.
+ * Com `ACOMPANHAMENTO_DRY_RUN` ligado (o padrão, a fase de teste), a rodada
+ * é ENSAIO: grava o que sairia ('simulado'), para todos com ficha completa, e
+ * anota quem ainda não ativou o WhatsApp. Desligado, é ENVIO: só quem tem
+ * inscrição ativa, o histórico é o do que saiu de fato ('enviado'), a linha
+ * nasce 'pendente' com a hora prevista, e quem manda é `envio.js`, no ciclo
+ * curto do worker, reconferindo tudo antes de cada mensagem. Este arquivo
+ * continua sem chamar a Evolution. No envio entram também o freio das três
+ * sem resposta (§5.4) e a volta de quem pausou até uma data que passou.
  */
 import { config } from '../../config.js';
 import { logger } from '../../lib/logger.js';
@@ -38,9 +43,11 @@ import { hojeSP } from '../campanhas.js';
 import { evoClient } from '../evo-client.js';
 import { buscarEquipe, buscarFichas, buscarModelos } from './prescrev.js';
 import { equipeAtivada, registrarDaRegua } from './encaminhamentos.js';
-import { PRIORIDADE, decidir, horaPrevista, resumirTreinos } from './regua.js';
+import { PRIORIDADE, decidir, horaPrevista, leituraDaAgenda, resumirTreinos } from './regua.js';
+import { SENT_BY_REGUA } from './conversa.js';
 
-const MODO = 'ensaio';
+/** Ensaio enquanto ACOMPANHAMENTO_DRY_RUN não for false. */
+export const modoAtual = () => (config.acompanhamento.dryRun ? 'ensaio' : 'envio');
 const MARCA_ENSAIO = 'acomp:ensaio';
 const MARCA_MODELOS = 'acomp:modelos';
 
@@ -146,14 +153,67 @@ async function treinosDosAlunos(fichas, hoje) {
   return { porCliente, nota: `${lidos} lido(s) do EVO${falhas ? `, ${falhas} falha(s) (vale a última leitura)` : ''}` };
 }
 
-/** As mensagens que contam para a cadência: no ensaio, as simuladas antes de hoje. */
-async function historicoDe(ids, hoje) {
+/**
+ * As inscrições vivas por aluno (017). Quem pausou até uma data que já
+ * passou volta a ativo aqui — a pausa do aluno tem fim quando ele disse.
+ */
+async function inscricoesDosAlunos(hoje) {
+  const porCliente = new Map();
+  const { data, error } = await supabase.from('acomp_inscricoes')
+    .select('id, cliente_id, phone, contact_id, status, ativado_em, confirmado_em, pausado_ate, historico')
+    .in('status', ['ativa', 'pausada']);
+  if (error) {
+    if (error.code !== 'PGRST205') logger.warn('[acompanhamento] acomp_inscricoes:', error.message);
+    return porCliente;
+  }
+  for (const i of data ?? []) {
+    if (i.status === 'pausada' && i.pausado_ate && i.pausado_ate < hoje) {
+      await supabase.from('acomp_inscricoes').update({
+        status: 'ativa', pausado_ate: null,
+        historico: [...(i.historico ?? []), { em: new Date().toISOString(), evento: 'pausa terminou', detalhe: i.pausado_ate }],
+      }).eq('id', i.id);
+      i.status = 'ativa';
+      i.pausado_ate = null;
+    }
+    porCliente.set(i.cliente_id, {
+      ...i, ativadoEm: hojeSP(new Date(i.confirmado_em ?? i.ativado_em)), pausadoAte: i.pausado_ate,
+    });
+  }
+  return porCliente;
+}
+
+/**
+ * Quantas mensagens da régua seguidas saíram depois da última resposta do
+ * aluno e da última presença dele — o freio das três sem resposta (§5.4).
+ * Só no envio: no ensaio nada saiu de verdade.
+ */
+async function semRespostaDe(ficha, inscricao) {
+  let contactId = inscricao.contact_id;
+  if (!contactId) {
+    const { data } = await supabase.from('wa_contacts').select('id').eq('phone', inscricao.phone).maybeSingle();
+    contactId = data?.id;
+  }
+  if (!contactId) return 0;
+  const { data } = await supabase.from('wa_messages').select('direction, sent_by, created_at')
+    .eq('contact_id', contactId).order('created_at', { ascending: false }).limit(80);
+  const linhas = data ?? [];
+  const ultimaResposta = linhas.find(m => m.direction === 'inbound')?.created_at ?? null;
+  const presenca = leituraDaAgenda(ficha)?.ultimaPresenca ?? null;
+  const corte = Math.max(
+    ultimaResposta ? Date.parse(ultimaResposta) : 0,
+    presenca ? Date.parse(`${presenca}T23:59:59-03:00`) : 0,
+  );
+  return linhas.filter(m => m.direction === 'outbound' && m.sent_by === SENT_BY_REGUA && Date.parse(m.created_at) > corte).length;
+}
+
+/** As mensagens que contam para a cadência: no ensaio, as simuladas; no envio, as que saíram — antes de hoje. */
+async function historicoDe(ids, hoje, modo) {
   const linhas = [];
   for (let i = 0; i < ids.length; i += 150) {
     const { data, error } = await supabase.from('acomp_disparos')
       .select('cliente_id, dia, situacao, modelo_id, valores')
       .in('cliente_id', ids.slice(i, i + 150))
-      .eq('modo', MODO).eq('status', 'simulado').lt('dia', hoje);
+      .eq('modo', modo).eq('status', modo === 'ensaio' ? 'simulado' : 'enviado').lt('dia', hoje);
     if (error) throw new Error(`acomp_disparos: ${error.message}`);
     linhas.push(...(data ?? []));
   }
@@ -167,7 +227,8 @@ async function historicoDe(ids, hoje) {
  */
 export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}) {
   const hoje = hojeSP(agora);
-  const resumo = { dia: hoje, origem, rodado_em: agora.toISOString(), modo: MODO };
+  const modo = modoAtual();
+  const resumo = { dia: hoje, origem, rodado_em: agora.toISOString(), modo };
 
   const janela = janelaDoDia(agora);
   if (!janela) {
@@ -178,18 +239,32 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
 
   const { fichas, fonte, semFicha } = await carregarFichas();
   const { modelos, fonte: fonteModelos } = await carregarModelos();
-  const historico = await historicoDe(fichas.map(f => f.cliente_id), hoje);
+  const historico = await historicoDe(fichas.map(f => f.cliente_id), hoje, modo);
+  const inscricoes = await inscricoesDosAlunos(hoje);
+  const semResposta = new Map();
+  if (modo === 'envio') {
+    for (const f of fichas) {
+      const i = inscricoes.get(f.cliente_id);
+      if (i?.status === 'ativa') semResposta.set(f.cliente_id, await semRespostaDe(f, i).catch(() => 0));
+    }
+  }
   const avisos = await avisosSemPresenca();
   const { porCliente: treinos, nota: notaTreinos } = await treinosDosAlunos(fichas, hoje);
 
   const decisoes = fichas.map(ficha => {
     const d = decidir({
-      ficha, modelos, hoje, modo: MODO,
+      ficha, modelos, hoje, modo,
       historico: historico.filter(h => h.cliente_id === ficha.cliente_id),
       sinais: avisos.get(Number(ficha.aluno?.evo_id)) ?? [],
       treinos: treinos.get(ficha.cliente_id) ?? [],
+      inscricao: inscricoes.get(ficha.cliente_id) ?? null,
+      semResposta: semResposta.get(ficha.cliente_id) ?? 0,
     });
-    const previsto = d.status === 'simulado' ? horaPrevista(ficha, hoje, janela) : null;
+    const sai = d.status === 'simulado' || d.status === 'pendente';
+    // No envio, a hora é a maior entre a prevista e a da rodada: rodado às
+    // 11h, uma mensagem prevista para as 9h36 sai agora, e não ontem.
+    let previsto = sai ? horaPrevista(ficha, hoje, janela) : null;
+    if (previsto && modo === 'envio' && previsto < agora) previsto = agora;
     return { ficha, d, previsto };
   });
 
@@ -197,7 +272,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
   // prioridade, quem sai mais cedo.
   const teto = config.acompanhamento.tetoDiario;
   decisoes
-    .filter(x => x.d.status === 'simulado')
+    .filter(x => x.d.status === 'simulado' || x.d.status === 'pendente')
     .sort((a, b) => (PRIORIDADE[a.d.situacao] - PRIORIDADE[b.d.situacao]) || (a.previsto - b.previsto))
     .forEach((x, i) => {
       if (teto > 0 && i >= teto) {
@@ -206,10 +281,30 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
       }
     });
 
-  const linhas = decisoes.map(({ ficha, d, previsto }) => ({
+  // Freio nas trilhas que não são de adesão: o acompanhamento pausa (a
+  // adesão vira aviso à equipe, pelos encaminhamentos abaixo).
+  for (const { ficha, d } of decisoes.filter(x => x.d.freio === 'pausa')) {
+    const i = inscricoes.get(ficha.cliente_id);
+    if (!i) continue;
+    await supabase.from('acomp_inscricoes').update({
+      status: 'pausada',
+      historico: [...(i.historico ?? []), { em: new Date().toISOString(), evento: 'pausa pelo freio', detalhe: d.motivo }],
+    }).eq('id', i.id);
+  }
+
+  // No envio, a linha de hoje que já saiu (ou que o envio cancelou ou viu
+  // falhar) não se refaz: rodar de novo no mesmo dia não manda duas vezes.
+  let jaDecididos = new Set();
+  if (modo === 'envio') {
+    const { data: feitos } = await supabase.from('acomp_disparos').select('cliente_id')
+      .eq('modo', 'envio').eq('dia', hoje).in('status', ['enviado', 'cancelado', 'falhou']);
+    jaDecididos = new Set((feitos ?? []).map(f => f.cliente_id));
+  }
+
+  const linhas = decisoes.filter(x => !jaDecididos.has(x.ficha.cliente_id)).map(({ ficha, d, previsto }) => ({
     cliente_id: ficha.cliente_id,
     dia: hoje,
-    modo: MODO,
+    modo,
     status: d.status,
     situacao: d.situacao,
     trilha: d.trilha,
@@ -260,7 +355,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
     encaminhamentos: notaEncaminhamentos ?? null,
   });
   await carimbarMarcador(MARCA_ENSAIO, resumo);
-  logger.info(`[acompanhamento] Ensaio de ${hoje}: ${fichas.length} ficha(s) — ${JSON.stringify(contagem)}`);
+  logger.info(`[acompanhamento] ${modo === 'ensaio' ? 'Ensaio' : 'Rodada de envio'} de ${hoje}: ${fichas.length} ficha(s) — ${JSON.stringify(contagem)}`);
   return resumo;
 }
 

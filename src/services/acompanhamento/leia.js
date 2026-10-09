@@ -30,7 +30,7 @@ import { professorHoje } from './horario.js';
 import { registrarDaLeia } from './encaminhamentos.js';
 import { inscricaoDoNumero } from './ativacao.js';
 import { CATEGORIAS, DESFECHOS } from './ferramentas.js';
-import { SENT_BY_LEIA, SENT_BY_REGUA, contextoDoAluno, trocaAtual } from './conversa.js';
+import { ABRE_RODADA, SENT_BY_LEIA, contextoDoAluno, trocaAtual } from './conversa.js';
 
 const JANELA_DA_CONVERSA_MS = 7 * 86_400_000;
 const ABERTOS = ['simulado', 'na_fila', 'aguardando'];
@@ -72,7 +72,7 @@ export async function caminhoDoContato({ phone, contactId }) {
   const desde = new Date(Date.now() - JANELA_DA_CONVERSA_MS).toISOString();
   const [{ data: recente }, aberto] = await Promise.all([
     supabase.from('wa_messages').select('id').eq('contact_id', contactId).eq('direction', 'outbound')
-      .in('sent_by', [SENT_BY_REGUA, SENT_BY_LEIA]).gte('created_at', desde).limit(1).maybeSingle(),
+      .in('sent_by', [...ABRE_RODADA, SENT_BY_LEIA]).gte('created_at', desde).limit(1).maybeSingle(),
     encaminhamentoAbertoDo(inscricao.cliente_id),
   ]);
   return { caminho: recente || aberto ? 'acompanhamento' : 'vendas', inscricao, ficha, aluno };
@@ -132,7 +132,7 @@ export async function responderNoAcompanhamento({ phone, contact, conversation, 
     .eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(60);
   const linhas = (recentes ?? []).reverse();
   const troca = trocaAtual(linhas);
-  const regua = [...linhas].reverse().find(m => m.direction === 'outbound' && m.sent_by === SENT_BY_REGUA);
+  const regua = [...linhas].reverse().find(m => m.direction === 'outbound' && ABRE_RODADA.includes(m.sent_by));
 
   const [treinos, aberto, equipe] = await Promise.all([
     treinosDo(inscricao.cliente_id),
