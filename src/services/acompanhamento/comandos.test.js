@@ -72,6 +72,15 @@ test('o briefing: modelo fixo, com o mínimo de dado de saúde', () => {
     /^🧪 \*TESTE — não é de um aluno de verdade\*\n.*\n.*\n\*Motivo:\* x — \*responder hoje\*/);
 });
 
+test('o briefing não leva o número do aluno: com a ponte, diz como falar com ele (A5d)', () => {
+  const t = textoDoBriefing({ aluno: 'Claudia', motivo: 'dor ou lesão', urgencia: 'hoje', ponte: true, linkFicha: 'https://prescrev/x' });
+  assert.doesNotMatch(t, /wa\.me|\d{10,}/);
+  assert.match(t, /Para falar com Claudia, responda a esta mensagem \(arraste para o lado\): vai pelo número da academia, com o seu nome\./);
+  // A instrução vem antes do 1/2/3, que segue sendo a última linha.
+  assert.match(t, /com o seu nome\.\nResponda \*1\* eu assumo/);
+  assert.doesNotMatch(textoDoBriefing({ aluno: 'Claudia', motivo: 'x', urgencia: 'hoje' }), /Para falar com/);
+});
+
 test('a resposta ao briefing: o número sozinho, e o resto vira nota', () => {
   assert.deepEqual(['1', ' 2 ', '3 - férias', '1. vou ligar amanhã', '2:ok'].map(lerRespostaDoBriefing), [
     { numero: '1', nota: null }, { numero: '2', nota: null }, { numero: '3', nota: 'férias' },

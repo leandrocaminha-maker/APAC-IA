@@ -23,7 +23,8 @@
  */
 import { leituraDaAgenda } from './regua.js';
 import { primeiroNome } from './render.js';
-import { LIMITE_DE_TROCAS } from './prompt.js';
+import { LIMITE_DE_TROCAS, SEM_RESPOSTA } from './prompt.js';
+import { quandoFicaSabendo } from './ponte-regras.js';
 
 export const SENT_BY_REGUA = 'bot:acompanhamento';
 export const SENT_BY_ACEITE = 'bot:acompanhamento:aceite';
@@ -90,8 +91,13 @@ export function textoDoProfessorHoje(situacao) {
   return ` — não trabalha mais hoje; volta ${quando} às ${situacao.as}`;
 }
 
+/**
+ * `ponte` (A5d): um professor está conversando com o aluno pelo número da
+ * academia, e a mensagem espera o turno dele. A Leia só diz quando ele vê.
+ */
 export function contextoDoAluno({
   ficha, hoje, troca, ultimaDoAcompanhamento = null, encaminhamentoAberto = null, simulacao = false, situacaoDoProfessor,
+  ponte = null,
 }) {
   const a = ficha.aluno ?? {};
   const professor = primeiroNome(ficha.marcadores?.professor ?? ficha.professor?.nome ?? '');
@@ -116,12 +122,20 @@ export function contextoDoAluno({
       : null,
     '',
     '## A CONVERSA',
+    ponte
+      ? `- ${ponte.professor} está conversando com o aluno por aqui, e esta mensagem já foi repassada a ${ponte.professor}, ` +
+        `que vê ${quandoFicaSabendo(ponte.situacao)}. Diga isso ao aluno numa linha, sem entrar no assunto e sem ` +
+        `encaminhar de novo. Se você já disse isso depois da última mensagem de ${ponte.professor}, responda ` +
+        `${SEM_RESPOSTA}. Sinal de alerta continua com você.`
+      : null,
     // O histórico começa na fala do aluno: a mensagem que abriu a rodada
     // pode ter ficado de fora dele, e é a ela que ele responde.
     ultimaDoAcompanhamento
       ? `- A mensagem do acompanhamento que ele respondeu (${ultimaDoAcompanhamento.quando}): «${ultimaDoAcompanhamento.texto}»`
       : null,
-    troca.limiteAtingido
+    // Com a ponte, quem conversa é o professor: a contagem de trocas não se aplica.
+    ponte ? null
+    : troca.limiteAtingido
       ? `- Limite de trocas atingido (${troca.respondidas} respondidas): só o que precisa de resposta — veja "Até três trocas".`
       : troca.troca === LIMITE_DE_TROCAS
         ? `- Esta é a troca ${troca.troca} de ${LIMITE_DE_TROCAS}, a última: responda e dê o encaminhamento ao professor.`

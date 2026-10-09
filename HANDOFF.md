@@ -1,6 +1,6 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 09/10/2026, fim da sessão.** Documento de continuidade: descreve
+> **Snapshot de 09/10/2026, depois da ponte (A5d).** Documento de continuidade: descreve
 > onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
@@ -116,6 +116,36 @@ vai dizer quando começar para valer.
   pausa). **Para o início:** `ACOMPANHAMENTO_DRY_RUN=false`,
   `ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS=true` e `ENVIO_TETO_DIARIO` de 30 para
   38 (D5), recriando o container.
+- **A ponte: professor e aluno pelo número da academia** (A5d, migration
+  **018**, decisão do responsável em 09/10/2026 — alguns professores não querem
+  dar o número pessoal): o briefing não leva mais `wa.me/<aluno>`; o professor
+  responde CITANDO o briefing (arrastar para o lado) e
+  `acompanhamento/ponte.js` repassa ao aluno pelo número da academia, assinado
+  "*Rafael:*" — texto, áudio como voz, foto, vídeo, documento —, gravado na
+  conversa do aluno como `professor:<profile_id>` (não `human:`: o follow-up
+  contaria como nossa fala, e o painel poria a conversa em modo humano). ✅ na
+  mensagem do professor quando saiu; ⚠️ e o motivo quando não (SAIR, sem
+  número, falha). A resposta do aluno vai ao professor que escreveu por último
+  ("💬 *Claudia:* …", balões juntos, `bot:ponte`), e a Leia não a vê; fora do
+  turno do professor espera em `acomp_ponte_fila` até o começo dele — salvo se
+  ele escreveu há menos de 30 min —, e a Leia do acompanhamento diz ao aluno
+  quando ele vê (aviso fixo quando não há Leia: teste, aluno sem inscrição).
+  O endereço é a citação (`idDaCitacao`, `ponte-regras.js`: o `contextInfo`
+  no topo do evento ou dentro do tipo da mensagem): sem citação nada vai a
+  aluno nenhum, e quem usa a ponte recebe a explicação de como citar, no
+  máximo uma vez por hora. Citando, só o número sozinho é comando ("2" fecha a
+  ponte). A primeira mensagem do professor vale como "1". Fecha no "2" ou com
+  72 h sem mensagem; o aluno que cita uma mensagem do professor a reabre.
+  Grava ANTES de enviar (`pending`) e `ehEcoDaPonte` reconhece o eco sem id —
+  senão o repasse de áudio viraria "consultor no aparelho" e calaria a Leia.
+  O Prescrev mostra a conversa no encaminhamento, só leitura
+  (`GET /acompanhamento/encaminhamentos/:id/conversa`, assinada, sem número).
+  **Testar sem aluno de verdade:** painel → Acompanhamento → briefing de teste
+  com o "WhatsApp do aluno de teste" (um celular que NÃO ativou o EQUIPE).
+  ⚠️ Aplicar a 018 ANTES do deploy: os encaminhamentos gravam `aluno_phone`.
+  ⚠️ O formato do `contextInfo` desta Evolution (`latest`) não foi conferido no
+  banco dela (a leitura foi bloqueada): o primeiro teste confirma — a
+  mensagem do professor fica com `metadata.citada` em `wa_messages`.
 - Migration **011**: `acomp_fichas` (cópia da ficha) e `acomp_disparos` (uma
   linha por aluno e dia, com motivo — inclusive do que não sai).
 - Painel → aba **Acompanhamento** (só admin): a prévia de 7 dias, o botão

@@ -514,8 +514,16 @@
         <div id="acomp-ativados" class="nota" style="margin-bottom:10px"></div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <select class="campo" id="acomp-teste-para" style="width:auto"></select>
+          <input class="campo" id="acomp-teste-aluno" style="width:auto" inputmode="tel"
+                 placeholder="WhatsApp do aluno de teste (opcional)"
+                 title="Para testar a ponte: um celular que NÃO ativou o EQUIPE faz o papel do aluno. O professor responde citando o briefing, e a mensagem chega a esse número.">
           <button class="btn" id="btn-acomp-teste">Enviar briefing de teste</button>
         </div>
+        <p class="nota" style="margin-top:6px">
+          <b>Ponte:</b> com o WhatsApp do aluno de teste, quem recebe o briefing responde citando a mensagem, e o texto
+          chega a esse número pelo WhatsApp da academia, assinado. A resposta volta a quem citou. "2" citando o briefing
+          fecha a conversa.
+        </p>
       </div>
       <div id="acomp-encaminhamentos"></div>
 
@@ -1610,8 +1618,11 @@ async function abrirConversa(id) {
         </div>`;
     }
 
-    const classe = item.de === 'cliente' ? 'cliente' : item.de === 'consultor' ? 'consultor' : 'leia';
+    // O professor pela ponte do acompanhamento fala como uma pessoa da casa: o
+    // balão do consultor, com a marca de que veio da ponte (o nome já vai no texto).
+    const classe = item.de === 'cliente' ? 'cliente' : ['consultor', 'professor'].includes(item.de) ? 'consultor' : 'leia';
     const assinatura = item.de === 'consultor' ? esc(item.autor.replace('human:', ''))
+      : item.de === 'professor' ? 'professor, pela ponte'
       : item.de === 'leia' ? 'Leia' : '';
     return `<div class="balao ${classe}">${esc(item.texto)}
          <span class="assinatura">${assinatura}${assinatura ? ' · ' : ''}${dataHora(item.em)}</span>
@@ -1835,9 +1846,10 @@ $('#btn-acomp-teste').addEventListener('click', async () => {
   const b = $('#btn-acomp-teste');
   const profileId = $('#acomp-teste-para').value;
   if (!profileId) return;
+  const alunoPhone = $('#acomp-teste-aluno').value.trim();
   b.disabled = true;
   try {
-    const r = await api('/acompanhamento/briefing-teste', { corpo: { profileId } });
+    const r = await api('/acompanhamento/briefing-teste', { corpo: { profileId, alunoPhone } });
     toast(r.status === 'na_fila'
       ? `${r.destinatario} está fora do horário de trabalho: o teste sai ${quando(r.enviar_em)}.`
       : `Briefing de teste enviado a ${r.destinatario}.`);

@@ -28,6 +28,7 @@ import { hojeSP } from '../services/campanhas.js';
 import { modoAtual, rodarEnsaio, ultimaRodada } from '../services/acompanhamento/ensaio.js';
 import { enviarDisparos } from '../services/acompanhamento/envio.js';
 import { processarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
+import { processarPontes } from '../services/acompanhamento/ponte.js';
 
 let rodando = false;
 
@@ -66,6 +67,9 @@ async function cicloDosEncaminhamentos() {
   try {
     await enviarDisparos().catch(err => logger.warn('[acompanhamento] Envio:', err.message));
     await processarEncaminhamentos();
+    // A ponte (A5d): o que o aluno mandou fora do turno do professor sai no
+    // começo do turno, e a ponte sem mensagem há 72 h fecha.
+    await processarPontes().catch(err => logger.warn('[acompanhamento] Ponte:', err.message));
   } catch (err) {
     logger.warn('[acompanhamento] Encaminhamentos:', err.message);
   } finally {

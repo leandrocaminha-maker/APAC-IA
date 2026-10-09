@@ -108,6 +108,16 @@ test('a linha do professor diz se ele ainda trabalha hoje', async () => {
   assert.match(ctx, /- Professor: Rafael — não trabalha mais hoje/);
 });
 
+test('com a ponte esperando o turno, a Leia só diz quando o professor vê (A5d)', () => {
+  const ctx = contextoDoAluno({ ficha: FICHA, hoje: '2026-10-08', troca: { troca: 1, respondidas: 0, limiteAtingido: false },
+    ponte: { professor: 'Rafael', situacao: { estado: 'nao_hoje', volta: 'amanhã', as: '06:00' } } });
+  assert.match(ctx, /Rafael está conversando com o aluno por aqui, e esta mensagem já foi repassada a Rafael, que vê amanhã às 06:00/);
+  assert.match(ctx, /\[sem resposta\]/);
+  assert.match(ctx, /Sinal de alerta continua com você/);
+  // Quem conversa é o professor: a contagem de trocas não entra.
+  assert.doesNotMatch(ctx, /Esta é a troca|Limite de trocas/);
+});
+
 test('o aceite abre a rodada como a mensagem da régua', async () => {
   const { SENT_BY_ACEITE } = await import('./conversa.js');
   const aceite = { direction: 'outbound', sent_by: SENT_BY_ACEITE };

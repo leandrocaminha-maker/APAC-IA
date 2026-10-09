@@ -31,6 +31,7 @@ import { registrarDaLeia } from './encaminhamentos.js';
 import { inscricaoDoNumero } from './ativacao.js';
 import { CATEGORIAS, DESFECHOS } from './ferramentas.js';
 import { ABRE_RODADA, SENT_BY_LEIA, contextoDoAluno, trocaAtual } from './conversa.js';
+import { ponteParaALeia } from './ponte.js';
 
 const JANELA_DA_CONVERSA_MS = 7 * 86_400_000;
 const ABERTOS = ['simulado', 'na_fila', 'aguardando'];
@@ -57,7 +58,11 @@ async function encaminhamentoAbertoDo(clienteId) {
 
 /**
  * Para qual Leia vai esta mensagem.
- * @returns {Promise<null | { caminho: 'acompanhamento'|'vendas', inscricao: object, ficha: object|null, aluno: object|null }>}
+ *
+ * Com a ponte aberta (A5d), a mensagem só chega aqui quando espera o turno do
+ * professor: a conversa é do acompanhamento, e a Leia diz ao aluno quando o
+ * professor vê — `ponte` no contexto.
+ * @returns {Promise<null | { caminho: 'acompanhamento'|'vendas', inscricao: object, ficha: object|null, aluno: object|null, ponte: object|null }>}
  *   null = não é aluno do acompanhamento
  */
 export async function caminhoDoContato({ phone, contactId }) {
@@ -67,15 +72,16 @@ export async function caminhoDoContato({ phone, contactId }) {
   const aluno = ficha
     ? { nome: ficha.aluno?.primeiro_nome ?? null, professor: primeiroNome(ficha.marcadores?.professor ?? ficha.professor?.nome ?? '') || null }
     : null;
-  if (!ficha) return { caminho: 'vendas', inscricao, ficha, aluno };
+  if (!ficha) return { caminho: 'vendas', inscricao, ficha, aluno, ponte: null };
 
   const desde = new Date(Date.now() - JANELA_DA_CONVERSA_MS).toISOString();
-  const [{ data: recente }, aberto] = await Promise.all([
+  const [{ data: recente }, aberto, ponte] = await Promise.all([
     supabase.from('wa_messages').select('id').eq('contact_id', contactId).eq('direction', 'outbound')
       .in('sent_by', [...ABRE_RODADA, SENT_BY_LEIA]).gte('created_at', desde).limit(1).maybeSingle(),
     encaminhamentoAbertoDo(inscricao.cliente_id),
+    ponteParaALeia(phone).catch(() => null),
   ]);
-  return { caminho: recente || aberto ? 'acompanhamento' : 'vendas', inscricao, ficha, aluno };
+  return { caminho: recente || aberto || ponte ? 'acompanhamento' : 'vendas', inscricao, ficha, aluno, ponte };
 }
 
 /** O executor de verdade: cada ferramenta faz o que diz, e registra no turno. */
@@ -151,6 +157,7 @@ export async function responderNoAcompanhamento({ phone, contact, conversation, 
     ficha, hoje, troca, situacaoDoProfessor,
     ultimaDoAcompanhamento: regua ? { texto: regua.content, quando: ddmm(regua.created_at) } : null,
     encaminhamentoAberto: aberto ? { motivo: aberto.motivo, quando: `em ${ddmm(aberto.created_at)}` } : null,
+    ponte: rota.ponte ?? null,
   });
 
   const turno = { desfecho: null, encaminhamentos: [], pausa: null, handoff: null };

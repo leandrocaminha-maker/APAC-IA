@@ -13,6 +13,11 @@
  *       a equipe confirma, no card, o número pendente (§5.1). O "por" vai na
  *       consulta, e não no corpo: é o caminho que se assina.
  *
+ *   GET  /acompanhamento/encaminhamentos/<id>/conversa
+ *       a conversa da ponte (A5d) daquele encaminhamento, sem números, com
+ *       quem é o professor e o destinatário — o Prescrev confere se quem está
+ *       logado pode ver antes de mostrar.
+ *
  * Sem login: aceita só requisição assinada com `ACOMPANHAMENTO_SECRET`, o
  * mesmo esquema das rotas do Prescrev que o worker daqui chama
  * (HMAC-SHA256 hex de `${timestamp}.${caminho com a consulta}`, 5 minutos).
@@ -23,8 +28,10 @@ import { Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+import { supabase } from '../lib/supabase.js';
 import { equipeAtivada, listarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
 import { confirmar, listarInscricoes } from '../services/acompanhamento/ativacao.js';
+import { conversaDoEncaminhamento } from '../services/acompanhamento/ponte.js';
 
 const JANELA_MS = 5 * 60_000;
 const router = Router();
@@ -65,6 +72,19 @@ router.get('/encaminhamentos', assinado, async (req, res) => {
     });
   } catch (err) {
     logger.error('[acompanhamento] Encaminhamentos ao Prescrev:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/encaminhamentos/:id/conversa', assinado, async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const { data: enc } = await supabase.from('acomp_encaminhamentos')
+      .select('id, aluno, professor_profile_id, destinatario_profile_id').eq('id', id).maybeSingle();
+    if (!enc) return res.status(404).json({ error: 'Encaminhamento não encontrado.' });
+    res.json({ encaminhamento: enc, ...(await conversaDoEncaminhamento(id)) });
+  } catch (err) {
+    logger.error('[acompanhamento] Conversa da ponte ao Prescrev:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

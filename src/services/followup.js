@@ -380,10 +380,13 @@ export const TIPOS_REGUA = ['ae_pos_aula', ...TIPOS_SONDAGEM, ...TIPOS_SILENCIO]
  *    o professor já foi lead, o briefing sem resposta não é silêncio de venda.
  *  - `bot:acompanhamento` (e a Leia dele) — mensagem ao aluno do programa:
  *    aluno que não respondeu ao acompanhamento não é lead em silêncio.
+ *  - `bot:ponte` — o repasse ao professor e o aviso de espera ao aluno, na
+ *    ponte do acompanhamento (A5d). `professor:<id>` nem chega aqui como
+ *    nossa fala: não começa com `bot` nem com `human:`, de propósito.
  */
 function ehNossaFala(sentBy) {
   const quem = String(sentBy || '');
-  if (quem === 'bot:briefing' || quem.startsWith('bot:acompanhamento')) return false;
+  if (quem === 'bot:briefing' || quem === 'bot:ponte' || quem.startsWith('bot:acompanhamento')) return false;
   return quem === 'bot' || quem.startsWith('bot:') || quem.startsWith('human:');
 }
 

@@ -333,6 +333,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
       for (const { ficha, d } of comAviso) {
         novos += await registrarDaRegua({
           ficha, avisos: d.avisos_equipe, treinos: treinos.get(ficha.cliente_id) ?? [], hoje, equipe, ativos,
+          inscricao: inscricoes.get(ficha.cliente_id) ?? null,
         });
       }
       notaEncaminhamentos = `${novos} aberto(s) em ensaio`;

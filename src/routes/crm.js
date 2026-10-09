@@ -642,6 +642,7 @@ router.get('/api/conversas/:id/mensagens', rota(async (req, res) => {
       id: m.id,
       de: m.direction === 'inbound' ? 'cliente'
         : m.sent_by?.startsWith('human') ? 'consultor'
+        : m.sent_by?.startsWith('professor:') ? 'professor'
         : m.sent_by === 'bot' ? 'leia' : m.sent_by,
       autor: m.sent_by,
       texto: m.content,
@@ -1187,8 +1188,10 @@ router.post('/api/acompanhamento/simulador/mensagem', exigirAdmin, rota(async (r
 router.post('/api/acompanhamento/briefing-teste', exigirAdmin, rota(async (req, res) => {
   const profileId = String(req.body?.profileId || '');
   if (!profileId) return res.status(400).json({ erro: 'Escolha quem recebe.' });
+  // Opcional: um número que faz o papel do aluno, para testar a ponte (A5d).
+  const alunoPhone = String(req.body?.alunoPhone || '').trim() || null;
   try {
-    const enc = await criarTeste({ profileId });
+    const enc = await criarTeste({ profileId, alunoPhone });
     logger.info(`[acompanhamento] Briefing de teste pelo painel (${req.usuario.nome}) para ${enc.destinatario_nome}: ${enc.status}`);
     res.json({ ok: true, id: enc.id, destinatario: enc.destinatario_nome, status: enc.status, enviar_em: enc.enviar_em });
   } catch (err) {

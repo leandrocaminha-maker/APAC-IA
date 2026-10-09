@@ -37,18 +37,25 @@
  * `simulado` — abertos, com o texto pronto e o horário em que sairiam, e NÃO
  * enviados. Só o envio de teste do painel sai, com aluno fictício: valida o
  * caminho inteiro sem mandar dado de aluno nenhum.
+ *
+ * ## A ponte (A5d)
+ *
+ * O briefing não leva mais o número do aluno: o professor fala com ele
+ * citando o briefing, pelo número da academia (`ponte.js`). Por isso o
+ * encaminhamento guarda `aluno_phone` (018) — o número que ativou o
+ * acompanhamento, ou o do cadastro.
  */
 import { randomUUID } from 'node:crypto';
 import { config } from '../../config.js';
 import { logger } from '../../lib/logger.js';
 import { supabase } from '../../lib/supabase.js';
-import { sendText } from '../evolution.js';
+import { sendText, telefoneValido } from '../evolution.js';
 import { getOrCreateContact, getOrCreateConversation, saveMessage } from '../contacts.js';
 import { inicioDoDiaSP } from '../limite-envio.js';
 import { buscarEquipe } from './prescrev.js';
 import { emHorario, prazoDaResposta, proximoInicio, quandoEnviar } from './horario.js';
 import {
-  SEM_ENCAMINHAMENTO, acompanhamentoDaFicha, combinadoDaFicha, coordenadorDePlantao, destinoDoAluno, rotear,
+  SEM_ENCAMINHAMENTO, acompanhamentoDaFicha, combinadoDaFicha, coordenadorDePlantao, destinoDoAluno, mesmoNumero, rotear,
   textoDaResposta, textoDoBriefing,
 } from './comandos.js';
 
@@ -73,6 +80,18 @@ async function horariosDaEquipe(equipe = null) {
   const lista = equipe ?? await buscarEquipe();
   return new Map(lista.map(m => [m.profile_id, m.horario ?? null]));
 }
+
+/**
+ * O WhatsApp do aluno para a ponte: o número que ativou o acompanhamento
+ * (é o da conversa, como o WhatsApp o escreve), senão o celular do cadastro.
+ * Inscrição pendente não conta — o número ainda não foi confirmado.
+ */
+function telefoneDoAluno(inscricao, ficha) {
+  if (inscricao && ['ativa', 'pausada'].includes(inscricao.status)) return inscricao.phone;
+  return telefoneValido(ficha?.aluno?.celular_cadastro);
+}
+
+const linkDaFicha = (clienteId) => `${config.acompanhamento.prescrev.url.replace(/\/$/, '')}/dashboard/clientes/${clienteId}`;
 
 async function atualizar(id, campos) {
   const { error } = await supabase.from('acomp_encaminhamentos').update(campos).eq('id', id);
@@ -152,8 +171,9 @@ function previsao(rota) {
  * Um por `chave`: o mesmo aviso em dias seguidos não abre outro.
  * @returns {Promise<number>} quantos novos
  */
-export async function registrarDaRegua({ ficha, avisos, treinos, hoje, equipe, ativos }) {
+export async function registrarDaRegua({ ficha, avisos, treinos, hoje, equipe, ativos, inscricao = null }) {
   const horarios = await horariosDaEquipe(equipe);
+  const alunoPhone = telefoneDoAluno(inscricao, ficha);
   let novos = 0;
   for (const aviso of avisos ?? []) {
     const chave = `regua:${ficha.cliente_id}:${aviso.codigo}:${aviso.referencia}`;
@@ -172,15 +192,15 @@ export async function registrarDaRegua({ ficha, avisos, treinos, hoje, equipe, a
       resumo: aviso.texto,
       combinado: combinadoDaFicha(ficha),
       acompanhamento: acompanhamentoDaFicha(ficha),
-      whatsappAluno: ficha.aluno?.celular_cadastro ?? null,
-      linkFicha: `${config.acompanhamento.prescrev.url.replace(/\/$/, '')}/dashboard/clientes/${ficha.cliente_id}`,
+      ponte: !!alunoPhone,
+      linkFicha: linkDaFicha(ficha.cliente_id),
     });
     // Fase de teste: 'simulado'. Com ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS, o
     // briefing sai — no horário de quem recebe.
     const real = config.acompanhamento.encaminhamentosReais;
     const enc = {
       id: randomUUID(), chave, origem: 'regua', cliente_id: ficha.cliente_id, aluno: ficha.aluno?.primeiro_nome ?? 'Aluno',
-      motivo_codigo: aviso.codigo, motivo: aviso.motivo, urgencia: aviso.urgencia, resumo: aviso.texto,
+      aluno_phone: alunoPhone, motivo_codigo: aviso.codigo, motivo: aviso.motivo, urgencia: aviso.urgencia, resumo: aviso.texto,
       professor_profile_id: professor?.profile_id ?? null, professor_nome: professor?.nome ?? null,
       destino_origem: professor?.origem ?? null,
       nivel: rota.nivel,
@@ -223,16 +243,18 @@ export async function registrarDaLeia({ ficha, categoria, urgencia, resumo, phon
   const professor = destinoDoAluno({ ficha, treinos, hoje, equipe });
   const rota = rotear({ urgencia, origem: 'leia', professorId: professor?.profile_id ?? null, ativos, horarios, agora: agora() });
   const motivo = MOTIVO_DA_CATEGORIA[categoria] ?? 'conversa com o aluno';
+  // O número de quem está conversando com a Leia: é o da conversa.
+  const alunoPhone = phoneAluno ?? telefoneValido(ficha.aluno?.celular_cadastro);
   const texto = textoDoBriefing({
     aluno: ficha.aluno?.primeiro_nome ?? 'Aluno', idade: ficha.aluno?.idade ?? null, motivo, urgencia, resumo,
     combinado: combinadoDaFicha(ficha), acompanhamento: acompanhamentoDaFicha(ficha),
-    whatsappAluno: phoneAluno ?? ficha.aluno?.celular_cadastro ?? null,
-    linkFicha: `${config.acompanhamento.prescrev.url.replace(/\/$/, '')}/dashboard/clientes/${ficha.cliente_id}`,
+    ponte: !!alunoPhone,
+    linkFicha: linkDaFicha(ficha.cliente_id),
   });
   const real = config.acompanhamento.encaminhamentosReais;
   const enc = {
     id: randomUUID(), chave: `leia:${ficha.cliente_id}:${randomUUID()}`, origem: 'leia', cliente_id: ficha.cliente_id,
-    aluno: ficha.aluno?.primeiro_nome ?? 'Aluno', motivo_codigo: categoria, motivo, urgencia, resumo,
+    aluno: ficha.aluno?.primeiro_nome ?? 'Aluno', aluno_phone: alunoPhone, motivo_codigo: categoria, motivo, urgencia, resumo,
     professor_profile_id: professor?.profile_id ?? null, professor_nome: professor?.nome ?? null,
     destino_origem: professor?.origem ?? null, nivel: rota.nivel,
     destinatario_profile_id: rota.pessoa?.profile_id ?? null, destinatario_nome: rota.pessoa?.nome ?? null,
@@ -255,9 +277,14 @@ export async function registrarDaLeia({ ficha, categoria, urgencia, resumo, phon
  * O envio de teste do painel: um briefing com aluno fictício para quem
  * ativou o EQUIPE. Valida o caminho inteiro — chegar, responder, repassar —
  * e a regra do horário: fora dele, fica na fila até o turno começar.
+ *
+ * Com `alunoPhone`, um número de verdade faz o papel do aluno, e a ponte
+ * (A5d) se testa sem aluno de verdade: o professor cita o briefing, a
+ * mensagem chega a esse número, e a resposta volta ao professor. Não pode ser
+ * de quem é da equipe — a porta da equipe pegaria as respostas antes da ponte.
  * @returns {Promise<object>} o encaminhamento, com `status` e `enviar_em`
  */
-export async function criarTeste({ profileId }) {
+export async function criarTeste({ profileId, alunoPhone = null }) {
   const [ativos, horarios] = await Promise.all([equipeAtivada(), horariosDaEquipe()]);
   const membro = ativos.find(a => a.profile_id === profileId);
   if (!membro) throw new Error('Esta pessoa ainda não ativou o EQUIPE no WhatsApp.');
@@ -265,22 +292,35 @@ export async function criarTeste({ profileId }) {
   if (!proximoInicio(horario)) {
     throw new Error(`${membro.nome} não tem horário de trabalho no Prescrev — fora do horário nada é enviado.`);
   }
+  let aluno = null;
+  if (alunoPhone) {
+    aluno = telefoneValido(alunoPhone);
+    if (!aluno) throw new Error('O WhatsApp do aluno de teste precisa ser um celular com DDD (11 dígitos).');
+    if (ativos.some(a => mesmoNumero(a.phone, aluno))) {
+      throw new Error('Este número é de alguém que ativou o EQUIPE: as respostas iriam para a porta da equipe, e não para a ponte. Use outro.');
+    }
+  }
 
   const enc = {
     id: randomUUID(),
     chave: `teste:${randomUUID()}`,
     origem: 'teste',
     aluno: 'Aluno de teste',
+    aluno_phone: aluno,
     motivo_codigo: 'teste',
     motivo: 'teste do caminho do encaminhamento',
     urgencia: 'hoje',
-    resumo: 'Encaminhamento de teste, sem aluno de verdade: responda 1, 2 ou 3 para conferir o caminho.',
+    resumo: aluno
+      ? 'Encaminhamento de teste, sem aluno de verdade: responda citando esta mensagem para falar com o número de teste, ou 1, 2 ou 3.'
+      : 'Encaminhamento de teste, sem aluno de verdade: responda 1, 2 ou 3 para conferir o caminho.',
     professor_profile_id: membro.profile_id, professor_nome: membro.nome, destino_origem: 'teste',
     nivel: 'professor',
     destinatario_profile_id: membro.profile_id, destinatario_nome: membro.nome, destinatario_phone: membro.phone,
     status: 'na_fila',
   };
-  enc.texto_briefing = textoDoBriefing({ teste: true, aluno: enc.aluno, motivo: enc.motivo, urgencia: enc.urgencia, resumo: enc.resumo });
+  enc.texto_briefing = textoDoBriefing({
+    teste: true, aluno: enc.aluno, motivo: enc.motivo, urgencia: enc.urgencia, resumo: enc.resumo, ponte: !!aluno,
+  });
   const historico = [evento('teste aberto', membro.nome)];
 
   const { error } = await supabase.from('acomp_encaminhamentos').insert({ ...enc, historico });
@@ -321,15 +361,45 @@ async function repassar(enc, porque) {
   return coord.nome;
 }
 
-/**
- * A resposta 1/2/3 de quem é da equipe ao encaminhamento mais recente que
- * espera por ele. É resposta a mensagem dele: sai a qualquer hora.
- * @returns {Promise<string>} o texto de volta
- */
-export async function responderBriefing({ phone, numero, nota }) {
-  const { data: enc } = await supabase.from('acomp_encaminhamentos').select('*')
+/** O encaminhamento a que um 1/2/3 sem citação responde: o mais recente que espera por quem mandou. */
+async function encaminhamentoDaResposta(phone, numero) {
+  const { data: aguardando } = await supabase.from('acomp_encaminhamentos').select('*')
     .eq('status', 'aguardando').eq('destinatario_phone', phone)
     .order('enviado_em', { ascending: false }).limit(1).maybeSingle();
+  if (aguardando || numero !== '2') return aguardando;
+  // "2" depois de assumir — inclusive pela ponte, que assume na primeira mensagem.
+  const desde = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { data: assumido } = await supabase.from('acomp_encaminhamentos').select('*')
+    .eq('status', 'assumido').eq('destinatario_phone', phone).gte('respondido_em', desde)
+    .order('respondido_em', { ascending: false }).limit(1).maybeSingle();
+  return assumido;
+}
+
+/** Os estados em que um 1/2/3 ainda muda alguma coisa. */
+const RESPONDIVEIS = ['aguardando', 'assumido', 'na_fila', 'sem_destino'];
+
+/** Fecha a ponte do encaminhamento resolvido: o aluno volta à Leia. */
+async function fecharPontesDo(encId, motivo) {
+  const { error } = await supabase.from('acomp_pontes')
+    .update({ fechada_em: new Date().toISOString(), motivo_fechamento: motivo })
+    .eq('encaminhamento_id', encId).is('fechada_em', null);
+  if (error && error.code !== 'PGRST205') logger.warn(`[encaminhamento] Ponte de ${encId} não fechada: ${error.message}`);
+}
+
+/**
+ * A resposta 1/2/3 de quem é da equipe. Citando um briefing (`encaminhamentoId`,
+ * a ponte), vale para aquele encaminhamento; sem citação, para o mais recente
+ * que espera por quem respondeu. É resposta a mensagem dele: sai a qualquer hora.
+ * @returns {Promise<string>} o texto de volta
+ */
+export async function responderBriefing({ phone, numero, nota, encaminhamentoId = null }) {
+  let enc;
+  if (encaminhamentoId) {
+    const { data } = await supabase.from('acomp_encaminhamentos').select('*').eq('id', encaminhamentoId).maybeSingle();
+    enc = data && RESPONDIVEIS.includes(data.status) ? data : null;
+  } else {
+    enc = await encaminhamentoDaResposta(phone, numero);
+  }
   if (!enc) return SEM_ENCAMINHAMENTO;
 
   const quem = enc.destinatario_nome ?? 'a equipe';
@@ -340,6 +410,7 @@ export async function responderBriefing({ phone, numero, nota }) {
 
   if (numero === '1' || numero === '2') {
     await atualizar(enc.id, { ...resposta, status: numero === '1' ? 'assumido' : 'resolvido' });
+    if (numero === '2') await fecharPontesDo(enc.id, 'resolvido');
     return textoDaResposta({ numero, aluno: enc.aluno });
   }
 
@@ -357,6 +428,20 @@ export async function responderBriefing({ phone, numero, nota }) {
     logger.warn(`[encaminhamento] Repasse de ${enc.id} adiado: ${err.message}`);
   }
   return textoDaResposta({ numero, aluno: enc.aluno, repassadoA });
+}
+
+/**
+ * A primeira mensagem do professor pela ponte vale como "1 — assumo"
+ * (decisão de 09/10/2026). Quem escreve passa a ser o destinatário: o "2" sem
+ * citação dele encontra o encaminhamento, e o prazo de resposta para de correr.
+ */
+export async function assumirPelaPonte(enc, membro) {
+  if (!['na_fila', 'aguardando', 'sem_destino'].includes(enc.status)) return;
+  await atualizar(enc.id, {
+    status: 'assumido', respondido_em: new Date().toISOString(), resposta: '1',
+    destinatario_profile_id: membro.profile_id, destinatario_nome: membro.nome, destinatario_phone: membro.phone,
+    historico: [...(enc.historico ?? []), evento('assumido pela ponte', `${membro.nome} escreveu ao aluno`)],
+  });
 }
 
 /** Solta o que estava na fila e chegou ao turno de quem recebe. */
@@ -441,5 +526,18 @@ export async function listarEncaminhamentos({ dias = 30 } = {}) {
       + 'prazo_resposta, respondido_em, resposta, nota, historico, created_at')
     .gte('created_at', desde).order('created_at', { ascending: false });
   if (error) throw new Error(`acomp_encaminhamentos: ${error.message}`);
-  return data ?? [];
+  const lista = data ?? [];
+
+  // A ponte de cada um (A5d): 'aberta', 'fechada' ou null — a tela mostra a conversa.
+  const ids = lista.map(e => e.id);
+  const ponte = new Map();
+  if (ids.length) {
+    const { data: pontes, error: errPonte } = await supabase.from('acomp_pontes')
+      .select('encaminhamento_id, fechada_em').in('encaminhamento_id', ids);
+    if (errPonte && errPonte.code !== 'PGRST205') logger.warn('[encaminhamento] acomp_pontes:', errPonte.message);
+    for (const p of pontes ?? []) {
+      if (ponte.get(p.encaminhamento_id) !== 'aberta') ponte.set(p.encaminhamento_id, p.fechada_em ? 'fechada' : 'aberta');
+    }
+  }
+  return lista.map(e => ({ ...e, ponte: ponte.get(e.id) ?? null }));
 }

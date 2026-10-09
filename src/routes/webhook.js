@@ -16,6 +16,8 @@ import * as ativacaoAcompanhamento from '../services/acompanhamento/ativacao.js'
 import * as leiaAcompanhamento from '../services/acompanhamento/leia.js';
 import { SENT_BY_LEIA } from '../services/acompanhamento/conversa.js';
 import { equipeAcompanhamento } from '../services/acompanhamento/equipe.js';
+import * as ponteAcompanhamento from '../services/acompanhamento/ponte.js';
+import { SENT_BY_PONTE, idDaCitacao, textoDeEspera } from '../services/acompanhamento/ponte-regras.js';
 import { transcreverAudio } from '../services/transcricao.js';
 
 const router = Router();
@@ -221,6 +223,13 @@ async function handleIncomingMessage(event) {
     return;
   }
 
+  // A ponte do acompanhamento (A5d) precisa de duas coisas que o resto não
+  // usa: o tipo como chegou — o áudio vira texto na transcrição abaixo, e a
+  // ponte repassa o áudio como áudio — e a mensagem citada, que é o endereço
+  // de quem responde pela ponte.
+  const tipoRecebido = contentType;
+  const citada = idDaCitacao(data);
+
   // Extrai nome do contato (push name do WhatsApp)
   const pushName = data.pushName || messageData.pushName || null;
 
@@ -247,7 +256,7 @@ async function handleIncomingMessage(event) {
     contentType,
     sentBy: 'client',
     evolutionMsgId: key.id || null,
-    metadata: { pushName, remoteJid },
+    metadata: { pushName, remoteJid, ...(citada ? { citada } : {}) },
     status: 'delivered',
   });
 
@@ -265,7 +274,13 @@ async function handleIncomingMessage(event) {
   if (contentType === 'audio') {
     const texto = await transcreverAudio(savedMessage?.evolution_msg_id || key.id);
 
-    if (!texto) {
+    // Sem transcrição, o áudio da ponte segue mesmo assim: ele vai ao outro
+    // lado como áudio, e quem ouve é uma pessoa. Pedir "manda por texto" ao
+    // professor, ou ao aluno que conversa com ele, seria falar à toa.
+    const daPonte = !texto && (contact.tipo_contato === 'equipe'
+      || !!(await ponteAcompanhamento.ponteAbertaDo(phone).catch(() => null)));
+
+    if (!texto && !daPonte) {
       await sendAndSave(
         phone,
         'Desculpe, não consegui ouvir esse áudio 🙁 Poderia me mandar por texto?',
@@ -275,17 +290,19 @@ async function handleIncomingMessage(event) {
       return;
     }
 
-    content = `[áudio] ${texto}`;
-    contentType = 'text';
+    if (texto) {
+      content = `[áudio] ${texto}`;
+      contentType = 'text';
 
-    if (savedMessage?.id) {
-      await supabase
-        .from('wa_messages')
-        .update({ content, metadata: { ...(savedMessage.metadata || {}), transcrito: true } })
-        .eq('id', savedMessage.id);
+      if (savedMessage?.id) {
+        await supabase
+          .from('wa_messages')
+          .update({ content, metadata: { ...(savedMessage.metadata || {}), transcrito: true } })
+          .eq('id', savedMessage.id);
+      }
+
+      logger.info(`[webhook] 🎙 ${phone}: ${texto.slice(0, 100)}`);
     }
-
-    logger.info(`[webhook] 🎙 ${phone}: ${texto.slice(0, 100)}`);
   }
 
   // "SAIR" encerra tudo, e encerra ANTES de qualquer outra coisa.
@@ -324,9 +341,11 @@ async function handleIncomingMessage(event) {
   // "EQUIPE <código>" de qualquer número, e toda mensagem de quem já é da
   // equipe, não são conversa de venda — não entram no funil nem na Leia. A
   // resposta é a mensagem recebida, e não conta no teto do número.
+  //
+  // Citando o briefing, a mensagem do professor vai ao aluno pela ponte (A5d).
   try {
     if (await equipeAcompanhamento.tratarMensagemDaEquipe({
-      phone, contact, content,
+      phone, contact, content, tipo: tipoRecebido, key, citada,
       responder: (texto) => sendAndSave(phone, texto, conversation.id, contact.id, { acompanhamento: 'equipe' }),
     })) return;
   } catch (err) {
@@ -343,6 +362,30 @@ async function handleIncomingMessage(event) {
     if (await ativacaoAcompanhamento.tratarPausa({ phone, content, responder })) return;
   } catch (err) {
     logger.error('[webhook] Porta da ativação falhou — a mensagem segue o caminho normal:', err.message);
+  }
+
+  // A ponte (A5d): com um professor conversando com este aluno pelo número
+  // da academia, a mensagem vai a ele — e não ao funil nem à Leia. Fora do
+  // turno do professor ela espera, e alguém responde ao aluno: a Leia do
+  // acompanhamento (com a ponte no contexto, segue abaixo) ou, sem ela, o
+  // aviso fixo — uma vez por espera.
+  try {
+    const r = await ponteAcompanhamento.doAluno({ phone, contact, content, tipo: tipoRecebido, key, citada, savedMessage });
+    if (r.tratada) {
+      if (!r.espera) return;
+      const rota = r.espera.teste
+        ? null
+        : await leiaAcompanhamento.caminhoDoContato({ phone, contactId: contact.id }).catch(() => null);
+      if (rota?.caminho !== 'acompanhamento') {
+        if (r.espera.primeira) {
+          await sendAndSave(phone, textoDeEspera(r.espera.professor, r.espera.situacao), conversation.id, contact.id,
+            { ponte: 'espera' }, SENT_BY_PONTE);
+        }
+        return;
+      }
+    }
+  } catch (err) {
+    logger.error('[webhook] Ponte falhou — a mensagem segue o caminho normal:', err.message);
   }
 
   // Respondeu a uma campanha: ela para para essa pessoa, e a conversa segue
@@ -760,6 +803,15 @@ async function registrarMensagemDeSaida({ phone, content, contentType, evolution
       logger.debug('[webhook] Eco do nosso próprio envio (id já registrado)');
       return;
     }
+  }
+
+  // A ponte do acompanhamento grava antes de enviar, e o eco pode chegar
+  // antes de a linha ganhar o id — áudio e mídia não passam pela checagem
+  // por texto abaixo. Sem isto, o repasse do professor viraria "consultor
+  // escrevendo do aparelho" e calaria a Leia daquele aluno.
+  if (await ponteAcompanhamento.ehEcoDaPonte(contact.id).catch(() => false)) {
+    logger.debug('[webhook] Eco de envio da ponte do acompanhamento');
+    return;
   }
 
   // 3ª checagem: a fila mandou isto?

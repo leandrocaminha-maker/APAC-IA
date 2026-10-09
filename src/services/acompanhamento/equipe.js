@@ -26,6 +26,7 @@ import { logger } from '../../lib/logger.js';
 import { buscarEquipe } from './prescrev.js';
 import { lerComandoEquipe, lerRespostaDoBriefing, textoDeConfirmacao } from './comandos.js';
 import { responderBriefing } from './encaminhamentos.js';
+import { AJUDA, doProfessor, precisaDeAjuda } from './ponte.js';
 
 const TENTATIVAS_MAX = 5;
 const TENTATIVAS_JANELA_MS = 24 * 60 * 60_000;
@@ -97,9 +98,16 @@ async function ativar({ phone, contact, codigo, responder }) {
  * comando EQUIPE, de qualquer número, ou qualquer mensagem de quem já é da
  * equipe —, e aí o funil e a Leia não a veem.
  *
- * @param {{ phone: string, contact: object, content: string, responder: (texto: string) => Promise<void> }} p
+ * Citando o briefing ou um repasse do aluno, a mensagem é da ponte (A5d): vai
+ * ao aluno pelo número da academia, ou é o 1/2/3 daquele encaminhamento.
+ *
+ * @param {object} p
+ * @param {string} p.tipo    o tipo recebido (antes da transcrição do áudio)
+ * @param {object} p.key     a `key` da Evolution — para reagir e baixar a mídia
+ * @param {string|null} p.citada  o id da mensagem citada
+ * @param {(texto: string) => Promise<void>} p.responder
  */
-export async function tratarMensagemDaEquipe({ phone, contact, content, responder }) {
+export async function tratarMensagemDaEquipe({ phone, contact, content, tipo = 'text', key = {}, citada = null, responder }) {
   const codigo = lerComandoEquipe(content);
   if (codigo !== null) {
     if (codigo === '') {
@@ -113,7 +121,16 @@ export async function tratarMensagemDaEquipe({ phone, contact, content, responde
   const membro = await membroDaEquipe(phone);
   if (!membro) return false;
 
-  // 1, 2 ou 3: a resposta ao encaminhamento mais recente que espera por ele.
+  // Citando a ponte: ao aluno, ou o 1/2/3 daquele encaminhamento.
+  try {
+    if (await doProfessor({ membro, phone, contact, content, tipo, key, citada, responder })) return true;
+  } catch (err) {
+    logger.error(`[equipe] A ponte falhou para ${membro.nome}:`, err.message);
+    await responder('⚠️ Não consegui repassar agora. Tente de novo em alguns minutos.');
+    return true;
+  }
+
+  // 1, 2 ou 3 sem citar: a resposta ao encaminhamento mais recente que espera por ele.
   const resposta = lerRespostaDoBriefing(content);
   if (resposta) {
     await responder(await responderBriefing({ phone, numero: resposta.numero, nota: resposta.nota }));
@@ -121,7 +138,10 @@ export async function tratarMensagemDaEquipe({ phone, contact, content, responde
     return true;
   }
 
-  // Qualquer outra mensagem fica gravada, e ninguém responde por máquina.
+  // Qualquer outra mensagem fica gravada, e ninguém responde por máquina —
+  // a não ser a explicação de como citar, a quem está usando a ponte: sem
+  // citação, nada vai a aluno nenhum.
+  if (await precisaDeAjuda(membro).catch(() => false)) await responder(AJUDA);
   logger.info(`[equipe] Mensagem de ${membro.nome} registrada, fora do funil`);
   return true;
 }

@@ -141,10 +141,14 @@ export function acompanhamentoDaFicha(ficha) {
  * O briefing ao professor (§7.4 do plano). Modelo fixo: o dado de saúde é o
  * mínimo — motivo, resumo, combinado —, e o resto fica atrás do link do
  * Prescrev, que pede login e permissão.
+ *
+ * Não leva o número do aluno (A5d, 09/10/2026): o professor fala com ele
+ * citando este briefing, pelo número da academia, e ninguém vê o número de
+ * ninguém. `ponte` diz se há WhatsApp do aluno para isso.
  */
 export function textoDoBriefing({
   teste = false, repasse = null, aluno, idade = null, motivo, urgencia, resumo = null,
-  combinado = null, acompanhamento = null, whatsappAluno = null, linkFicha = null,
+  combinado = null, acompanhamento = null, ponte = false, linkFicha = null,
 }) {
   return [
     teste ? '🧪 *TESTE — não é de um aluno de verdade*' : null,
@@ -155,8 +159,10 @@ export function textoDoBriefing({
     resumo ? `*Resumo:* ${resumo}` : null,
     combinado ? `*Combinado:* ${combinado}` : null,
     acompanhamento ? `*Acompanhamento:* ${acompanhamento}` : null,
-    whatsappAluno ? `Falar com o(a) aluno(a): wa.me/${whatsappAluno}` : null,
     linkFicha ? `Ficha: ${linkFicha}` : null,
+    ponte
+      ? `💬 Para falar com ${aluno}, responda a esta mensagem (arraste para o lado): vai pelo número da academia, com o seu nome.`
+      : null,
     'Responda *1* eu assumo · *2* já resolvi · *3* não é comigo',
   ].filter(Boolean).join('\n');
 }

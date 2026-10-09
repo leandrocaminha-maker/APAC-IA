@@ -285,9 +285,13 @@ async function loadConversationHistory(conversationId, { limit = 20, excludeMess
       // lado da conversa, mas precisam vir marcadas — sem isso o modelo lê a
       // fala do consultor como se fosse dele, e passa a se achar dono de
       // combinações que não fez.
+      // O mesmo vale para o professor que fala com o aluno pela ponte do
+      // acompanhamento (A5d): a mensagem é dele, assinada, e não da Leia.
       content: msg.sent_by?.startsWith('human')
         ? `[mensagem escrita por um consultor humano, não por você] ${msg.content}`
-        : msg.content,
+        : msg.sent_by?.startsWith('professor:')
+          ? `[mensagem do professor ao aluno, pelo número da academia — não é sua] ${msg.content}`
+          : msg.content,
     }));
 
   // A janela das últimas N pode começar no meio da conversa, numa fala do bot.

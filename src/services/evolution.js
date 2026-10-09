@@ -256,6 +256,50 @@ export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'imag
 }
 
 /**
+ * Envia mídia que veio de outra mensagem (base64 da `baixarMidia`), para a
+ * ponte do acompanhamento: a foto ou o vídeo do professor ao aluno, e o
+ * contrário. `media` da Evolution v2 aceita URL ou base64.
+ * @param {string} phone
+ * @param {{ base64: string, mimetype: string, fileName?: string, caption?: string, mediatype: 'image'|'video'|'document' }} m
+ */
+export async function sendMediaBase64(phone, { base64, mimetype, fileName, caption = '', mediatype }) {
+  const number = normalizePhone(phone);
+  logger.info(`[evolution] sendMedia (base64) → ${number} (${mediatype})`);
+  return evoFetch(`/message/sendMedia/${instance}`, {
+    method: 'POST',
+    body: JSON.stringify({ number, mediatype, mimetype, media: base64, fileName, caption, delay: 1200 }),
+  });
+}
+
+/**
+ * Envia áudio como mensagem de voz (o "microfone" do WhatsApp), e não como
+ * arquivo — é assim que a voz do professor chega ao aluno pela ponte.
+ * @param {string} phone
+ * @param {string} audio  base64 ou URL
+ */
+export async function sendAudio(phone, audio) {
+  const number = normalizePhone(phone);
+  logger.info(`[evolution] sendWhatsAppAudio → ${number}`);
+  return evoFetch(`/message/sendWhatsAppAudio/${instance}`, {
+    method: 'POST',
+    body: JSON.stringify({ number, audio, delay: 1200 }),
+  });
+}
+
+/**
+ * Reage a uma mensagem recebida (✅, ⚠️). A ponte confirma assim ao
+ * professor que a mensagem dele chegou ao aluno, sem mandar mais uma.
+ * @param {{ remoteJid: string, id: string, fromMe?: boolean }} key
+ * @param {string} reaction  um emoji; '' tira a reação
+ */
+export async function sendReaction({ remoteJid, id, fromMe = false }, reaction) {
+  return evoFetch(`/message/sendReaction/${instance}`, {
+    method: 'POST',
+    body: JSON.stringify({ key: { remoteJid, fromMe, id }, reaction }),
+  });
+}
+
+/**
  * Envia mensagem com botões de resposta rápida.
  * @param {string} phone - Número do destinatário
  * @param {string} title - Título da mensagem
@@ -305,6 +349,9 @@ export const evolution = {
   restartInstance,
   sendText,
   sendMedia,
+  sendMediaBase64,
+  sendAudio,
+  sendReaction,
   sendButtons,
   sendList,
   normalizePhone,
