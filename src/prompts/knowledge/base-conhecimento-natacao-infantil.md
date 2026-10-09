@@ -72,9 +72,9 @@ definem tudo o que vem depois.
 Quando é a mãe ou o pai cotando, a pergunta que abre bem é a do contato anterior
 com a piscina:
 
-> Entendi! E ele já teve contato com piscina antes, ou seria o primeiro
-> contato? Pergunto porque a gente separa as turmas por nível, e isso muda bem
-> a experiência dos primeiros meses.
+> Entendi! Ele já teve contato com piscina antes, ou seria a primeira vez?
+> Pergunto porque a gente separa as turmas por nível, e isso faz bastante
+> diferença nos primeiros meses.
 
 ## Ponto de entrada: em que nível a criança começa
 
@@ -106,10 +106,10 @@ nível para começar** — isso tira a ansiedade de quem não sabe onde a crian�
 encaixa.
 
 **Exemplo de fala.** "Como ele tem 4 anos e ainda não teve contato com a piscina,
-ele começa na turma de Adaptação. Nessa fase o objetivo é ganhar confiança na
-água e aprender a controlar a respiração ao submergir. A aula é lúdica:
-brincadeiras com os colegas e com materiais, deslocamento na plataforma, pequenos
-saltos e as primeiras flutuações. Quando ele já estiver seguro e soltinho na
+ele começa na turma de Adaptação. Nessa fase o objetivo é ele ganhar confiança na
+água e aprender a controlar a respiração quando mergulha. A aula é leve e
+divertida: brincadeiras com os colegas e com materiais, deslocamento na plataforma, pequenos
+saltos e as primeiras flutuações. Quando ele estiver seguro e soltinho na
 água, passa para a Estrelinha N1."
 
 ## O que cada nível busca
@@ -209,26 +209,26 @@ essa base, vira um nado ineficiente que precisa ser corrigido depois. Aqui a
 criança aprende o crawl na touca amarela, e aprende bem.
 
 **"Em quanto tempo ele vai saber nadar?"**
-Depende do ponto de partida e da frequência, mas o currículo é claro: segurança
-aquática vem já nas primeiras fases, e crawl e costas técnicos se consolidam na
-touca amarela, que dura de 7 a 8 meses. Cada nível tem metas objetivas, então dá
-para acompanhar a evolução sem achismo.
+Depende do ponto de partida e da frequência, mas o currículo é claro: a
+segurança na água vem já nas primeiras fases, e o crawl e o costas bem feitos se
+consolidam na touca amarela, que dura de 7 a 8 meses. Cada nível tem metas
+objetivas, então dá pra acompanhar a evolução sem achismo.
 
 **"Ele tem medo de água."**
-É o cenário mais comum no primeiro nível, e a aula é desenhada para isso. A
-primeira metade de toda aula é uma rotina previsível de acolhimento e respiração,
-e o professor trabalha a atenção da criança com exercícios simples até ela
-relaxar. O medo é tratado como conteúdo pedagógico, não como obstáculo.
+É bem comum no primeiro nível, e a aula é pensada pra isso. A primeira metade de
+toda aula é uma rotina previsível de acolhimento e respiração, e o professor vai
+prendendo a atenção da criança com exercícios simples até ela relaxar. O medo é
+tratado como parte do aprendizado, não como obstáculo.
 
 **"Ele entrou no meio do ciclo, vai perder conteúdo?"**
-Não. A programação do primeiro nível roda duas vezes dentro do ciclo, em duas
-sequências de seis semanas, justamente para que quem entra depois passe pela
-programação completa.
+Não. A programação do primeiro nível se repete duas vezes dentro do ciclo, em
+duas sequências de seis semanas, justamente pra quem entra depois também passar
+por ela completa.
 
 **"É só recreação ou tem treino de verdade?"**
-As duas coisas, na dose certa para cada idade. O trabalho é lúdico onde precisa
-ser, mas existe desenvolvimento de força e velocidade desde a touca amarela, e
-nas turmas avançadas a frequência diária é liberada para quem quer treinar sério.
+Tem as duas coisas, na medida certa pra cada idade. O trabalho é lúdico onde
+precisa ser, mas há desenvolvimento de força e velocidade desde a touca amarela,
+e nas turmas avançadas a frequência diária é liberada pra quem quer treinar sério.
 
 ## O diferencial, em uma frase
 

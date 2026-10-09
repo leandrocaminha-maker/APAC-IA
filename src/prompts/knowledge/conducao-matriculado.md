@@ -159,9 +159,9 @@ Trabalhe conforme o motivo:
 - **Comportamental** — falta de tempo, "não estou indo", "não me adaptei". Aqui
   vale dizer uma informação verdadeira:
 
-> Reduzir é muito melhor do que parar. O consenso da literatura de exercício é
-> que **qualquer prática regular, mesmo em volume menor, traz benefício de saúde
-> muito maior do que voltar ao sedentarismo**. O salto grande está entre não
+> Reduzir é muito melhor do que parar. Os estudos sobre exercício são bem
+> consistentes: **qualquer prática regular, mesmo em volume menor, faz muito mais
+> bem à saúde do que voltar ao sedentarismo**. O salto grande está entre não
 > fazer nada e fazer alguma coisa — não entre fazer bastante e fazer muito.
 
 E então a saída concreta: menos dias na semana, um plano menor, o Clube Sábado
