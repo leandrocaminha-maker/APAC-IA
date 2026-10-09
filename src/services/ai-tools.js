@@ -139,7 +139,7 @@ const allToolDeclarations = [
   },
   {
     name: 'transferir_para_humano',
-    description: 'Transfere a conversa para um consultor humano e pausa o bot. Use quando: financeiro de aluno JÁ MATRICULADO (pagamento pendente, cobrança, estorno), problema de CONTA no app FITI (não consegue entrar, reserva sumiu), afastamento/cancelamento, reclamação, ou pedido explícito de falar com uma pessoa. NÃO use para: objeção de preço ou pedido de desconto em venda nova, nem "como funciona o agendamento?" — essas você responde. Também NÃO use para agendar aula experimental de quem ainda não é aluno: isso você mesma faz, com as tools de cadastro e agendamento. Se faltar um dado na base, confira antes se outra parte da base responde; faltando mesmo, responda o resto e transfira só o ponto que falta.',
+    description: 'Transfere a conversa para um consultor humano e pausa o bot. Use quando: financeiro de aluno JÁ MATRICULADO (pagamento pendente, cobrança, estorno), problema de CONTA no app FITI (não consegue entrar, reserva sumiu), afastamento/cancelamento, reclamação, pedido explícito de falar com uma pessoa, ou recado para alguém da academia (no `motivo`: para quem, de quem, o quê, e se é para agora). NÃO use para: objeção de preço ou pedido de desconto em venda nova, nem "como funciona o agendamento?" — essas você responde. Também NÃO use para agendar aula experimental de quem ainda não é aluno: isso você mesma faz, com as tools de cadastro e agendamento. Se faltar um dado na base, confira antes se outra parte da base responde; faltando mesmo, responda o resto e transfira só o ponto que falta.',
     input_schema: {
       type: 'object',
       properties: {
@@ -170,7 +170,8 @@ const allToolDeclarations = [
       '`convenio`: chega por convênio ou agregador (Gympass, TotalPass e afins) — o plano dele vem ' +
       'de fora, não é venda nossa. ' +
       '`fornecedor`: fornecedor, vendedor, prestador de serviço, proposta comercial para a academia. ' +
-      '`outro`: engano, assunto que não é da academia, qualquer coisa que não seja as anteriores.',
+      '`outro`: alguém da própria equipe (professor, recepção, coordenação), engano, assunto que não é ' +
+      'da academia, qualquer coisa que não seja as anteriores. Recado para alguém daqui não é engano.',
     input_schema: {
       type: 'object',
       properties: {

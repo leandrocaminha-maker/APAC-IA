@@ -31,6 +31,19 @@
 | Instagram | @apacademia |
 | Site | <www.apacademia.com.br> |
 
+## Equipe de atendimento
+
+| Nome | Cargo | Cuida de |
+| --- | --- | --- |
+| Lucas | Gerente — também atende como consultor | gerência e time comercial |
+| Larissa | Coordenadora — não atende como consultora | professores e atividades |
+| Cátia | Consultora | time comercial: planos e matrícula |
+| Shirlei | Consultora | time comercial: planos e matrícula |
+
+A lista **não** inclui os professores nem a recepção: um nome que não está aqui
+pode ser de alguém da academia. Horário, escala e telefone de cada um não se
+informam — o recado vai para a equipe.
+
 ## Horário de funcionamento
 
 | Dia | Abertura | Fechamento |
@@ -169,6 +182,9 @@ aí vale o consultor.
 - Como é feita - presencial pelo consultor.
  Documentos necessários: Qualquer documento de identificação válido com foto. Para menores de 18 anos, é necessário documento de identificação dos pais ou responsáveis.
 - Prazo entre matrícula e primeira aula: Imediato
+- **Avaliação física:** é pós-venda. Quem agenda é o consultor, na matrícula ou
+  depois dela. A agenda de avaliação não está nesta base — não há dia nem
+  horário de avaliação a oferecer.
 
 Para as regras de plano adulto — adesão, agendamento, suspensão, devolução —
 veja `operacional-adulto.md`.

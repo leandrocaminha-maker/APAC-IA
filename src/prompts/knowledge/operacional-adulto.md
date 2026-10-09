@@ -27,6 +27,8 @@
 
 - A **primeira avaliação física é obrigatória**. É ela que identifica riscos de
   saúde e orienta a prescrição conforme objetivo e necessidade.
+- **Quem agenda a avaliação é o consultor**, na matrícula ou depois dela — e
+  é ele também quem remarca e cancela. Não há agenda de avaliação na base.
 - **PAR-Q na matrícula:** havendo qualquer resposta "sim", a pessoa assina termo
   de responsabilidade e se compromete a trazer atestado médico de aptidão.
 - **Regras de atestado (para quem, com que prazo, de quanto em quanto tempo):**
