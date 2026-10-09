@@ -57,8 +57,8 @@ const SECOES = [
       'Progressão pedagógica de 3 a 5 anos, na ordem: Adaptação → Estrelinha N1 → ' +
       'Peixinho N2 → Golfinho I → Golfinho II → Tutubarão. O nome da turma indica ' +
       'o nível de referência dela, mas **todo horário de matrícula desta faixa ' +
-      'atende todos os níveis de 3 a 5** — com a exceção das turmas de sexta, que ' +
-      'são aula extra e começam no Golfinho I. Ver "Como ler a grade infantil". O ' +
+      'atende todos os níveis de 3 a 5**, sem exceção — as turmas em que o nível ' +
+      'fecha a porta não estão listadas aqui. Ver "Como ler a grade infantil". O ' +
       'conteúdo de cada nível e a idade de entrada estão em ' +
       '`base-conhecimento-natacao-infantil.md`.',
     atividades: [
@@ -75,9 +75,9 @@ const SECOES = [
       'Progressão pedagógica de 6 a 12 anos, na ordem: N1 Branca → N2 Branca → ' +
       'N3 e N4 Amarela → N5 e N6 Laranja → N7 e N8 Vermelha → Atleta. O nome da ' +
       'turma indica o nível de referência dela, mas **todo horário de matrícula ' +
-      'desta faixa atende todos os níveis de 6 a 12** — com duas exceções: as ' +
-      '08:30, que são do N5 em diante, e as turmas de sexta, que são aula extra e ' +
-      'começam no N3. Ver "Como ler a grade infantil".',
+      'desta faixa atende todos os níveis de 6 a 12**, sem exceção — as turmas em ' +
+      'que o nível fecha a porta não estão listadas aqui. Ver "Como ler a grade ' +
+      'infantil".',
     atividades: [
       ['Natação Infantil N1', 'nível N1 Branca'],
       ['Natação Infantil N1 N2', 'níveis N1 e N2 Branca'],
@@ -146,23 +146,61 @@ const SECOES = [
       'Natação (+R$ 27) ou como atividade avulsa (ver `planos-e-valores.md`).',
     atividades: [['Funcional Kids', null]],
   },
-  {
-    titulo: 'Avaliação e Consultoria',
-    publico: 'geral',
-    nota:
-      'Atendimento individual (1 aluno por horário), incluso no acompanhamento ' +
-      'técnico de todos os planos adulto.',
-    atividades: [['Avaliação e Consultoria Avulsa', null]],
-  },
 ];
 
 // Musculação tem uma sessão a cada 30 min o dia inteiro: listar linha a linha
 // só polui. É resumida à parte, a partir dos mesmos dados.
 const MUSCULACAO = 'Musculação';
 
+/**
+ * Horários que ficam FORA da base de conhecimento da Leia.
+ *
+ * Não é filtro de dado: o CSV continua inteiro, e é ele a fonte da grade
+ * de verdade. O que sai daqui é só o que ela **não precisa saber**.
+ *
+ * São as turmas em que o nível fecha mesmo a porta, e que por isso viravam
+ * exceção escrita à regra "o nível não restringe o horário". Exceção em
+ * base de conhecimento é o pior dos dois mundos: ocupa contexto em toda
+ * conversa de criança e ainda assim é o tipo de detalhe que o modelo
+ * atropela justamente quando a família pergunta o horário.
+ *
+ * Nenhuma delas recebe aula experimental nem matrícula nova:
+ *
+ *   Natação Infantil N5+   → só existe às 08:30, e só para o N5 em diante
+ *   Golfinhos N3+ na sexta → aula extra, direito que começa no Golfinho I
+ *   Infantil N3+ na sexta  → aula extra, direito que começa no N3
+ *   Peixinhos sáb 10:00    → transição dos bebês para o 3 a 5: só recebe
+ *                            quem já é aluno (a de 11:00 segue normal)
+ *
+ * A sexta da Natação Bebê **não** entra aqui: bebê é 1x na semana em
+ * qualquer dia, e a sexta dele é turma de matrícula como outra qualquer.
+ *
+ * Quem tem direito à aula extra descobre o horário com o consultor — é
+ * conversa de aluno matriculado, não de venda.
+ *
+ * E a avaliação física, por outro motivo: o que o CSV traz dela são as
+ * sessões JÁ AGENDADAS, não horário livre. Com elas na base, a Leia
+ * ofereceu "horários de avaliação" a uma lead em 06/10/2026 e deixou uma
+ * sexta às 8h15 "combinada". Avaliação é pós-venda, quem agenda é o
+ * consultor, e a agenda dela não está em lugar nenhum da base.
+ */
+const OCULTOS = [
+  { atividade: 'Natação Infantil N5+' },
+  { atividade: 'Natação Golfinhos N3+', dia: 'Sex' },
+  { atividade: 'Natação Infantil N3+', dia: 'Sex' },
+  { atividade: 'Natação Peixinhos N1&N2', dia: 'Sab', hora: '10:00' },
+  { atividade: 'Avaliação e Consultoria Avulsa' },
+];
+
+const ehOculta = (aula) => OCULTOS.some(
+  (o) => o.atividade === aula.atividade
+    && (!o.dia || o.dia === aula.dia)
+    && (!o.hora || o.hora === aula.hora),
+);
+
 function lerCsv() {
   const linhas = readFileSync(CSV, 'utf-8').trim().split(/\r?\n/);
-  return linhas.slice(1).filter(Boolean).map((linha) => {
+  const todas = linhas.slice(1).filter(Boolean).map((linha) => {
     const [hora, dia, atividade, capacidade, professor] = linha.split(';');
     return {
       hora: hora.slice(0, 5),
@@ -172,6 +210,13 @@ function lerCsv() {
       professor: professor.trim(),
     };
   });
+
+  const visiveis = todas.filter((a) => !ehOculta(a));
+  const escondidas = todas.length - visiveis.length;
+  if (escondidas) {
+    console.log(`${escondidas} aula(s) fora da base por decisão de conteúdo (ver OCULTOS)`);
+  }
+  return visiveis;
 }
 
 const ordenaDia = (a, b) => DIAS.indexOf(a) - DIAS.indexOf(b);
@@ -448,18 +493,14 @@ function montarInfantil(aulas, hoje, conhecidas) {
   out.push('   horário, e nunca transfira por causa disso. Quem confirma a turma e a');
   out.push('   vaga é o consultor, com o professor.');
   out.push('');
-  out.push('4. **Duas exceções, e só estas duas.** Aqui o nível fecha mesmo a porta:');
-  out.push('');
-  out.push('   - **08:30 (Seg e Qua, e a sexta) é do N5 Laranja em diante.** Não');
-  out.push('     ofereça esse horário para quem está abaixo disso.');
-  out.push('   - **As turmas de sexta N3+ não recebem os níveis anteriores** — nem em');
-  out.push('     3 a 5 (Golfinhos N3+), nem em 6 a 12 (Infantil N3+).');
-  out.push('');
-  out.push('   A da sexta se explica sozinha: sexta é **aula extra**, e o direito à');
-  out.push('   aula extra só começa no nível intermediário (Golfinho I / N3) — quem');
-  out.push('   não chegou lá não tem o que fazer nessas turmas (`planos-e-valores.md`).');
-  out.push('   A das 08:30 é outra coisa: aquela turma **existe só para o N5+**, e');
-  out.push('   isso vale também no par de matrícula de segunda e quarta.');
+  out.push('   A regra vale sem exceção **porque a lista abaixo já é só o que');
+  out.push('   recebe matrícula e aula experimental**. As turmas em que o nível');
+  out.push('   fecha a porta — aula extra de quem já está no intermediário, e a');
+  out.push('   turma exclusiva de nível avançado — foram deixadas de fora de');
+  out.push('   propósito: não há como oferecê-las por engano, e não há exceção');
+  out.push('   para você lembrar. Se um responsável perguntar por um horário que');
+  out.push('   não está aqui, isso é assunto de aluno matriculado — o consultor');
+  out.push('   confirma.');
   out.push('');
   out.push('**Duração:** bebê 30 minutos; 3–5 e 6–12 anos 45 minutos. É dado');
   out.push('confirmado — responda direto, não transfira.');
@@ -474,8 +515,11 @@ function montarInfantil(aulas, hoje, conhecidas) {
   out.push('  só, nem em dias cruzados (ex.: segunda e terça).');
   out.push('- As turmas de **sábado são exclusivas do sábado**: quem entra nelas faz');
   out.push('  1x na semana e não combina com os pares da semana.');
-  out.push('- **Sexta não tem matrícula.** As turmas de sexta são usadas pelos alunos que');
-  out.push('  têm direito a aula extra na semana.');
+  out.push('- **Sexta não tem matrícula na Escola de Natação Infantil.** As turmas de');
+  out.push('  sexta são a aula extra de quem já tem direito a ela, e por isso não');
+  out.push('  estão listadas aqui — quem tem direito acerta o horário com o');
+  out.push('  consultor. (A Natação Bebê é outra coisa: ela é 1x na semana e tem');
+  out.push('  turma de sexta normal, listada na seção dela.)');
   out.push('- Ligação com a frequência do nível (`planos-e-valores.md`): o par de dias');
   out.push('  entrega as 2 sessões do nível iniciante. Os níveis intermediário (3) e de');
   out.push('  aperfeiçoamento (5) completam a frequência com as aulas extras a que o');

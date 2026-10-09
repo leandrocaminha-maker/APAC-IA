@@ -7,7 +7,7 @@
 > **A grade da Escola de Natação Infantil e da Natação Bebê está em
 > `grade-horaria-infantil.md`**, no módulo `infantil`. Aqui estão as
 > atividades a partir de 13 anos e as regras gerais de leitura.
-> Última geração: 31/08/2026.
+> Última geração: 09/10/2026.
 
 ## Como usar esta grade no atendimento
 
@@ -135,19 +135,6 @@ A grade de aulas é mais estreita que o horário de funcionamento:
 
 - **19:45** — Qui (até 25 vagas)
 - **20:35** — Seg (até 25 vagas)
-
-## Avaliação e Consultoria
-
-> Atendimento individual (1 aluno por horário), incluso no acompanhamento técnico de todos os planos adulto.
-
-### Avaliação e Consultoria Avulsa
-
-- **07:15** — Sex (até 1 vagas)
-- **07:45** — Sex (até 1 vagas)
-- **08:15** — Sex (até 1 vagas)
-- **09:15** — Seg (até 1 vagas)
-- **17:00** — Ter, Qui (até 1 vagas)
-- **17:30** — Seg, Ter, Qua, Qui (até 1 vagas)
 
 ## Musculação
 
