@@ -1,6 +1,6 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 12/09/2026, fim do dia.** Documento de continuidade: descreve
+> **Snapshot de 09/10/2026, fim da sessão.** Documento de continuidade: descreve
 > onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
@@ -1232,6 +1232,157 @@ PowerShell (`npm` é um `.ps1`). Pelo Git Bash funciona; pelo PowerShell, chame 
 - **Desligue a página quando a rodada de testes acabar** — senha curta em IP
   público não é para ficar no ar indefinidamente.
 
+## O que foi feito em 09/10/2026
+
+Sessão de ajuste da Leia no WhatsApp, a partir de três conversas reais. Commits
+`461c8f3` e `05b70f6`, os dois no ar.
+
+| | |
+|---|---|
+| Deploy | `05b70f6`, VPS igual ao repositório |
+| Prompt no banco | publicado (backup em `data/backups/prompt-vendas-2026-10-09T14-04-59-545Z.md`) |
+| Migrations | 001–017 aplicadas — de 011 a 017 conferidas hoje, tabela por tabela |
+| Working tree | limpo: o trabalho de grade pendente desde 09/09 entrou no `461c8f3` |
+
+### 1. Recado para alguém da academia não é engano
+
+**O caso:** em 08/10 a Vanessa, professora, escreveu "Cátia qdo chegar a
+avaliação pode pedir pra subir por favor, ou me avisa q eu desço". A Leia
+respondeu que a mensagem tinha vindo para o número errado — "aqui não tem
+nenhuma Cátia". A Cátia é consultora. Só houve transferência depois de a Vanessa
+corrigir, e a pergunta seguinte ("você sabe se o Lucas trabalha aí?") ficou sem
+resposta.
+
+Não era caso isolado. Em 02/09 a neta da Dona Helena escreveu "Chamei Uber para
+a minha vó / Chega em 3 minutos" e ouviu que a mensagem "pode ter vindo parar
+aqui sem querer". O padrão é o mesmo: quem escreve como se o outro lado já
+soubesse do contexto vira "engano". E a Leia não conhecia o nome de ninguém da
+equipe.
+
+**O que mudou** (`vendas.md`, "Recado para alguém daqui não é engano", dentro
+da Abertura):
+
+- Mensagem que cita alguém pelo nome, fala de aula, avaliação, aluno ou de
+  alguém na academia, ou pede uma ação aqui dentro, é recado. A Leia se
+  apresenta, diz que vai passar o recado e transfere **no mesmo turno**, com
+  para quem, de quem, o quê e se é para agora no `motivo`. Sem perguntar nada
+  antes: recado tem hora.
+- Nunca afirma que alguém não trabalha aqui.
+- Engano só quando nada na mensagem pode ser da academia. Na dúvida, pergunta
+  para quem é o recado.
+- Na tabela de tipos, "alguém da própria equipe" é `outro`. As descrições de
+  `transferir_para_humano` e `definir_tipo_atendimento` (`ai-tools.js`) repetem
+  a regra.
+
+### 2. A equipe na base, com cargo e área
+
+Tabela "Equipe de atendimento" em `informacoes-gerais.md`:
+
+| Nome | Cargo | Cuida de |
+|---|---|---|
+| Lucas | Gerente — também atende como consultor | gerência e time comercial |
+| Larissa | Coordenadora — não atende como consultora | professores e atividades |
+| Cátia, Shirlei | Consultoras | time comercial: planos e matrícula |
+
+Professores e recepção não estão nela, e o prompt diz isso.
+
+**Por que na base, e não em `crm_users`.** A primeira versão lia os nomes do
+login do painel e não serviu: `crm_users` não tem cargo (o `role` é só
+`consultor` ou `admin`, e a Larissa aparecia como consultora). Cargo pediria
+migration, campo na tela de Ajustes e SQL à mão por pessoa. Na base é texto que
+vocês editam. ⚠️ **Mudou a equipe, edite a tabela e faça deploy** — a base vai
+dentro da imagem.
+
+A conduta, decidida pelo Leandro em 09/10:
+
+| Perguntaram | A Leia |
+|---|---|
+| Por um nome ("o Lucas trabalha aí?") | confirma que é da equipe, **sem dizer o cargo**, e oferece passar o recado |
+| Por um cargo ("quero falar com o gerente") | diz quem é e pergunta o assunto antes de transferir |
+| Por alguém, com assunto de outra área ("a coordenadora, sobre minha matrícula") | explica do que cada um cuida e pergunta para onde a pessoa prefere ir; transfere com a escolha no `motivo` |
+| Por alguém, com assunto da área dele | passa o recado direto |
+
+Horário, escala, telefone pessoal e "está aí agora?" não se informam de
+ninguém.
+
+### 3. Avaliação física é do consultor
+
+**O caso:** a Késia, lead, pediu em 06/10 para deixar a avaliação no sábado. A
+Leia respondeu com uma lista de "horários de avaliação" e deixou "combinada" a
+sexta às 8h15. Em 09/10 a Késia avisou que não ia, e a Shirlei desmarcou. A
+transferência desse dia ainda levava "horários disponíveis na grade" no motivo.
+
+**A origem era a grade.** O CSV traz as sessões de avaliação **já agendadas**
+("Avaliação e Consultoria Avulsa", até 1 vaga), e a grade gerada as mostrava
+como horário. Avaliação é pós-venda, quem agenda é o consultor, e a Leia não tem
+acesso a essa agenda.
+
+- A atividade saiu da grade pelo gerador (lista `OCULTOS`). Vale também para a
+  Leia do acompanhamento, que lê a mesma grade.
+- `vendas.md`, "Avaliação física: você não agenda": não oferece dia, não deixa
+  nada combinado, não descreve como a agenda funciona. Pedido de aluno sobre
+  avaliação vira transferência, sem sugerir horário.
+- O fato na base: `informacoes-gerais.md` (Matrícula) e `operacional-adulto.md`.
+
+### 4. A grade infantil: o trabalho pendente desde 09/09, fechado
+
+O working tree carregava desde 09/09 uma troca de abordagem: em vez de escrever
+as exceções de nível na base ("08:30 só do N5", "sexta só do N3 em diante"),
+tirar essas turmas dela (`OCULTOS`, no gerador). Exceção escrita era o detalhe
+que o modelo atropelava quando a família perguntava o horário. **Substitui as
+"duas exceções" de 31/08.**
+
+Estava inconsistente: as notas das faixas 3–5 e 6–12 e a retirada da Peixinhos
+N1&N2 de sábado 10:00 tinham sido feitas só no `.md`, e a próxima
+`npm run grade` desfaria as duas. Agora estão no gerador — regerar só muda a
+data.
+
+Fora da base hoje, e por quê:
+
+| Turma | Motivo |
+|---|---|
+| Natação Infantil N5+ (08:30) | só do N5 em diante |
+| Golfinhos N3+ e Infantil N3+, sexta | aula extra; o direito começa no Golfinho I / N3 |
+| Peixinhos N1&N2, sábado 10:00 | transição dos bebês para o 3 a 5: só recebe quem já é aluno (Leandro, 09/10). A de 11:00 segue na base |
+| Avaliação e Consultoria Avulsa | sessões já agendadas, não horário livre |
+
+`OCULTOS` filtra por `atividade` e, opcionalmente, `dia` e `hora`.
+
+### Como foi testado
+
+Antes de publicar, os casos rodaram no modelo de verdade com o `vendas.md` do
+disco: um script descartável troca a leitura de `wa_ai_prompts` pelo arquivo e
+chama `processMessage` com `contactInfo.id = null` — as tools de escrita recusam
+por falta de contato, e só a telemetria de uso grava. Custo: ~US$ 0,46 na
+primeira chamada (escrita do cache do prefixo novo) e ~US$ 0,03 por caso depois.
+
+Casos: os dois recados reais, Lucas, Larissa, gerente, coordenação com assunto
+de matrícula e com assunto da área dela, nome desconhecido ("o professor Rafael
+tá aí?"), engano de verdade ("Mãe, separa a marmita"), lead comum e quatro de
+avaliação. Dois deslizes apareceram e foram corrigidos antes de publicar: a Leia
+disse que a Larissa "também atende clientes", e descreveu a agenda de avaliação
+como "conforme a sua disponibilidade".
+
+### O que ficou de fora
+
+- **Professor não é reconhecido pelo número.** A lista da equipe do Prescrev
+  traz `whatsapp_cadastro`, e daria para avisar a Leia "este número é da
+  professora X". Não foi feito: a regra do recado já cobre o caso da Vanessa.
+- **Recado de quem ativou o EQUIPE não chega a ninguém.** A porta da equipe
+  (`acompanhamento/equipe.js`) grava toda mensagem de quem ativou, e não
+  responde nem transfere. Se a Vanessa ativar o EQUIPE, o "Cátia, quando chegar
+  a avaliação…" fica gravado sem handoff. Não verifiquei se aparece em alguma
+  fila do painel.
+- **O preparo para a avaliação não está na base, e a Leia improvisou.** No
+  primeiro caso depois do deploy (09/10, 11h11), uma aluna pediu as instruções
+  para a avaliação das 19:30. A Leia transferiu certo, com urgência e sem falar
+  de horário — mas antes deu uma "recomendação geral" (roupa de ginástica,
+  evitar treino pesado e refeição perto do horário), e o próprio motivo do
+  handoff diz que a base não tem protocolo de preparo. A avaliação inclui
+  bioimpedância, que tem preparo próprio. O certo é escrever o preparo no
+  "Protocolo de Avaliação Física" de `operacional-adulto.md` — e, enquanto não
+  estiver lá, a regra de não inventar deveria ter segurado.
+
 ## O que foi feito em 12/09/2026
 
 | | |
@@ -1547,6 +1698,10 @@ prática junto: bebê é 1x na semana, 30 minutos, com o responsável na água e
 **sem par de dias** — prometer "terça e quinta às 17h" para uma criança de 3
 anos é oferecer turma que ela não pode frequentar. Entre 3,5 e 4 os dois grupos
 são possíveis, e quem decide é o professor.
+
+> ⚠️ **Substituído em 09/10/2026.** As duas exceções abaixo não estão mais
+> escritas na base: as turmas saíram dela (lista `OCULTOS` no gerador), e a
+> regra passou a valer sem exceção. Ver "O que foi feito em 09/10/2026", item 4.
 
 **Nível não restringe horário — com duas exceções.** A regra anterior cobria só
 "quando o horário não especificar o nível", deixando de fora o caso comum: o
@@ -2244,16 +2399,27 @@ manda chamá-la uma vez por conversa, com `lead` como padrão na dúvida.
 
 ### Onde retomar
 
-Tudo está **no ar e funcionando**: migrations 001–010 aplicadas (a 008 entrou em
-12/09), prompt publicado, WhatsApp conectado, quatro workers rodando, VPS em
-`28fbb16`. Não há passo de instalação pendente.
+Tudo está **no ar e funcionando**: migrations 001–017 aplicadas (conferidas em
+09/10), prompt publicado, WhatsApp conectado, workers rodando, VPS em `05b70f6`.
+Não há passo de instalação pendente. O working tree está limpo — o trabalho de
+grade que ficava de fora dos commits desde 09/09 entrou em 09/10.
 
-⚠️ **O working tree tem alterações não commitadas** do trabalho de grade horária
-(`scripts/gerar-grade-horaria.js`, `grade-horaria.md`,
-`grade-horaria-infantil.md`). Elas são de outra frente e ficaram de fora dos
-commits de 12/09 de propósito.
+O acompanhamento tem a sua própria lista para começar a valer, na seção do topo
+("Para o início").
 
 O que vale fazer a seguir, em ordem de retorno:
+
+**0. Conferir em conversa real o que mudou em 09/10.** Recado para a equipe e
+avaliação física foram testados em simulação, não em produção. Os handoffs desde
+o deploy mostram se os recados chegam com para quem, de quem e o quê, e se
+alguma transferência ainda fala em horário de avaliação:
+
+```sql
+SELECT created_at, metadata->>'motivo_handoff' AS motivo
+FROM wa_messages
+WHERE created_at > '2026-10-09 14:07+00' AND metadata->>'motivo_handoff' IS NOT NULL
+ORDER BY created_at DESC;
+```
 
 **1. Aferir o custo da API depois da mudança de cache.** É a única medição de
 12/09 que ficou pela metade: o tráfego pós-deploy foi só de um perfil
