@@ -24,8 +24,11 @@
  *
  *   node scripts/campanha.js ativar <slug>   |   pausar <slug> [motivo]
  *
- *   node scripts/campanha.js rodar <slug>
+ *   node scripts/campanha.js rodar <slug> [--agora]
  *       Roda UM ciclo agora, sem esperar o worker. Respeita CAMPANHA_DRY_RUN.
+ *       Com --agora as mensagens saem em seguida, com o piso entre elas, em
+ *       vez de espalhadas pelo resto do dia — é para piloto de poucas
+ *       pessoas. Teto, janela e supressão valem igual.
  *
  *   node scripts/campanha.js status [slug]
  *       Resumo: alvos, enviados, respostas, supressões, taxas.
@@ -288,7 +291,7 @@ const comandos = {
         alvo, oferta: c.oferta, roteiro: c.roteiro,
       });
       return text;
-    });
+    }, { compacto: Boolean(opts.agora) });
 
     console.log(`\n${r.agendados} agendada(s)${r.motivo ? ` — ${r.motivo}` : ''}`);
   },
@@ -461,6 +464,7 @@ const comandos = {
     console.log('\nPróximo passo: o piloto, com os celulares da equipe.');
     console.log(`  node scripts/campanha.js alvo ${data.slug} 11999998888 "Fulano"`);
     console.log(`  node scripts/campanha.js ativar ${data.slug}`);
+    console.log(`  node scripts/campanha.js rodar ${data.slug} --agora`);
   },
 
   async alvo() {

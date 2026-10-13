@@ -127,8 +127,11 @@ mais avaliados, pausa a pesquisa sozinha.
    `ABERTURA_PADRAO` e `LINK_PADRAO` antes do deploy, ou `mensagem_abertura` e
    `mensagem_link` na tabela enquanto a campanha é rascunho.
 6. **Piloto com a equipe**: `alvo satisfacao-2026 <celular> "<nome>"` para três
-   ou quatro celulares, `ativar`, e conferir os quatro caminhos — responder
-   "sim", perguntar "quem é?", responder SAIR, não responder.
+   ou quatro celulares, `ativar`, `rodar satisfacao-2026 --agora`, e conferir
+   os quatro caminhos — responder "sim", perguntar "quem é?", responder SAIR,
+   não responder. O `--agora` é o que faz o piloto sair em minutos: sem ele o
+   worker espalha as três mensagens pelo resto do dia, duas horas entre uma e
+   outra, e a última pode ficar para amanhã.
    ⚠️ **O primeiro "sim" confere a peça que não deu para testar daqui**: o log
    tem de mostrar `[pesquisa] 📩`. Se a resposta aparecer como `[webhook] 📩`,
    a Evolution não mandou o nome da instância como o código espera, e a Leia

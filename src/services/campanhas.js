@@ -395,9 +395,16 @@ export async function registrarResposta(phone) {
  *   minutos — o padrão que se está tentando evitar. Com 8, cabem 5 e o
  *   resto fica para o dia seguinte.
  * @param {number} [opts.jitter] - Fração de variação (0.4 = ±40%).
+ * @param {boolean} [opts.compacto] - Não estica pelo resto da janela: as
+ *   mensagens saem a partir de agora, com o piso entre elas. É para o
+ *   piloto — três pessoas espalhadas pelo dia inteiro esperam duas horas
+ *   cada uma, e a última nem cabe. Só `campanha.js rodar --agora` liga; o
+ *   worker nunca.
  * @returns {Date[]} Em ordem crescente, todos dentro da janela.
  */
-export function distribuirHorarios(quantidade, { agora = new Date(), intervaloMinimoMin = 8, jitter = 0.4 } = {}) {
+export function distribuirHorarios(quantidade, {
+  agora = new Date(), intervaloMinimoMin = 8, jitter = 0.4, compacto = false,
+} = {}) {
   if (quantidade <= 0) return [];
 
   // Domingo não tem contato, e sábado fecha às 13h: a janela é a do dia.
@@ -412,7 +419,9 @@ export function distribuirHorarios(quantidade, { agora = new Date(), intervaloMi
   if (inicioMin >= janela.fimMin) return [];
 
   const restanteMin = janela.fimMin - inicioMin;
-  const intervaloBase = Math.max(intervaloMinimoMin, restanteMin / quantidade);
+  const intervaloBase = compacto
+    ? intervaloMinimoMin
+    : Math.max(intervaloMinimoMin, restanteMin / quantidade);
 
   const horarios = [];
   let deslocamento = 0;
@@ -529,9 +538,13 @@ export async function conferirGuarda(campanha) {
  *
  * @param {object} campanha
  * @param {(alvo:object, campanha:object) => Promise<string>} gerarTexto
+ * @param {object} [opts]
+ * @param {boolean} [opts.compacto] - Agenda para já, sem espalhar pelo dia
+ *   (ver `distribuirHorarios`). Teto, janela, supressão e conferência de
+ *   número valem igual.
  * @returns {Promise<{agendados:number, motivo?:string}>}
  */
-export async function processarCampanha(campanha, gerarTexto) {
+export async function processarCampanha(campanha, gerarTexto, { compacto = false } = {}) {
   if (await conferirGuarda(campanha)) {
     return { agendados: 0, motivo: 'guarda de supressão' };
   }
@@ -628,10 +641,10 @@ export async function processarCampanha(campanha, gerarTexto) {
 
   if (!elegiveis.length) return { agendados: 0, motivo: 'todos os pendentes estão suprimidos' };
 
-  const horarios = distribuirHorarios(
-    elegiveis.length,
-    pesquisa ? { intervaloMinimoMin: config.envioAlt.intervaloMinimoMin } : {},
-  );
+  const horarios = distribuirHorarios(elegiveis.length, {
+    ...(pesquisa ? { intervaloMinimoMin: config.envioAlt.intervaloMinimoMin } : {}),
+    compacto,
+  });
 
   // Onde o alvo fica esperando a resposta, e por qual pista a mensagem sai.
   const etapaDeEspera = pesquisa ? ETAPA.aguardando : 'aguardando_consentimento';
@@ -703,7 +716,14 @@ export async function processarCampanha(campanha, gerarTexto) {
         continue;
       }
 
-      await supabase
+      // Só marca quem AINDA está pendente, e confere se marcou.
+      //
+      // O worker e o `campanha.js rodar` são processos diferentes e podem
+      // pegar o mesmo alvo no mesmo instante: cada um enfileiraria a sua
+      // mensagem, e a pessoa receberia a abertura duas vezes. Quem chega em
+      // segundo não marca nada — e desfaz a própria linha da fila, que
+      // ainda está minutos longe de sair.
+      const { data: marcado } = await supabase
         .from('crm_campanha_alvos')
         .update({
           status: 'agendado',
@@ -716,7 +736,15 @@ export async function processarCampanha(campanha, gerarTexto) {
           queue_id: queueId,
           scheduled_for: quando.toISOString(),
         })
-        .eq('id', alvo.id);
+        .eq('id', alvo.id)
+        .eq('status', 'pendente')
+        .select('id');
+
+      if (!marcado?.length) {
+        await supabase.from('wa_message_queue').delete().eq('id', queueId).eq('status', 'pending');
+        logger.warn(`[campanhas] Alvo ${alvo.id} já tinha sido agendado por outro processo — linha ${queueId} desfeita`);
+        continue;
+      }
 
       agendados++;
     } catch (err) {
