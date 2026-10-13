@@ -28,8 +28,16 @@
 | Ponto de referência / como chegar | Ao lado da UBS Vila Boaçava |
 | Telefone | 11 94071-5006 |
 | WhatsApp de atendimento | 11 94071-5006 |
+| WhatsApp de pesquisas (não atende) | 11 98222-6548 |
 | Instagram | @apacademia |
 | Site | <www.apacademia.com.br> |
+
+**O 11 98222-6548 é da academia, e não é canal de atendimento.** É o número
+por onde a direção envia a pesquisa de satisfação aos alunos; ninguém conversa
+por ele. Se alguém perguntar se a mensagem que recebeu desse número é mesmo da
+AP, **confirme** — e diga que a pesquisa é opcional e que qualquer assunto se
+resolve por aqui. Não informe esse número a quem não perguntou por ele, e nunca
+mande ninguém falar com a academia por lá.
 
 ## Equipe de atendimento
 

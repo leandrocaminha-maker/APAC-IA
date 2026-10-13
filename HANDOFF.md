@@ -1,10 +1,181 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 09/10/2026, depois da ponte (A5d).** Documento de continuidade: descreve
-> onde o projeto parou e o que a próxima sessão deve fazer.
+> **Snapshot de 12/10/2026, depois da pesquisa pelo número alternativo.** Documento de
+> continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## Pesquisa de satisfação pelo número alternativo (12/10/2026)
+
+Pedido do responsável: uma pesquisa de satisfação para os **alunos adultos**,
+saindo por um **segundo número** da academia, com o público vindo do EVO pela
+segmentação (`crm.segmentation.batch`, o mesmo caminho das campanhas).
+
+**Estado: código pronto, NADA ligado.** Sem `EVOLUTION_INSTANCE_ALT` no `.env`
+nada muda no que já roda. A migration **019** está por aplicar, o chip por
+parear e a pesquisa por criar — o roteiro está mais abaixo.
+
+| | |
+|---|---|
+| Número alternativo | **11 98222-6548** — em 13/10/2026 a operadora ainda não tinha ativado o chip |
+| Formulário | <https://forms.gle/qgJ3Zd4EPy2qWVzz6> — "Sua experiência na AP - Queremos ouvir você!", aberto, sem login, 4 páginas (conferido em 13/10) |
+| Quem assina | "Aqui é da direção da AP Academia" (pedido do responsável, 13/10) |
+
+### Como funciona
+
+A pesquisa é uma campanha com `finalidade = 'pesquisa'`. Entra pelo mesmo
+webhook, respeita a mesma janela de contato e os mesmos interruptores
+(`CAMPANHA_HABILITADA`, `CAMPANHA_DRY_RUN`). O que ela tem de próprio:
+
+1. **A abertura não leva link.** É a mensagem que dá credibilidade ao número
+   novo: o nome da pessoa, por que o número é outro, onde conferir (o WhatsApp
+   de atendimento, a recepção), UMA pergunta — "posso te mandar o link?" — e a
+   saída. Número desconhecido mandando link é o desenho de um golpe, e o
+   WhatsApp trata assim: link de quem não é contato chega sem ser clicável,
+   até a pessoa responder ou salvar o número.
+2. **O link vai quando a pessoa responde** (texto, "👍", reação). A resposta é
+   o que libera o link no aparelho dela e o que conta a favor do número.
+3. **Quem não responde**: depende de `link_espera_min` na campanha. Vazio (o
+   padrão) = não recebe o link. Um número = recebe depois desses minutos, com
+   a dica de responder para o link abrir.
+4. **Nenhum texto passa pelo modelo.** Abertura e link são escritos por uma
+   pessoa e gravados na campanha; `---` sozinho numa linha separa as redações,
+   e cada alvo recebe uma (três de abertura no padrão, em
+   `pesquisa-regras.js`). `criar-pesquisa` recusa abertura com link, sem SAIR
+   ou sem exatamente uma pergunta.
+5. **Ninguém conversa por lá.** Não há Leia no número alternativo. Cada pessoa
+   ouve no máximo a abertura, o link e uma resposta fixa (esclarecimento a
+   quem pergunta "quem é?", agradecimento, recusa); depois, silêncio. Quem
+   escreve sem ser alvo recebe, uma vez por dia, "este número não atende — fale
+   no 11 94071-5006". O aparelho segue sendo um WhatsApp: quem estiver com ele
+   responde à mão o que fugir disso.
+
+### O que separa os dois números
+
+O webhook da Evolution é global — as duas instâncias batem em
+`/webhook/evolution`. Sem separação, a resposta de um aluno à pesquisa viraria
+lead e a Leia responderia **pelo número principal**. São quatro barreiras:
+
+| Onde | O que faz |
+|---|---|
+| `webhook.js` | Evento da instância alternativa (`event.instance`) vai a `pesquisa.tratarEvento` antes de tudo. Não cria contato, conversa nem lead |
+| `wa_alt_mensagens` | O livro do número alternativo. Nada dele entra em `wa_messages`: fora do teto do principal, do painel, do follow-up e do histórico da Leia |
+| `queue-processor.js` | Duas pistas. A principal **nunca** pega linha `alt:…`, com ou sem número alternativo configurado; a alternativa só existe com `EVOLUTION_INSTANCE_ALT` |
+| etapas `pesquisa_*` | `registrarResposta`, a porta de consentimento e a carência do número principal ignoram os alvos de pesquisa |
+
+**SAIR tem dois alcances.** No número principal vale para tudo
+(`crm_supressoes`), inclusive para a pesquisa. No número alternativo vale só
+para o número alternativo (`pesquisa_saiu`, no alvo): `crm_supressoes` cala
+também o acompanhamento e a ponte com o professor, e cortar isso porque o aluno
+recusou uma pesquisa seria um efeito que ninguém pediu.
+
+**A carência passou a ser por finalidade** — vale para a venda também. Quem
+ignorou uma oferta pode receber a pesquisa, e vice-versa.
+
+### A regulagem — maior que a do principal, com rampa
+
+| | Principal | Alternativo |
+|---|---|---|
+| Teto por dia | 30 (`ENVIO_TETO_DIARIO`) | 80 (`ENVIO_ALT_TETO_DIARIO`), cortado em 150 no código |
+| Primeiros dias | — | rampa 25 → 40 → 60 (`ENVIO_ALT_RAMPA`), contada da 1ª abertura da instância |
+| Piso entre aberturas | 8 min | 4 min no agendamento (`ENVIO_ALT_INTERVALO_MIN`); a fila ainda segura 2,4 min |
+| Entre dois envios | ~75 s | ~45 s (`ENVIO_ALT_ESPACAMENTO_SEG`) |
+
+O teto conta **pessoas abordadas** (a abertura). Link e resposta fixa vão para
+conversa já aberta e não contam. Com os padrões, 600 alunos saem em cerca de
+nove dias úteis; sábado cabe menos (janela de 4 h) e o resto fica para segunda.
+
+A pista alternativa manda **uma mensagem por vez** e nunca duas aberturas com
+menos de 2,4 min entre elas: o acumulado de uma queda de sessão escoa no ritmo
+de sempre, em vez de sair em rajada na reconexão (o incidente de 28/08). Com a
+sessão fora do ar a campanha não agenda e a fila não gasta tentativa.
+
+A guarda de supressão da campanha vale: mais de 3% respondendo SAIR, com 20 ou
+mais avaliados, pausa a pesquisa sozinha.
+
+### Roteiro de lançamento
+
+1. **O chip.** Perfil do WhatsApp com nome ("AP Academia"), foto e descrição.
+   Vale usar o número por dois ou três dias antes — conversa de verdade com a
+   equipe —: número que nasce disparando é o que mais cai.
+2. **Migration 019** no SQL Editor (`019_pesquisa_numero_alternativo.sql`).
+3. **`.env`**: `EVOLUTION_INSTANCE_ALT=<nome>` (e o bloco "NÚMERO ALTERNATIVO"
+   do `.env.example`); recriar o container.
+4. **Parear**: painel → Ajustes → *WhatsApp — número alternativo* (só admin) →
+   Criar instância → Gerar QR code.
+5. **Criar a pesquisa**:
+   ```bash
+   docker compose exec backend node scripts/campanha.js criar-pesquisa satisfacao-2026 \
+     --link=https://forms.gle/qgJ3Zd4EPy2qWVzz6 \
+     --gatilho="[PESQ-2026] alunos adultos ativos" \
+     --base-legal="..." --link-espera=resposta
+   ```
+   O comando imprime como a mensagem chega. Para trocar os textos: editar
+   `ABERTURA_PADRAO` e `LINK_PADRAO` antes do deploy, ou `mensagem_abertura` e
+   `mensagem_link` na tabela enquanto a campanha é rascunho.
+6. **Piloto com a equipe**: `alvo satisfacao-2026 <celular> "<nome>"` para três
+   ou quatro celulares, `ativar`, e conferir os quatro caminhos — responder
+   "sim", perguntar "quem é?", responder SAIR, não responder.
+   ⚠️ **O primeiro "sim" confere a peça que não deu para testar daqui**: o log
+   tem de mostrar `[pesquisa] 📩`. Se a resposta aparecer como `[webhook] 📩`,
+   a Evolution não mandou o nome da instância como o código espera, e a Leia
+   vai responder pelo número principal — pare e veja `ehDaInstancia`.
+7. **Avisar antes de disparar**: a recepção (uma das aberturas manda perguntar
+   lá) e um story no Instagram. A **Leia** já sabe: o 11 98222-6548 está na
+   tabela de canais de `knowledge/informacoes-gerais.md`, como "WhatsApp de
+   pesquisas (não atende)" — ela confirma a quem perguntar e não o oferece a
+   ninguém. Vale a partir do deploy.
+8. **O segmento no EVO**, com a descrição começando por `[PESQ-2026]`, e a
+   automação apontando para o webhook de sempre. Depois: `gatilhos` (o segmento
+   achou a campanha?) e `status`.
+9. **Acompanhar**: `campanha.js numero` (sessão, dia da rampa, teto de hoje,
+   fila) e `campanha.js status satisfacao-2026`.
+
+### Três coisas que mudaram para a campanha de venda também
+
+- **O gatilho casa pelo código entre colchetes.** `campanhaDoGatilho` tenta a
+  descrição inteira e, não casando, o `[CÓDIGO]` do começo — a vírgula a mais
+  que derrubou os 75 de 28/08 não derruba mais. Código repetido em duas
+  campanhas não casa com nenhuma.
+- **`campanha.js gatilhos` e `reabsorver <slug>`**: ver o que o EVO mandou e a
+  campanha que cada segmento achou, e repassar a coorte que chegou antes de a
+  campanha existir. Era feito à mão.
+- **`campanha.js alvo <slug> <telefone>`**: uma pessoa na campanha, para piloto.
+
+### O que NÃO foi feito
+
+- **Saber quem respondeu a pesquisa.** O formulário é externo; aqui só se sabe
+  quem recebeu o link. `respondeu` no resumo é "respondeu à abertura".
+- **A pesquisa no painel.** Não há tela: é `campanha.js status` e
+  `wa_alt_mensagens`. As conversas do número alternativo não aparecem no painel,
+  de propósito.
+- **Conta com LID sem número no evento**: a resposta chega sem telefone e não
+  dá para achar o alvo. Fica no log (`sem telefone legível`) e para quem
+  estiver com o aparelho. Com `link_espera_min` a pessoa ainda recebe o link.
+- **A Leia do acompanhamento não conhece o número de pesquisas.** A base dela
+  lê só "Horário de funcionamento" de `informacoes-gerais.md`
+  (`acompanhamento/prompt.js`), e a linha nova está em "Contato e canais". Sem
+  efeito enquanto o acompanhamento está em teste; antes de ele ir para valer,
+  incluir a seção na base dela.
+- **A URL do número de atendimento na abertura.** Vai só o número, em texto; o
+  `wa.me` está nas três respostas fixas, que saem depois de a pessoa escrever.
+  O responsável pediu a URL (13/10) e ficou de decidir depois do piloto: link
+  na primeira mensagem de número desconhecido tende a chegar sem ser clicável e
+  é o que mais gera denúncia.
+
+### ⚠️ Achado, não corrigido: a guarda de supressão da venda não conta o SAIR de quem já recebeu
+
+`suprimir()` só marca `suprimido` o alvo que estava `pendente` ou `agendado`.
+Quem recebeu a campanha (`enviado`) e respondeu SAIR entra em `crm_supressoes`,
+mas o alvo segue `enviado` — e `taxa_supressao`, que é o que `conferirGuarda`
+lê, não se mexe. A guarda que deveria pausar uma campanha de lista ruim só
+enxerga quem pediu para sair **antes** de a mensagem dele sair. As duas
+campanhas de agosto fecharam com "0 supressões", o que pode ser isso.
+
+Na pesquisa o SAIR marca o alvo, e a guarda funciona. Na venda fica para
+decidir: incluir `enviado` naquela atualização muda também a carência, que
+filtra por `status = 'enviado'`.
 
 ## Acompanhamento dos alunos do Prescrev — a régua em ensaio (08/10/2026)
 

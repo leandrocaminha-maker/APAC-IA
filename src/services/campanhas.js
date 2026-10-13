@@ -30,6 +30,15 @@ import { dentroDaJanela, janelaDoDia } from './followup.js';
 import { montarSegmento } from './segmentos.js';
 import { normalizePhone, telefoneValido, numeroExiste } from './evolution.js';
 import { limiteEnvio } from './limite-envio.js';
+import { numeroAlternativo } from './numero-alternativo.js';
+import { ETAPA, PREFIXO_ETAPA, ehPesquisa, origemAbertura, textoDeAbertura } from './pesquisa-regras.js';
+
+// A pesquisa de satisfação (migration 019) é uma campanha com
+// `finalidade = 'pesquisa'`, e tudo o que ela tem de próprio parte disso:
+// sai pelo número alternativo, com teto e ritmo dele, o texto é fixo em vez
+// de gerado, e as etapas dos alvos começam com `pesquisa_`. É por esse
+// prefixo que as funções do número principal deixam os alvos dela em paz.
+const SO_VENDA = `etapa_conversa.is.null,etapa_conversa.not.like.${PREFIXO_ETAPA}*`;
 
 // As constantes espelhadas saíram em 28/08/2026, quando a janela deixou de
 // ser 9h–20h30 todo dia: sábado fecha às 13h e domingo não tem contato.
@@ -189,17 +198,28 @@ export async function estaSuprimido(phone) {
  * O filtro é `status = 'enviado'` porque os status dos alvos são exclusivos:
  * quem respondeu virou `respondeu` e sai desta conta sozinho. Ou seja, a
  * consulta já significa exatamente "recebeu e ficou calado".
+ *
+ * A carência é POR FINALIDADE. Quem não respondeu a uma oferta não deixa de
+ * poder opinar numa pesquisa, e quem ignorou a pesquisa — que veio de outro
+ * número — não some da próxima campanha. O que a carência evita é a mesma
+ * coisa de novo, cedo demais.
  */
-async function emCarencia(telefones, dias = config.campanha.carenciaDias) {
+async function emCarencia(telefones, { dias = config.campanha.carenciaDias, pesquisa = false } = {}) {
   if (!telefones.length || dias <= 0) return new Set();
 
   const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
+  let consulta = supabase
     .from('crm_campanha_alvos')
     .select('phone')
     .in('phone', telefones)
     .eq('status', 'enviado')
     .gte('sent_at', desde);
+
+  consulta = pesquisa
+    ? consulta.like('etapa_conversa', `${PREFIXO_ETAPA}%`)
+    : consulta.or(SO_VENDA);
+
+  const { data, error } = await consulta;
 
   if (error) {
     logger.error('[campanhas] Falha ao conferir carência:', error.message);
@@ -209,12 +229,35 @@ async function emCarencia(telefones, dias = config.campanha.carenciaDias) {
 }
 
 /** Telefones suprimidos, dentro de uma lista. Uma consulta em vez de N. */
-async function suprimidosEntre(telefones) {
+export async function suprimidosEntre(telefones) {
   if (!telefones.length) return new Set();
   const { data } = await supabase
     .from('crm_supressoes')
     .select('phone')
     .in('phone', telefones);
+  return new Set((data ?? []).map(r => r.phone));
+}
+
+/**
+ * Telefones que pediram SAIR ao número ALTERNATIVO, em qualquer pesquisa.
+ *
+ * Não é `crm_supressoes`, e a diferença é o alcance. A lista geral é de quem
+ * pediu ao número principal, e cala tudo — inclusive o acompanhamento e a
+ * ponte com o professor, que o aluno contratou. Quem responde SAIR a uma
+ * pesquisa, num número que nunca viu, está recusando a pesquisa: cortar o
+ * professor dele por isso seria um efeito que ninguém pediu.
+ *
+ * Então o pedido fica no próprio alvo (`pesquisa_saiu`), e vale para tudo
+ * que sair pelo número alternativo. O sentido inverso é automático: quem
+ * está na lista geral também não recebe pesquisa.
+ */
+async function saiuDaPesquisa(telefones) {
+  if (!telefones.length) return new Set();
+  const { data } = await supabase
+    .from('crm_campanha_alvos')
+    .select('phone')
+    .in('phone', telefones)
+    .eq('etapa_conversa', ETAPA.saiu);
   return new Set((data ?? []).map(r => r.phone));
 }
 
@@ -247,7 +290,13 @@ export async function montarAlvos(campanhaId) {
   // envio. Quem está em carência não deve nem aparecer nas contagens desta
   // campanha, senão a taxa de resposta passa a ter no denominador gente que
   // nunca teve chance de responder.
-  const carencia = await emCarencia(lista.map(l => l.phone));
+  const pesquisa = ehPesquisa(campanha);
+  const carencia = await emCarencia(lista.map(l => l.phone), { pesquisa });
+
+  // Quem pediu SAIR ao número alternativo conta junto dos suprimidos.
+  if (pesquisa) {
+    for (const phone of await saiuDaPesquisa(lista.map(l => l.phone))) suprimidos.add(phone);
+  }
 
   const elegiveis = lista.filter(l => !suprimidos.has(l.phone) && !carencia.has(l.phone));
 
@@ -296,6 +345,11 @@ export async function montarAlvos(campanhaId) {
  * por cima de uma conversa em andamento seria falar duas vezes ao mesmo
  * tempo.
  *
+ * Só campanha de VENDA. Esta função roda para toda mensagem que chega ao
+ * número principal, e o aluno que escreve ao atendimento não respondeu à
+ * pesquisa — ela mora em outro número, e quem lê a resposta dela é
+ * `pesquisa.js`.
+ *
  * @param {string} phone
  * @returns {Promise<number>} Quantos alvos foram encerrados.
  */
@@ -307,6 +361,7 @@ export async function registrarResposta(phone) {
     .update({ status: 'respondeu', replied_at: new Date().toISOString() })
     .eq('phone', numero)
     .in('status', ['agendado', 'enviado'])
+    .or(SO_VENDA)
     .select('id, campanha_id');
 
   const n = data?.length ?? 0;
@@ -406,16 +461,19 @@ export async function enviadosHoje(campanhaId) {
  * aparecer no histórico como `app:campanha:<slug>` e permite separar, meses
  * depois, o que foi atendimento do que foi prospecção.
  *
+ * Na pesquisa a `origem` começa com `alt:` (ver `pesquisa-regras.js`), e é
+ * esse prefixo que põe a linha na pista do número alternativo.
+ *
  * @returns {Promise<number|null>} id da linha na fila
  */
-async function enfileirar({ phone, texto, quando, slug }) {
+export async function enfileirar({ phone, texto, quando, origem }) {
   const { data, error } = await supabase
     .from('wa_message_queue')
     .insert({
       phone,
       content: texto,
       content_type: 'text',
-      source_app: `campanha:${slug}`,
+      source_app: origem,
       scheduled_for: quando.toISOString(),
       status: 'pending',
     })
@@ -505,7 +563,24 @@ export async function processarCampanha(campanha, gerarTexto) {
   // A conferência aqui não substitui a do `queue-processor`, que é a que
   // vale na hora de enviar. Ela evita gerar (e pagar) texto que ficaria
   // parado na fila até amanhã.
-  const cota = await limiteEnvio.cota();
+  //
+  // A pesquisa sai pelo número alternativo, e a conta é a dele.
+  const pesquisa = ehPesquisa(campanha);
+
+  if (pesquisa && !campanha.link) {
+    return { agendados: 0, motivo: 'a pesquisa está sem link' };
+  }
+
+  // Com a sessão do número alternativo fora do ar, nada é agendado: o que
+  // se agendasse agora ficaria vencido na fila e sairia junto quando ela
+  // voltasse. No ensaio não importa — nada é enfileirado, e é assim que se
+  // lê os textos antes de parear o chip.
+  if (pesquisa && !config.campanha.dryRun && !(await numeroAlternativo.conectado())) {
+    const estado = await numeroAlternativo.estadoDaConexao();
+    return { agendados: 0, motivo: `número alternativo fora do ar (sessão "${estado}")` };
+  }
+
+  const cota = pesquisa ? await limiteEnvio.cotaAlternativo() : await limiteEnvio.cota();
   if (!cota.ok) {
     return { agendados: 0, motivo: cota.motivo || 'teto diário do número atingido' };
   }
@@ -538,6 +613,9 @@ export async function processarCampanha(campanha, gerarTexto) {
   // Reconfere a supressão agora, não na montagem: a coorte é um retrato
   // datado, e alguém pode ter pedido para sair no intervalo.
   const suprimidos = await suprimidosEntre(alvos.map(a => a.phone));
+  if (pesquisa) {
+    for (const phone of await saiuDaPesquisa(alvos.map(a => a.phone))) suprimidos.add(phone);
+  }
   const elegiveis = alvos.filter(a => !suprimidos.has(a.phone));
 
   if (suprimidos.size) {
@@ -550,7 +628,15 @@ export async function processarCampanha(campanha, gerarTexto) {
 
   if (!elegiveis.length) return { agendados: 0, motivo: 'todos os pendentes estão suprimidos' };
 
-  const horarios = distribuirHorarios(elegiveis.length);
+  const horarios = distribuirHorarios(
+    elegiveis.length,
+    pesquisa ? { intervaloMinimoMin: config.envioAlt.intervaloMinimoMin } : {},
+  );
+
+  // Onde o alvo fica esperando a resposta, e por qual pista a mensagem sai.
+  const etapaDeEspera = pesquisa ? ETAPA.aguardando : 'aguardando_consentimento';
+  const origem = pesquisa ? origemAbertura(campanha.slug) : `campanha:${campanha.slug}`;
+
   let agendados = 0;
 
   for (let i = 0; i < horarios.length; i++) {
@@ -570,7 +656,12 @@ export async function processarCampanha(campanha, gerarTexto) {
         continue;
       }
 
-      const texto = await gerarTexto(alvo, campanha);
+      // A abertura da pesquisa é texto fixo, escrito por uma pessoa: o que
+      // ela afirma para dar credibilidade ao número não pode variar por
+      // conta do modelo. `gerarTexto` nem é chamado.
+      const texto = pesquisa
+        ? textoDeAbertura(alvo, campanha, { numeroPrincipal: config.whatsapp.numeroPrincipal })
+        : await gerarTexto(alvo, campanha);
       if (!texto?.trim()) {
         await marcarErro(alvo.id, 'o gerador não produziu texto');
         continue;
@@ -596,7 +687,7 @@ export async function processarCampanha(campanha, gerarTexto) {
           .from('crm_campanha_alvos')
           .update({
             status: 'agendado',
-            etapa_conversa: 'aguardando_consentimento',
+            etapa_conversa: etapaDeEspera,
             mensagem: texto,
             queue_id: null,
             scheduled_for: quando.toISOString(),
@@ -606,9 +697,7 @@ export async function processarCampanha(campanha, gerarTexto) {
         continue;
       }
 
-      const queueId = await enfileirar({
-        phone: alvo.phone, texto, quando, slug: campanha.slug,
-      });
+      const queueId = await enfileirar({ phone: alvo.phone, texto, quando, origem });
       if (!queueId) {
         await marcarErro(alvo.id, 'falha ao enfileirar');
         continue;
@@ -620,8 +709,9 @@ export async function processarCampanha(campanha, gerarTexto) {
           status: 'agendado',
           // A abertura só pede licença. Daqui até a resposta, esta pessoa
           // está na porta de consentimento: um "sim" ou "não" curto é
-          // resolvido sem acordar o agente completo.
-          etapa_conversa: 'aguardando_consentimento',
+          // resolvido sem acordar o agente completo. (Na pesquisa a espera
+          // é pela resposta ao número alternativo — `pesquisa.js`.)
+          etapa_conversa: etapaDeEspera,
           mensagem: texto,
           queue_id: queueId,
           scheduled_for: quando.toISOString(),
@@ -716,6 +806,46 @@ export async function reconciliarEnviados() {
 // Segmento vindo do EVO (crm.segmentation.batch)
 // ──────────────────────────────────────────────
 
+/** O código entre colchetes que abre a descrição de um segmento: "[PESQ-2026]". */
+export const codigoDoSegmento = (texto) =>
+  /^\s*(\[[^\]]+\])/.exec(String(texto ?? ''))?.[1]?.toLowerCase() ?? null;
+
+/**
+ * A campanha de um segmento do EVO.
+ *
+ * Primeiro pela descrição inteira, igual — o vínculo de sempre. Não casando,
+ * pelo **código entre colchetes** do começo: a descrição é digitada por uma
+ * pessoa na tela do EVO, e uma vírgula a mais derrubava a coorte inteira
+ * sem ninguém ver (28/08/2026: 75 rejeitados, e o EVO entregando com
+ * sucesso). Com o código, o resto do texto pode mudar.
+ *
+ * Código repetido em duas campanhas não casa com nenhuma: escolher uma no
+ * escuro mandaria a lista de uma para a outra.
+ */
+export async function campanhaDoGatilho(descricao) {
+  const { data: exata } = await supabase
+    .from('crm_campanhas')
+    .select('*')
+    .eq('evento_gatilho', descricao)
+    .maybeSingle();
+  if (exata) return exata;
+
+  const codigo = codigoDoSegmento(descricao);
+  if (!codigo) return null;
+
+  const { data: comGatilho } = await supabase
+    .from('crm_campanhas')
+    .select('*')
+    .not('evento_gatilho', 'is', null);
+
+  const doCodigo = (comGatilho ?? []).filter(c => codigoDoSegmento(c.evento_gatilho) === codigo);
+  if (doCodigo.length > 1) {
+    logger.warn(`[campanhas] Código de segmento ${codigo} está em ${doCodigo.length} campanhas — nenhuma recebe`);
+    return null;
+  }
+  return doCodigo[0] ?? null;
+}
+
 /**
  * Absorve um evento de segmentação do CRM do EVO.
  *
@@ -726,9 +856,9 @@ export async function reconciliarEnviados() {
  * **O `eventType` não identifica o segmento.** É sempre
  * `crm.segmentation.batch`, para qualquer segmento que se monte na tela do
  * EVO. Quem distingue é o texto de `communication.message`, que é a
- * descrição escrita por uma pessoa — e é por ele que se acha a campanha.
- * Renomear o segmento no EVO quebra o vínculo, então a convenção é começar
- * a descrição com um código entre colchetes.
+ * descrição escrita por uma pessoa — e é por ele que se acha a campanha
+ * (`campanhaDoGatilho`): pela descrição inteira, ou pelo código entre
+ * colchetes que a abre, que é o que sobrevive a uma descrição reescrita.
  *
  * ⚠️ `communication.message` **não é mensagem para o cliente**. No lote real
  * veio "alunos inativos que tinham contrato aqua que venceu entre jul e dez
@@ -744,11 +874,7 @@ export async function absorverSegmentacao(payload) {
 
   if (!descricao) return { ok: false, motivo: 'evento sem descrição de segmento' };
 
-  const { data: campanha } = await supabase
-    .from('crm_campanhas')
-    .select('*')
-    .eq('evento_gatilho', descricao)
-    .maybeSingle();
+  const campanha = await campanhaDoGatilho(descricao);
 
   if (!campanha) {
     return { ok: false, motivo: `nenhuma campanha com evento_gatilho "${descricao.slice(0, 60)}"` };
@@ -761,14 +887,21 @@ export async function absorverSegmentacao(payload) {
     return { ok: false, motivo: 'telefone na lista de supressão' };
   }
 
+  const pesquisa = ehPesquisa(campanha);
+
+  if (pesquisa && (await saiuDaPesquisa([phone])).size) {
+    return { ok: false, motivo: 'pediu SAIR ao número alternativo numa pesquisa anterior' };
+  }
+
   // A carência vale nos DOIS caminhos de entrada. Aplicá-la só em
   // `montarAlvos` deixaria o portão aberto justamente por onde a coorte real
   // entra: a automação do EVO dispara um POST por pessoa e nunca passa por
   // lá — foi assim que as 47 chegaram.
-  if ((await emCarencia([phone])).size) {
+  if ((await emCarencia([phone], { pesquisa })).size) {
     return {
       ok: false,
-      motivo: `em carência (recebeu campanha nos últimos ${config.campanha.carenciaDias} dias sem responder)`,
+      motivo: `em carência (recebeu ${pesquisa ? 'pesquisa' : 'campanha'} nos últimos ` +
+        `${config.campanha.carenciaDias} dias sem responder)`,
     };
   }
 
@@ -967,7 +1100,8 @@ export async function resumo(idOuSlug = null) {
 
 export const campanhas = {
   ehPedidoDeSaida, suprimir, estaSuprimido,
-  absorverSegmentacao, lerConsentimento, alvoAguardandoConsentimento, marcarEtapaConversa,
+  absorverSegmentacao, campanhaDoGatilho, enfileirar,
+  lerConsentimento, alvoAguardandoConsentimento, marcarEtapaConversa,
   campanhaDoContato,
   reconciliarEnviados,
   montarAlvos, registrarResposta,

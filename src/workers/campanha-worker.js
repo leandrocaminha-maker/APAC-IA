@@ -28,6 +28,7 @@ import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { supabase } from '../lib/supabase.js';
 import { campanhasAtivas, processarCampanha, reconciliarEnviados } from '../services/campanhas.js';
+import { agendarLinksSemResposta } from '../services/pesquisa.js';
 import { aiAgent } from '../services/ai-agent.js';
 
 let rodando = false;
@@ -37,6 +38,9 @@ let rodando = false;
  *
  * Repassa a oferta escrita pelo consultor — é o único fato que a mensagem
  * pode afirmar, porque este caminho não carrega a base de conhecimento.
+ *
+ * Só campanha de venda chega aqui: a abertura da pesquisa é texto fixo, e
+ * `processarCampanha` a monta sem chamar o modelo.
  */
 async function gerarTexto(alvo, campanha) {
   const { text } = await aiAgent.gerarMensagemCampanha({
@@ -59,6 +63,12 @@ async function ciclo() {
     // eternamente "agendado" e a campanha roda sem medição.
     await reconciliarEnviados().catch(err =>
       logger.warn('[campanha] Reconciliação falhou:', err.message));
+
+    // Pesquisa: o link de quem recebeu a abertura e não respondeu no prazo.
+    // Antes do `return` de "nenhuma ativa": a pesquisa conclui quando a
+    // última abertura sai, e os prazos dessas ainda estão correndo.
+    await agendarLinksSemResposta().catch(err =>
+      logger.warn('[campanha] Links da pesquisa não agendados:', err.message));
 
     const ativas = await campanhasAtivas();
     if (!ativas.length) return;

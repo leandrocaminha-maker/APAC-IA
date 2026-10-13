@@ -556,6 +556,19 @@
           <div id="wa-qr" style="margin-top:12px"></div>
         </div>
 
+        <!-- Só admin, e só com EVOLUTION_INSTANCE_ALT definido: ver carregarAjustes. -->
+        <div class="cartao" id="cartao-wa-alt" style="display:none">
+          <h3 style="margin-top:0">WhatsApp — número alternativo</h3>
+          <p style="color:var(--suave);font-size:13px;margin-top:0">
+            O número das pesquisas. <b>Não é atendimento</b>: quem escreve para ele recebe uma resposta fixa
+            apontando o número principal, e nada dele aparece nas conversas do painel.
+          </p>
+          <div id="wa-alt-status" style="margin-bottom:10px;color:var(--suave)">Verificando…</div>
+          <button class="btn" id="btn-wa-alt-instancia">Criar instância</button>
+          <button class="btn primario" id="btn-wa-alt-qr">Gerar QR code</button>
+          <div id="wa-alt-qr" style="margin-top:12px"></div>
+        </div>
+
         <div class="cartao">
           <h3 style="margin-top:0">Webhooks do EVO</h3>
           <p style="color:var(--suave);font-size:13px;margin-top:0">
@@ -1980,6 +1993,9 @@ $('#btn-acomp-rodar').addEventListener('click', async () => {
 // Ajustes
 // ══════════════════════════════════════════════════════
 
+// Leva as rotas de WhatsApp dos Ajustes para a instância do número alternativo.
+const NUMERO_ALT = '?numero=alternativo';
+
 async function carregarAjustes() {
   carregarUsuarios();
 
@@ -2001,32 +2017,51 @@ async function carregarAjustes() {
   } catch (err) {
     $('#wa-status').textContent = err.message;
   }
+
+  // O número alternativo (pesquisas): só admin vê, e só se ele existir.
+  if (ehAdministrador) {
+    try {
+      const s = await api('/whatsapp/status' + NUMERO_ALT);
+      if (s.configurado !== false) {
+        const est = s.instance?.state || s.state || s.erro || 'desconhecido';
+        $('#cartao-wa-alt').style.display = '';
+        $('#wa-alt-status').innerHTML = est === 'open'
+          ? '<span style="color:var(--acento)">✔ Conectado</span>'
+          : `<span style="color:var(--alerta)">${esc(est)}</span>`;
+      }
+    } catch { /* sem o cartão: o número alternativo é opcional */ }
+  }
 }
 
-$('#btn-wa-instancia').addEventListener('click', async () => {
+async function criarInstanciaWhatsapp(sufixo = '') {
   try {
-    const r = await api('/whatsapp/instancia', { corpo: {} });
+    const r = await api('/whatsapp/instancia' + sufixo, { corpo: {} });
     toast(r.criada ? 'Instância criada.' : 'Instância já existia.', 'ok');
     carregarAjustes();
   } catch (err) { toast(err.message, 'erro'); }
-});
+}
 
-$('#btn-wa-qr').addEventListener('click', async () => {
-  $('#wa-qr').innerHTML = 'Gerando…';
+async function mostrarQrWhatsapp(destino, sufixo = '') {
+  $(destino).innerHTML = 'Gerando…';
   try {
-    const r = await api('/whatsapp/qrcode');
+    const r = await api('/whatsapp/qrcode' + sufixo);
     if (r.base64) {
       const src = r.base64.startsWith('data:') ? r.base64 : 'data:image/png;base64,' + r.base64;
-      $('#wa-qr').innerHTML = `<div class="qr"><img src="${src}" alt="QR code"></div>
+      $(destino).innerHTML = `<div class="qr"><img src="${src}" alt="QR code"></div>
         <p style="color:var(--suave);font-size:13px">
           WhatsApp → Aparelhos conectados → Conectar aparelho. O código expira em ~40s;
           clique de novo para gerar outro.</p>`;
     } else {
-      $('#wa-qr').innerHTML = `<div class="aviso info">Sem QR na resposta —
+      $(destino).innerHTML = `<div class="aviso info">Sem QR na resposta —
         provavelmente já está conectado.</div><pre class="saida">${esc(JSON.stringify(r.bruto, null, 2))}</pre>`;
     }
-  } catch (err) { $('#wa-qr').innerHTML = `<div class="aviso erro">${esc(err.message)}</div>`; }
-});
+  } catch (err) { $(destino).innerHTML = `<div class="aviso erro">${esc(err.message)}</div>`; }
+}
+
+$('#btn-wa-instancia').addEventListener('click', () => criarInstanciaWhatsapp());
+$('#btn-wa-qr').addEventListener('click', () => mostrarQrWhatsapp('#wa-qr'));
+$('#btn-wa-alt-instancia').addEventListener('click', () => criarInstanciaWhatsapp(NUMERO_ALT));
+$('#btn-wa-alt-qr').addEventListener('click', () => mostrarQrWhatsapp('#wa-alt-qr', NUMERO_ALT));
 
 function saidaWebhook(dado) {
   const el = $('#wh-saida');

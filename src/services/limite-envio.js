@@ -42,6 +42,7 @@
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
+import { diasDeUso, tetoDoDia } from './pesquisa-regras.js';
 
 // O Brasil aboliu o horário de verão em 2019 — São Paulo é UTC-3 o ano
 // todo. Mesma constante isolada de `followup.js`, pelo mesmo motivo: se um
@@ -132,4 +133,67 @@ export async function podeIniciarConversa(agora = new Date()) {
   return { ok, motivo };
 }
 
-export const limiteEnvio = { cota, podeIniciarConversa, usadosHoje, inicioDoDiaSP };
+/**
+ * A cota do dia do NÚMERO ALTERNATIVO — outra conta, que não soma com a de
+ * cima nem tira dela.
+ *
+ * Conta as ABERTURAS que a instância fez hoje, em `wa_alt_mensagens`. O link
+ * e as respostas fixas vão para conversa que já existe, e não contam — o
+ * mesmo critério do teto principal, que deixa a resposta de fora.
+ *
+ * O teto não é um número só: nos primeiros dias da instância vale a rampa
+ * (`ENVIO_ALT_RAMPA`), contada da primeira abertura dela. Número novo com o
+ * teto cheio no primeiro dia é o que mais cai.
+ *
+ * Falha fechada, como `cota`: sem conseguir contar, nada sai.
+ *
+ * @returns {Promise<{ok: boolean, teto: number, usados: number|null, restante: number, dia: number|null, motivo?: string}>}
+ */
+export async function cotaAlternativo(agora = new Date()) {
+  const instancia = config.evolution.instanciaAlt;
+  if (!instancia) {
+    return {
+      ok: false, teto: 0, usados: null, restante: 0, dia: null,
+      motivo: 'número alternativo não configurado (EVOLUTION_INSTANCE_ALT)',
+    };
+  }
+
+  const aberturas = () => supabase
+    .from('wa_alt_mensagens')
+    .select('created_at', { count: 'exact' })
+    .eq('instancia', instancia)
+    .eq('direction', 'outbound')
+    .eq('tipo', 'abertura');
+
+  const [primeira, hoje] = await Promise.all([
+    aberturas().order('created_at', { ascending: true }).limit(1),
+    aberturas().gte('created_at', inicioDoDiaSP(agora).toISOString()).limit(1),
+  ]);
+
+  const erro = primeira.error || hoje.error;
+  if (erro) {
+    logger.error('[limite] Não foi possível contar os envios do número alternativo:', erro.message);
+    return {
+      ok: false, teto: 0, usados: null, restante: 0, dia: null,
+      motivo: 'a contagem do número alternativo falhou — nada sai por ele enquanto o teto não puder ser conferido',
+    };
+  }
+
+  const dia = diasDeUso(primeira.data?.[0]?.created_at ?? null, agora);
+  const teto = tetoDoDia(dia, config.envioAlt);
+  const usados = hoje.count ?? 0;
+  const restante = Math.max(teto - usados, 0);
+
+  return {
+    ok: restante > 0,
+    teto,
+    usados,
+    restante,
+    dia,
+    motivo: restante > 0
+      ? undefined
+      : `teto diário do número alternativo atingido (${usados}/${teto}, dia ${dia + 1} de uso)`,
+  };
+}
+
+export const limiteEnvio = { cota, cotaAlternativo, podeIniciarConversa, usadosHoje, inicioDoDiaSP };

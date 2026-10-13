@@ -39,9 +39,15 @@ async function evoFetch(path, options = {}) {
 // Conexão / Instância
 // ──────────────────────────────────────────────
 
+// O parâmetro `instancia` das funções abaixo existe para o NÚMERO
+// ALTERNATIVO (`EVOLUTION_INSTANCE_ALT`, ver `numero-alternativo.js`). Sem
+// ele tudo opera na instância principal, como sempre — e é assim que o
+// atendimento inteiro chama. Só conexão, pareamento e texto têm o parâmetro:
+// é o que o número alternativo faz.
+
 /** Obtém o status da conexão da instância. */
-export async function getConnectionStatus() {
-  return evoFetch(`/instance/connectionState/${instance}`);
+export async function getConnectionStatus(instancia = instance) {
+  return evoFetch(`/instance/connectionState/${instancia}`);
 }
 
 /**
@@ -52,8 +58,8 @@ export async function getConnectionStatus() {
  * permite manter a porta 8080 da Evolution fechada: não é preciso que o
  * navegador do consultor alcance a Evolution, só o backend precisa.
  */
-export async function getQrCode() {
-  return evoFetch(`/instance/connect/${instance}`);
+export async function getQrCode(instancia = instance) {
+  return evoFetch(`/instance/connect/${instancia}`);
 }
 
 /** Lista as instâncias existentes na Evolution. */
@@ -69,26 +75,26 @@ export async function listarInstancias() {
  * do código procura. Criar com outro nome faz o backend responder
  * "instance does not exist" para uma instância que está lá, pareada.
  */
-export async function criarInstancia() {
+export async function criarInstancia(instancia = instance) {
   const existentes = await listarInstancias().catch(() => []);
-  const jaExiste = existentes.some(i => (i?.name || i?.instance?.instanceName) === instance);
+  const jaExiste = existentes.some(i => (i?.name || i?.instance?.instanceName) === instancia);
 
   if (jaExiste) {
-    logger.info(`[evolution] Instância "${instance}" já existe`);
-    return { criada: false, instancia: instance };
+    logger.info(`[evolution] Instância "${instancia}" já existe`);
+    return { criada: false, instancia };
   }
 
-  logger.info(`[evolution] Criando instância "${instance}"`);
+  logger.info(`[evolution] Criando instância "${instancia}"`);
   const resultado = await evoFetch('/instance/create', {
     method: 'POST',
     body: JSON.stringify({
-      instanceName: instance,
+      instanceName: instancia,
       qrcode: true,
       integration: 'WHATSAPP-BAILEYS',
     }),
   });
 
-  return { criada: true, instancia: instance, resultado };
+  return { criada: true, instancia, resultado };
 }
 
 /** Desconecta o número sem apagar a instância. */
@@ -181,14 +187,18 @@ function tempoDeDigitacao(texto) {
  * @param {string} text - Texto da mensagem
  * @param {object} [opts]
  * @param {number} [opts.delayMs] - Sobrescreve o tempo de digitação.
+ * @param {string} [opts.instancia] - Por qual número sai. Padrão: o principal.
  * @returns {Promise<object>} Resposta da Evolution API
  */
-export async function sendText(phone, text, { delayMs } = {}) {
+export async function sendText(phone, text, { delayMs, instancia = instance } = {}) {
   const number = normalizePhone(phone);
   const delay = delayMs ?? tempoDeDigitacao(text);
-  logger.info(`[evolution] sendText → ${number} (${text.length} chars, ${delay}ms digitando)`);
+  logger.info(
+    `[evolution] sendText → ${number} (${text.length} chars, ${delay}ms digitando)` +
+    `${instancia === instance ? '' : ` [${instancia}]`}`
+  );
 
-  return evoFetch(`/message/sendText/${instance}`, {
+  return evoFetch(`/message/sendText/${instancia}`, {
     method: 'POST',
     body: JSON.stringify({ number, text, delay }),
   });

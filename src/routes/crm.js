@@ -1028,19 +1028,47 @@ router.get('/api/evo/grade', rota(async (req, res) => {
 // admin é criar/recriar instância, que apaga o pareamento existente.
 // ──────────────────────────────────────────────
 
+/**
+ * Qual número a rota opera. `?numero=alternativo` leva as três rotas abaixo
+ * para a instância do número alternativo (o das pesquisas) — e aí são só de
+ * admin, as três: ele fora do ar não cala a academia, então não há a
+ * urgência que abriu o QR do principal a qualquer consultor.
+ *
+ * Devolve null depois de já ter respondido (403, ou "não configurado").
+ */
+function instanciaDaRota(req, res) {
+  if (req.query.numero !== 'alternativo') return config.evolution.instance;
+
+  if (req.usuario?.papel !== 'admin') {
+    res.status(403).json({ erro: 'Só administradores mexem no número alternativo.' });
+    return null;
+  }
+  if (!config.evolution.instanciaAlt) {
+    res.json({ configurado: false, erro: 'Número alternativo não configurado (EVOLUTION_INSTANCE_ALT).' });
+    return null;
+  }
+  return config.evolution.instanciaAlt;
+}
+
 router.get('/api/whatsapp/status', rota(async (req, res) => {
+  const instancia = instanciaDaRota(req, res);
+  if (!instancia) return;
+
   try {
-    res.json(await getConnectionStatus());
+    res.json(await getConnectionStatus(instancia));
   } catch (err) {
     // "instance does not exist" é resposta legítima antes do primeiro
     // pareamento — o painel precisa dela para oferecer "criar instância".
-    res.json({ erro: err.message, instancia: config.evolution.instance });
+    res.json({ erro: err.message, instancia });
   }
 }));
 
 router.post('/api/whatsapp/instancia', exigirAdmin, rota(async (req, res) => {
+  const instancia = instanciaDaRota(req, res);
+  if (!instancia) return;
+
   try {
-    res.json(await criarInstancia());
+    res.json(await criarInstancia(instancia));
   } catch (err) {
     res.status(502).json({ erro: err.message });
   }
@@ -1055,9 +1083,12 @@ router.post('/api/whatsapp/instancia', exigirAdmin, rota(async (req, res) => {
  * navegador do consultor só recebe a imagem já pronta.
  */
 router.get('/api/whatsapp/qrcode', rota(async (req, res) => {
-  logger.info(`[crm] ${req.usuario.email} gerou QR code do WhatsApp`);
+  const instancia = instanciaDaRota(req, res);
+  if (!instancia) return;
+
+  logger.info(`[crm] ${req.usuario.email} gerou QR code do WhatsApp (instância "${instancia}")`);
   try {
-    const qr = await getQrCode();
+    const qr = await getQrCode(instancia);
     res.json({
       base64: qr?.base64 || qr?.qrcode?.base64 || null,
       code: qr?.code || qr?.qrcode?.code || null,

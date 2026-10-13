@@ -16,9 +16,23 @@ export const config = {
     url: env('EVOLUTION_API_URL', 'http://evolution:8080'),
     apiKey: env('EVOLUTION_API_KEY', ''),
     instance: env('EVOLUTION_INSTANCE', 'apacademia'),
+
+    // Instância do NÚMERO ALTERNATIVO — o das pesquisas. Vazio = não existe,
+    // e é o padrão: nada do que depende dele inicia.
+    //
+    // É outra instância na mesma Evolution, com outro chip. Trocar o chip
+    // (número banido, por exemplo) pede outro NOME aqui: a rampa de
+    // aquecimento é contada por instância, e um número novo começa do zero.
+    instanciaAlt: env('EVOLUTION_INSTANCE_ALT', '').trim(),
   },
 
   whatsapp: {
+    // O número de atendimento, como se escreve para uma pessoa. O número
+    // alternativo não atende ninguém: quem escreve para ele é apontado para
+    // este, e é ele que a mensagem de abertura cita para a pessoa conferir
+    // que a pesquisa é mesmo da academia.
+    numeroPrincipal: env('WHATSAPP_NUMERO_PRINCIPAL', '11 94071-5006'),
+
     // Intervalo (min) do vigia da sessão. 0 desliga.
     //
     // O container pode estar de pé e a Evolution responder 200 com a sessão
@@ -68,6 +82,37 @@ export const config = {
     digitacaoMinMs: parseInt(env('ENVIO_DIGITACAO_MIN_MS', '1200'), 10),
     digitacaoMaxMs: parseInt(env('ENVIO_DIGITACAO_MAX_MS', '15000'), 10),
     digitacaoMsPorChar: parseInt(env('ENVIO_DIGITACAO_MS_POR_CHAR', '45'), 10),
+  },
+
+  // Regulagem do NÚMERO ALTERNATIVO — teto e ritmo próprios, à parte dos
+  // do número principal. Um não consome o do outro: são contas diferentes
+  // para a Meta, e o que sai por lá fica em `wa_alt_mensagens`, não em
+  // `wa_messages`.
+  //
+  // Pode mais que o principal porque o risco é outro: se cair, a academia
+  // perde a pesquisa, não o atendimento. Mas número NOVO é o que a Meta
+  // derruba mais fácil — ninguém o tem salvo, e ele não tem histórico. Por
+  // isso o teto cheio só vale depois da rampa.
+  envioAlt: {
+    // Teto de pessoas ABORDADAS por dia (a mensagem de abertura). O link
+    // que vai depois, na conversa já aberta, não conta. O código corta em
+    // 150, seja o que for escrito aqui (`TETO_MAXIMO`, pesquisa-regras.js).
+    tetoDiario: parseInt(env('ENVIO_ALT_TETO_DIARIO', '80'), 10),
+
+    // Teto dos primeiros dias de uso da instância, um valor por dia; depois
+    // do último vale o teto cheio. Vazio desliga a rampa.
+    rampa: env('ENVIO_ALT_RAMPA', '25,40,60')
+      .split(',').map(v => parseInt(v, 10)).filter(v => Number.isFinite(v) && v >= 0),
+
+    // Piso entre duas aberturas, em minutos, na hora de espalhar o dia. O
+    // principal usa 8. A pista da fila ainda segura 60% disto entre duas
+    // aberturas, aconteça o que acontecer — é o que impede o acumulado de
+    // uma queda sair em rajada na reconexão.
+    intervaloMinimoMin: parseInt(env('ENVIO_ALT_INTERVALO_MIN', '4'), 10),
+
+    // Intervalo médio entre dois envios quaisquer da pista (±40%), em
+    // segundos. Vale para o link, que é a segunda mensagem de uma conversa.
+    espacamentoSeg: parseInt(env('ENVIO_ALT_ESPACAMENTO_SEG', '45'), 10),
   },
 
   // Fila de saída (`wa_message_queue`) — campanha e apps irmãos.

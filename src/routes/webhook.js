@@ -19,6 +19,8 @@ import { equipeAcompanhamento } from '../services/acompanhamento/equipe.js';
 import * as ponteAcompanhamento from '../services/acompanhamento/ponte.js';
 import { SENT_BY_PONTE, idDaCitacao, textoDeEspera } from '../services/acompanhamento/ponte-regras.js';
 import { transcreverAudio } from '../services/transcricao.js';
+import { numeroAlternativo } from '../services/numero-alternativo.js';
+import { pesquisa } from '../services/pesquisa.js';
 
 const router = Router();
 
@@ -61,6 +63,18 @@ router.post('/evolution', async (req, res) => {
     const eventType = event.event || event.type || '';
 
     logger.debug(`[webhook] Evento recebido: ${eventType}`);
+
+    // O número alternativo tem caminho próprio, e ele vem ANTES de tudo.
+    //
+    // O webhook da Evolution é global: as duas instâncias batem nesta rota.
+    // Sem este desvio, a resposta de um aluno à pesquisa entraria no funil
+    // como lead e a Leia responderia — pelo número principal, a alguém que
+    // escreveu para o outro. E o eco do que sai por lá seria lido como
+    // "consultor escrevendo do aparelho", pondo a conversa em modo humano.
+    if (numeroAlternativo.ehDaInstancia(event)) {
+      await pesquisa.tratarEvento(event);
+      return res.status(200).json({ received: true });
+    }
 
     switch (eventType) {
       case 'messages.upsert':
