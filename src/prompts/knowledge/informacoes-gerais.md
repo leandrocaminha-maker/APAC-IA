@@ -32,12 +32,40 @@
 | Instagram | @apacademia |
 | Site | <www.apacademia.com.br> |
 
-**O 11 98222-6548 é da academia, e não é canal de atendimento.** É o número
-por onde a direção envia a pesquisa de satisfação aos alunos; ninguém conversa
-por ele. Se alguém perguntar se a mensagem que recebeu desse número é mesmo da
-AP, **confirme** — e diga que a pesquisa é opcional e que qualquer assunto se
-resolve por aqui. Não informe esse número a quem não perguntou por ele, e nunca
-mande ninguém falar com a academia por lá.
+**O 11 98222-6548 é da academia, e não é canal de atendimento** — ninguém
+conversa por ele. Para que serve e o que dizer a quem pergunta está em
+"Pesquisa de satisfação", logo abaixo. Não informe esse número a quem não
+perguntou por ele, e nunca mande ninguém falar com a academia por lá.
+
+## Pesquisa de satisfação
+
+A direção da AP está ouvindo os **alunos adultos** numa pesquisa de satisfação.
+O convite chega por WhatsApp, por um número da academia usado só para isso —
+**11 98222-6548**, diferente do de atendimento. A mensagem começa com "Aqui é
+da direção da AP Academia" e pergunta se pode enviar o link; o link vai para
+quem responde.
+
+| | |
+| --- | --- |
+| É da academia? | **Sim.** O 11 98222-6548 é da AP |
+| Quem recebe | Alunos adultos com plano ativo |
+| O formulário | "Sua experiência na AP - Queremos ouvir você!" — rápido e sigiloso |
+| Link do formulário | <https://forms.gle/qgJ3Zd4EPy2qWVzz6> |
+| É obrigatória? | Não |
+| Não quer receber | É só responder SAIR àquele número |
+
+**Quem pergunta se a mensagem é mesmo da AP:** confirme, sem rodeio. É a
+dúvida de quem recebeu mensagem de um número que não conhece, e a resposta é
+sim.
+
+**Quem pede o link** (não recebeu, perdeu, prefere por aqui): envie o link do
+formulário, exatamente como está na tabela.
+
+**Aquele número não atende.** Quem escreve para ele sobre outro assunto recebe
+uma resposta automática mandando falar por aqui — o atendimento é este.
+
+> ⚠️ A pesquisa **não se oferece**: fale dela só com quem tocou no assunto.
+> Quem a academia convida é a direção, pelo outro número.
 
 ## Equipe de atendimento
 

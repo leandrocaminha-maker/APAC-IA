@@ -11,7 +11,7 @@
  *
  * Pedido do responsável em 08/10/2026: só o necessário para a Leia responder
  * com clareza sem improvisar. Não é o núcleo de vendas — 36 mil tokens, com
- * planos e valores, que aqui não se discutem. São quatro pedaços, lidos dos
+ * planos e valores, que aqui não se discutem. São cinco pedaços, lidos dos
  * MESMOS arquivos de `knowledge/` que a Leia de vendas lê: dado da academia
  * não se copia, para não divergir. Seção que mudar de título faz o teste
  * falhar, e não a base sumir calada.
@@ -36,6 +36,10 @@ export const LIMITE_DE_TROCAS = 3;
  */
 export const BASE_DO_ACOMPANHAMENTO = [
   { arquivo: 'informacoes-gerais.md', secao: 'Horário de funcionamento' },
+  // O aluno do acompanhamento é o público da pesquisa (13/10/2026): é a ele
+  // que chega a mensagem de um número que não conhece, e é a esta Leia que
+  // ele pergunta se é da academia.
+  { arquivo: 'informacoes-gerais.md', secao: 'Pesquisa de satisfação' },
   { arquivo: 'operacional-adulto.md', secao: 'Agendamento das sessões' },
   { arquivo: 'grade-horaria.md' },
   { arquivo: 'suporte-fiti.md' },

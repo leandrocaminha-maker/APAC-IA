@@ -948,6 +948,9 @@ export async function absorverSegmentacao(payload) {
         segmento: descricao,
         origem: 'crm.segmentation.batch',
         status_evo: pessoa.status ?? null,
+        // O plano veio no evento a partir de 13/10/2026. É o que permite
+        // conferir depois se a lista era a que se queria (adulto x infantil).
+        plano: payload?.membership?.[0]?.nameMembership?.trim() || null,
         email: pessoa.email ?? null,
         nome_completo: pessoa.fullName ?? null,
         recebido_em: new Date().toISOString(),

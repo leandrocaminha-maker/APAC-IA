@@ -64,6 +64,11 @@
  *       Repassa à campanha os eventos de segmentação já recebidos — para a
  *       coorte que chegou antes de a campanha existir. Não reenvia nada do EVO.
  *
+ *   node scripts/campanha.js reabsorver <slug> --sem-descricao --minutos=60
+ *       O mesmo, para os eventos que o EVO mandou SEM descrição nos últimos
+ *       N minutos: sem descrição nenhum acha campanha sozinho, e este
+ *       comando diz que são desta.
+ *
  *   node scripts/campanha.js numero
  *       O número alternativo: sessão, dia da rampa, teto de hoje e fila.
  */
@@ -516,19 +521,38 @@ const comandos = {
     const campanha = await exigirCampanha(posicionais[0]);
     if (!campanha.evento_gatilho) sair(`"${campanha.slug}" não tem evento_gatilho — não há como saber quais eventos são dela.`);
 
-    const dias = Number(opts.dias) || 30;
-    const eventos = (await eventosDeSegmentacao(dias))
-      .filter(e => ehDoGatilho(descricaoDe(e), campanha.evento_gatilho));
+    // O EVO nem sempre manda a descrição: em 13/10/2026 os 560 eventos da
+    // pesquisa vieram com `communication` nulo — a tela da segmentação só
+    // deixava editar o nome, e o nome não vem no evento. Sem descrição não
+    // há o que casar, então quem diz de qual campanha eles são é a pessoa,
+    // e a janela de tempo é obrigatória: sem ela o comando varreria todo
+    // evento sem descrição que já chegou.
+    const semDescricao = Boolean(opts['sem-descricao']);
+    const minutos = Number(opts.minutos);
+    if (semDescricao && !(minutos > 0)) {
+      sair('Com --sem-descricao, diga de quanto tempo para cá: --minutos=60 pega os eventos sem descrição da última hora.');
+    }
+
+    const dias = semDescricao ? Math.ceil(minutos / 1440) : (Number(opts.dias) || 30);
+    const desde = Date.now() - minutos * 60_000;
+    const eventos = (await eventosDeSegmentacao(dias)).filter(e => (semDescricao
+      ? !descricaoDe(e) && new Date(e.created_at).getTime() >= desde
+      : ehDoGatilho(descricaoDe(e), campanha.evento_gatilho)));
 
     if (!eventos.length) {
-      sair(`Nenhum evento dos últimos ${dias} dias casa com o gatilho de "${campanha.slug}".\n` +
+      sair((semDescricao
+        ? `Nenhum evento sem descrição nos últimos ${minutos} minutos.\n`
+        : `Nenhum evento dos últimos ${dias} dias casa com o gatilho de "${campanha.slug}".\n`) +
         'Veja o que chegou com: node scripts/campanha.js gatilhos', 0);
     }
 
-    console.log(`${eventos.length} evento(s) do gatilho de "${campanha.slug}". Repassando…\n`);
+    console.log(`${eventos.length} evento(s) ${semDescricao ? 'sem descrição' : 'do gatilho'} para "${campanha.slug}". Repassando…\n`);
     const contagem = new Map();
     for (const e of eventos.reverse()) {
-      const r = await absorverSegmentacao(e.payload);
+      const payload = semDescricao
+        ? { ...e.payload, communication: { ...(e.payload.communication ?? {}), message: campanha.evento_gatilho } }
+        : e.payload;
+      const r = await absorverSegmentacao(payload);
       const chave = r.ok ? (r.alvoId ? 'novo alvo' : 'já era alvo') : r.motivo.replace(/\(.*?\)/g, '').trim();
       contagem.set(chave, (contagem.get(chave) ?? 0) + 1);
     }
