@@ -12,19 +12,72 @@ Pedido do responsável: uma pesquisa de satisfação para os **alunos adultos**,
 saindo por um **segundo número** da academia, com o público vindo do EVO pela
 segmentação (`crm.segmentation.batch`, o mesmo caminho das campanhas).
 
-**Estado em 13/10/2026: piloto feito e aprovado; falta o disparo.** O chip
-está pareado, três pessoas da equipe receberam a abertura, e a campanha voltou
-a `concluida`. Falta avisar a recepção, o segmento no EVO e um novo `ativar`
-(passos 7 e 8 do roteiro abaixo — os outros estão feitos).
+**Estado em 13/10/2026: a pesquisa está DISPARANDO.** Ativada às 14h50, com a
+lista do EVO dentro; as primeiras 21 saem hoje, entre 15h09 e 20h26. Ela segue
+sozinha, dia a dia, até a lista acabar — ver "O plano do disparo", logo abaixo.
 
 | | |
 |---|---|
 | Migration 019 | aplicada (conferida por leitura) |
-| Deploy | `3e2bc06`, VPS igual ao repositório |
+| Deploy | `76ce868`, VPS igual ao repositório |
 | `.env` da VPS | `EVOLUTION_INSTANCE_ALT=apacademia-pesquisa`; o resto do bloco vale pelo padrão do código. Backup em `.env.bak-pesquisa-2026-10-13` |
-| Instância `apacademia-pesquisa` | pareada com o **11 98222-6548** em 13/10, sessão `open`. ⚠️ O perfil do WhatsApp estava **sem nome** — pôr nome e foto antes do disparo |
-| Campanha | `satisfacao-2026` (id 4), gatilho `[PESQ-2026] alunos adultos ativos`, sem link para quem não responde. **`concluida`** desde o piloto: o segmento do EVO entra como `pendente` e só sai depois de `ativar` |
-| Rampa | começou em 13/10 (dia 1, teto 25; o piloto usou 3). 14/10 = 40, 15/10 = 60, depois 80 |
+| Instância `apacademia-pesquisa` | pareada com o **11 98222-6548** em 13/10, sessão `open`, perfil com nome e foto |
+| Campanha | `satisfacao-2026` (id 4), **`ativa`**, gatilho `PESQ-2026`, sem link para quem não responde |
+| Lista | 560 pessoas do EVO em 13/10, todas com status ativo: **550 viraram alvo**, 6 tinham telefone inutilizável e 4 repetiam o telefone de outro cadastro. Com os 3 do piloto, 553 alvos |
+| Avisados | recepção e as duas Leias (seção "Pesquisa de satisfação" de `knowledge/informacoes-gerais.md`, com o link) |
+
+### O plano do disparo (decisão do responsável, 13/10)
+
+Observar dois dias e acelerar: **21 em 13/10, 40 em 14/10** pela rampa que
+está no ar, e **150 por dia a partir de quinta, 15/10, se os dois primeiros
+dias vierem saudáveis** — termina por volta de segunda, 19/10. O responsável
+perguntou por "uma a cada 2 minutos" (≈345/dia) e ficou com esta: num número
+novo o que pesa é quantas conversas ele abre por dia, não o intervalo.
+
+⚠️ **A aceleração NÃO está armada.** Sem ninguém mexer, quinta sai 60 e depois
+80 por dia (termina em 22/10). Na quinta cedo, olhar `campanha.js status
+satisfacao-2026` e `campanha.js numero`, e só subir se:
+
+- a taxa de resposta à abertura estiver razoável (no piloto, 2 de 2);
+- a taxa de supressão (SAIR) estiver baixa — a guarda pausa sozinha acima de
+  3%, com 20 ou mais avaliados;
+- a sessão seguir `open` e sem erro de envio no log.
+
+Para subir são DOIS lugares, e o container recriado:
+
+```bash
+# .env da VPS
+ENVIO_ALT_TETO_DIARIO=150
+ENVIO_ALT_RAMPA=25,40
+```
+
+```sql
+UPDATE crm_campanhas SET teto_diario = 150 WHERE slug = 'satisfacao-2026';
+```
+
+O teto da campanha (hoje 80) vale junto com o do número: subir só o `.env`
+deixa em 80. Acima de 150 o código corta (`TETO_MAXIMO`).
+
+**Quando a pesquisa terminar:** tirar a seção "Pesquisa de satisfação" (e o
+link) de `knowledge/informacoes-gerais.md` e da base do acompanhamento
+(`BASE_DO_ACOMPANHAMENTO`, em `acompanhamento/prompt.js` — o teste falha se a
+seção sumir do arquivo e continuar na lista).
+
+### Como a lista entrou — o EVO não mandou a descrição
+
+A tela da segmentação do EVO só deixava editar o NOME (`PESQ-2026`), e o nome
+não vem no evento: os 560 chegaram com `communication` nulo e foram todos
+recusados ("evento sem descrição de segmento"). Estavam guardados em
+`crm_evo_webhook_events`, e entraram por
+`campanha.js reabsorver satisfacao-2026 --sem-descricao --minutos=120`.
+
+⚠️ **Isto vai repetir** em toda segmentação que o EVO mandar sem descrição: o
+webhook recusa calado do lado de lá, e a coorte só entra com esse comando.
+`campanha.js gatilhos` mostra "(sem descrição) → NENHUMA campanha".
+
+O evento agora traz o plano (`membership[0].nameMembership`), que fica no
+`contexto` do alvo. Os 32 planos desta lista eram todos da tabela adulta;
+idade o EVO não manda.
 
 ⚠️ **Na VPS `CAMPANHA_HABILITADA=true` e `CAMPANHA_DRY_RUN=false`.** `ativar
 satisfacao-2026` manda mensagem de verdade, no ciclo seguinte do worker, para
@@ -154,9 +207,11 @@ mais avaliados, pausa a pesquisa sozinha.
    tabela de canais de `knowledge/informacoes-gerais.md`, como "WhatsApp de
    pesquisas (não atende)" — ela confirma a quem perguntar e não o oferece a
    ninguém. Vale a partir do deploy.
-8. **O segmento no EVO**, com a descrição começando por `[PESQ-2026]`, e a
-   automação apontando para o webhook de sempre. Depois: `gatilhos` (o segmento
-   achou a campanha?) e `status`.
+8. **O segmento no EVO**, com a automação apontando para o webhook de sempre.
+   Depois: `gatilhos` (o segmento achou a campanha?) e `status`. Se o EVO
+   deixar escrever uma descrição, ela começa pelo código do gatilho; se só
+   deixar o nome, a coorte chega sem descrição e entra por
+   `reabsorver <slug> --sem-descricao --minutos=N` — foi o caso em 13/10.
 9. **Acompanhar**: `campanha.js numero` (sessão, dia da rampa, teto de hoje,
    fila) e `campanha.js status satisfacao-2026`.
 
