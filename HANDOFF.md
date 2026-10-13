@@ -12,13 +12,25 @@ Pedido do responsável: uma pesquisa de satisfação para os **alunos adultos**,
 saindo por um **segundo número** da academia, com o público vindo do EVO pela
 segmentação (`crm.segmentation.batch`, o mesmo caminho das campanhas).
 
-**Estado: código pronto, NADA ligado.** Sem `EVOLUTION_INSTANCE_ALT` no `.env`
-nada muda no que já roda. A migration **019** está por aplicar, o chip por
-parear e a pesquisa por criar — o roteiro está mais abaixo.
+**Estado em 13/10/2026: no ar, e nada saiu ainda.** A pesquisa existe em
+`rascunho`, sem alvos; falta parear o chip, o piloto e o segmento no EVO
+(passos 4, 6, 7 e 8 do roteiro abaixo — os passos 2, 3 e 5 estão feitos).
 
 | | |
 |---|---|
-| Número alternativo | **11 98222-6548** — em 13/10/2026 a operadora ainda não tinha ativado o chip |
+| Migration 019 | aplicada (conferida por leitura) |
+| Deploy | `70aa09f`, VPS igual ao repositório |
+| `.env` da VPS | `EVOLUTION_INSTANCE_ALT=apacademia-pesquisa`; o resto do bloco vale pelo padrão do código. Backup em `.env.bak-pesquisa-2026-10-13` |
+| Instância `apacademia-pesquisa` | **ainda não existe na Evolution** — nasce no painel, em Ajustes → *WhatsApp — número alternativo* → Criar instância |
+| Campanha | `satisfacao-2026` (id 4), `rascunho`, gatilho `[PESQ-2026] alunos adultos ativos`, sem link para quem não responde |
+| Número alternativo | **11 98222-6548** — chip ativo desde 13/10/2026, por parear |
+
+⚠️ **Na VPS `CAMPANHA_HABILITADA=true` e `CAMPANHA_DRY_RUN=false`.** `ativar
+satisfacao-2026` manda mensagem de verdade, no ciclo seguinte do worker, para
+quem for alvo. Não há ensaio a menos que alguém mude o `.env`.
+
+| | |
+|---|---|
 | Formulário | <https://forms.gle/qgJ3Zd4EPy2qWVzz6> — "Sua experiência na AP - Queremos ouvir você!", aberto, sem login, 4 páginas (conferido em 13/10) |
 | Quem assina | "Aqui é da direção da AP Academia" (pedido do responsável, 13/10) |
 
