@@ -83,9 +83,9 @@ vai dizer quando começar para valer.
   que é do professor ou do consultor — papo fica sem resposta. O professor
   "fala com você hoje" ou "assim que possível" — nunca "nos próximos dias"
   (pedido do responsável). Todo turno tem desfecho: se o modelo não o
-  registra, uma chamada curta forçada à ferramenta registra
-  (`registrarDesfechoQueFaltou`). Turno ~US$ 0,02; escrita do cache ~US$ 0,13
-  por hora de uso. Painel →
+  registra, uma chamada curta, que pede só a ferramenta, registra
+  (`registrarDesfechoQueFaltou`). Turno ~US$ 0,03; escrita do cache ~US$ 0,11
+  por hora de uso (Opus 5.5, bateria de 12/10/2026). Painel →
   Acompanhamento → "Simulador da Leia": ferramentas só registram, nada é
   enviado. `node --env-file=.env scripts/bateria-acompanhamento.js` roda os
   casos da bateria com um aluno fictício. A porta do webhook (aluno real
@@ -424,7 +424,7 @@ PowerShell (`npm` é um `.ps1`) — por isso a chamada direta ao `node`.
 |---|---|
 | Projeto Supabase | ref `aheoopiymromrnanhvoe` — Data API **ligada**, auto-expose de tabelas **desligada**, auto-RLS **ligada** |
 | Projeto do AQUAP | `jlgailnbzybbhotmcuwc` — **não usado aqui**; a migration nunca rodou lá |
-| Modelo | `claude-opus-5` via `@anthropic-ai/sdk` |
+| Modelo | `claude-opus-5-5` via `@anthropic-ai/sdk` |
 
 Banco separado do AQUAP por decisão desta sessão. Não há acoplamento: nenhuma
 tabela `wa_*` referencia tabela do AQUAP — o vínculo com aluno é

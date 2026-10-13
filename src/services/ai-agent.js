@@ -39,9 +39,9 @@ import { aiUsage } from './ai-usage.js';
 import { carregarPromptEBase, SEM_RESPOSTA } from './acompanhamento/prompt.js';
 import { FERRAMENTAS } from './acompanhamento/ferramentas.js';
 
-const MODEL = 'claude-opus-5';
+const MODEL = 'claude-opus-5-5';
 
-// Curto de propósito: mensagem de WhatsApp é curta, e no Opus 5 o
+// Curto de propósito: mensagem de WhatsApp é curta, e no Opus 5.5 o
 // max_tokens limita thinking + resposta somados.
 const MAX_TOKENS = 2048;
 
@@ -567,11 +567,9 @@ export async function processMessage({
     const response = await client.beta.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      // Thinking fica LIGADO (padrão do Opus 5). Desligar reduziria latência,
-      // mas nesse modo o modelo ocasionalmente escreve a chamada de tool como
-      // texto comum: o turno termina sem erro e a tool nunca executa — aqui
-      // isso seria um handoff pedido pelo cliente que ninguém recebe.
-      // Latência e custo são controlados pelo effort, não desligando thinking.
+      // No Opus 5.5 o thinking é sempre ligado: latência e custo são
+      // controlados pelo effort. Ele vai explícito porque o padrão do modelo
+      // é `medium`, um nível acima do que este caminho usa.
       output_config: { effort: 'low' },
       // Se os classificadores recusarem, a API repete o pedido em outro
       // modelo em vez de devolver a recusa.
@@ -677,6 +675,18 @@ export async function processMessage({
     if (recarregarBase) {
       modulos = [...new Set(modulos)];
       system = await buildSystem(systemPrompt, modulos, dynamicContext);
+
+      // No Opus 5.5 o bloco de raciocínio vale só com o `system` que o
+      // produziu: devolvido depois desta troca, é 400 nas contas em que a API
+      // confere (as criadas de 31/08/2026 em diante). Esta não é conferida —
+      // sondado em 12/10/2026 —, mas a isenção não é nossa para garantir. O
+      // raciocínio das voltas anteriores sai; o texto e as chamadas de tool
+      // ficam.
+      for (const m of messages) {
+        if (m.role === 'assistant' && Array.isArray(m.content)) {
+          m.content = m.content.filter(b => b.type !== 'thinking' && b.type !== 'redacted_thinking');
+        }
+      }
     }
   }
 
@@ -992,7 +1002,7 @@ export async function gerarMensagemCampanha({
  * responsável em 08/10/2026 — o raciocínio na frente da velocidade, como o
  * prompt de vendas diz e a configuração dele não deixa. O volume deste
  * caminho é pequeno (só quem responde ao acompanhamento). O teto de tokens
- * sobe junto, porque no Opus 5 ele limita raciocínio e resposta somados.
+ * sobe junto, porque no Opus 5.5 ele limita raciocínio e resposta somados.
  */
 const ACOMPANHAMENTO_EFFORT = 'high';
 const ACOMPANHAMENTO_MAX_TOKENS = 16_000;
@@ -1056,8 +1066,8 @@ export async function processarAcompanhamento({ mensagem, historico = [], contex
 
   const ferramentas = [];
   // Todo turno tem desfecho (§6.4): se o modelo respondeu sem registrar,
-  // uma chamada curta, forçada à ferramenta e sem raciocínio, registra. Só
-  // quando falta — e o texto ao aluno já está pronto.
+  // uma chamada curta, que pede só a ferramenta, registra. Só quando falta —
+  // e o texto ao aluno já está pronto.
   const fechar = async (resultado) => {
     if (!ferramentas.includes('registrar_desfecho')) {
       await registrarDesfechoQueFaltou({
@@ -1121,27 +1131,32 @@ export async function processarAcompanhamento({ mensagem, historico = [], contex
 
 /**
  * O desfecho que o modelo não registrou. Vê a conversa e a resposta dada (só
- * texto: os blocos de raciocínio do turno não voltam numa chamada sem
- * raciocínio), e as ferramentas já chamadas. Falha aqui não derruba nada: o
- * turno fica "sem desfecho", visível na tela.
+ * texto: a conversa é remontada aqui, e bloco de raciocínio não vale fora da
+ * que o produziu), e as ferramentas já chamadas. Falha aqui não derruba nada:
+ * o turno fica "sem desfecho", visível na tela.
+ *
+ * O Opus 5.5 não aceita forçar a ferramenta (`tool_choice`) nem desligar o
+ * raciocínio: o pedido vai no texto, e a chamada é conferida na volta. Esforço
+ * e teto são os do laço de propósito — esforço diferente pode cair fora do
+ * cache do prefixo, e reescrevê-lo custa mais do que o raciocínio a mais.
  */
 async function registrarDesfechoQueFaltou({ system, conversa, resposta, ferramentas, executar, conversationId, origem }) {
   const inicio = Date.now();
   try {
     const response = await client.beta.messages.create({
       model: MODEL,
-      max_tokens: 400,
-      thinking: { type: 'disabled' },
+      max_tokens: ACOMPANHAMENTO_MAX_TOKENS,
+      output_config: { effort: ACOMPANHAMENTO_EFFORT },
       system,
       tools: FERRAMENTAS,
-      tool_choice: { type: 'tool', name: 'registrar_desfecho' },
       messages: [
         ...conversa,
         { role: 'assistant', content: resposta },
         {
           role: 'user',
-          content: '[sistema — o aluno não vê] Você respondeu sem registrar o desfecho. Registre agora o desfecho do ' +
-            `turno acima. Ferramentas já chamadas nele: ${ferramentas.join(', ') || 'nenhuma'}.`,
+          content: '[sistema — o aluno não vê] Você respondeu sem registrar o desfecho. Chame agora a ferramenta ' +
+            '`registrar_desfecho` com o desfecho do turno acima: só ela, sem escrever texto. ' +
+            `Ferramentas já chamadas nele: ${ferramentas.join(', ') || 'nenhuma'}.`,
         },
       ],
     });

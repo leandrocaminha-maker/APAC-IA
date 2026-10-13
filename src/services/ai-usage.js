@@ -19,11 +19,14 @@ import { logger } from '../lib/logger.js';
 /**
  * Preço por milhão de tokens, em dólar.
  *
- * Fonte: tabela pública da Anthropic, conferida em 24/08/2026. Os
- * multiplicadores de cache são os documentados pela API:
- *   leitura              0,1x  da entrada
+ * Fonte: tabela pública da Anthropic, conferida em 24/08/2026 (o Opus 5.5,
+ * em 12/10/2026). Os multiplicadores de cache são os documentados pela API:
+ *   leitura              0,1x  da entrada (0,05x no Opus 5.5)
  *   escrita (TTL 5 min)  1,25x da entrada
  *   escrita (TTL 1h)     2,0x  da entrada
+ *
+ * A leitura deixou de ser um número só: quem foge do 0,1x declara `leitura`
+ * na própria linha.
  *
  * A escrita com TTL de 1h custa 2x, contra 1x de não usar cache nenhum.
  * Ou seja: um prefixo que é escrito e nunca lido sai MAIS CARO do que não
@@ -34,6 +37,7 @@ import { logger } from '../lib/logger.js';
  * senão o custo gravado passa a ser ficção.
  */
 const PRECOS = {
+  'claude-opus-5-5': { entrada: 4.00, saida: 20.00, leitura: 0.05 },
   'claude-opus-5':   { entrada: 5.00, saida: 25.00 },
   'claude-opus-4-8': { entrada: 5.00, saida: 25.00 },
   'claude-sonnet-5': { entrada: 3.00, saida: 15.00 },
@@ -56,7 +60,7 @@ export function calcularCusto(modelo, usage = {}) {
 
   const entrada = (usage.input_tokens ?? 0) * preco.entrada;
   const escrita = (usage.cache_creation_input_tokens ?? 0) * preco.entrada * ESCRITA_MULTIPLICADOR;
-  const leitura = (usage.cache_read_input_tokens ?? 0) * preco.entrada * LEITURA_MULTIPLICADOR;
+  const leitura = (usage.cache_read_input_tokens ?? 0) * preco.entrada * (preco.leitura ?? LEITURA_MULTIPLICADOR);
   const saida = (usage.output_tokens ?? 0) * preco.saida;
 
   return (entrada + escrita + leitura + saida) / 1_000_000;
