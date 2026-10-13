@@ -12,22 +12,35 @@ Pedido do responsável: uma pesquisa de satisfação para os **alunos adultos**,
 saindo por um **segundo número** da academia, com o público vindo do EVO pela
 segmentação (`crm.segmentation.batch`, o mesmo caminho das campanhas).
 
-**Estado em 13/10/2026: no ar, e nada saiu ainda.** A pesquisa existe em
-`rascunho`, sem alvos; falta parear o chip, o piloto e o segmento no EVO
-(passos 4, 6, 7 e 8 do roteiro abaixo — os passos 2, 3 e 5 estão feitos).
+**Estado em 13/10/2026: piloto feito e aprovado; falta o disparo.** O chip
+está pareado, três pessoas da equipe receberam a abertura, e a campanha voltou
+a `concluida`. Falta avisar a recepção, o segmento no EVO e um novo `ativar`
+(passos 7 e 8 do roteiro abaixo — os outros estão feitos).
 
 | | |
 |---|---|
 | Migration 019 | aplicada (conferida por leitura) |
-| Deploy | `70aa09f`, VPS igual ao repositório |
+| Deploy | `3e2bc06`, VPS igual ao repositório |
 | `.env` da VPS | `EVOLUTION_INSTANCE_ALT=apacademia-pesquisa`; o resto do bloco vale pelo padrão do código. Backup em `.env.bak-pesquisa-2026-10-13` |
-| Instância `apacademia-pesquisa` | **ainda não existe na Evolution** — nasce no painel, em Ajustes → *WhatsApp — número alternativo* → Criar instância |
-| Campanha | `satisfacao-2026` (id 4), `rascunho`, gatilho `[PESQ-2026] alunos adultos ativos`, sem link para quem não responde |
-| Número alternativo | **11 98222-6548** — chip ativo desde 13/10/2026, por parear |
+| Instância `apacademia-pesquisa` | pareada com o **11 98222-6548** em 13/10, sessão `open`. ⚠️ O perfil do WhatsApp estava **sem nome** — pôr nome e foto antes do disparo |
+| Campanha | `satisfacao-2026` (id 4), gatilho `[PESQ-2026] alunos adultos ativos`, sem link para quem não responde. **`concluida`** desde o piloto: o segmento do EVO entra como `pendente` e só sai depois de `ativar` |
+| Rampa | começou em 13/10 (dia 1, teto 25; o piloto usou 3). 14/10 = 40, 15/10 = 60, depois 80 |
 
 ⚠️ **Na VPS `CAMPANHA_HABILITADA=true` e `CAMPANHA_DRY_RUN=false`.** `ativar
 satisfacao-2026` manda mensagem de verdade, no ciclo seguinte do worker, para
 quem for alvo. Não há ensaio a menos que alguém mude o `.env`.
+
+**O piloto (13/10, 14h09–14h25), com Larissa, Lucas e Julia:**
+
+| Caminho | Resultado |
+|---|---|
+| Abertura pelo número novo | As três saíram, uma redação para cada, sem erro |
+| "Sim" → link | Julia: link em 13 s, e abriu |
+| "Quem é?" → esclarecimento → "Sim" → link | Lucas: recebeu o esclarecimento, abriu o WhatsApp oficial pelo `wa.me` com um toque, disse sim e recebeu o link |
+| Roteamento | As respostas entraram como `[pesquisa] 📩`; nada do número novo apareceu no caminho da Leia nem no painel |
+| Número de atendimento na abertura | **Tocável como texto** (relato da Julia) — a URL na abertura deixou de ser necessária |
+| Sem resposta | Larissa não respondeu: segue em `pesquisa_aguardando`, sem link, como configurado |
+| SAIR | **não foi exercitado** — só tem o teste das regras |
 
 | | |
 |---|---|
@@ -132,10 +145,10 @@ mais avaliados, pausa a pesquisa sozinha.
    não responder. O `--agora` é o que faz o piloto sair em minutos: sem ele o
    worker espalha as três mensagens pelo resto do dia, duas horas entre uma e
    outra, e a última pode ficar para amanhã.
-   ⚠️ **O primeiro "sim" confere a peça que não deu para testar daqui**: o log
-   tem de mostrar `[pesquisa] 📩`. Se a resposta aparecer como `[webhook] 📩`,
-   a Evolution não mandou o nome da instância como o código espera, e a Leia
-   vai responder pelo número principal — pare e veja `ehDaInstancia`.
+   A resposta ao número novo tem de aparecer no log como `[pesquisa] 📩`, e
+   não como `[webhook] 📩` — foi assim no piloto de 13/10. Se um dia aparecer
+   como `[webhook]`, a Leia vai responder pelo número principal: pare e veja
+   `ehDaInstancia`.
 7. **Avisar antes de disparar**: a recepção (uma das aberturas manda perguntar
    lá) e um story no Instagram. A **Leia** já sabe: o 11 98222-6548 está na
    tabela de canais de `knowledge/informacoes-gerais.md`, como "WhatsApp de
@@ -173,11 +186,16 @@ mais avaliados, pausa a pesquisa sozinha.
   (`acompanhamento/prompt.js`), e a linha nova está em "Contato e canais". Sem
   efeito enquanto o acompanhamento está em teste; antes de ele ir para valer,
   incluir a seção na base dela.
-- **A URL do número de atendimento na abertura.** Vai só o número, em texto; o
+- **A URL do número de atendimento na abertura** — e não precisa. Vai só o
+  número, em texto, e o piloto mostrou que o WhatsApp já o deixa tocável; o
   `wa.me` está nas três respostas fixas, que saem depois de a pessoa escrever.
-  O responsável pediu a URL (13/10) e ficou de decidir depois do piloto: link
-  na primeira mensagem de número desconhecido tende a chegar sem ser clicável e
-  é o que mais gera denúncia.
+  `criar-pesquisa` segue recusando qualquer link na abertura.
+- **"Entregue" e "lida" da abertura não são confiáveis** em `wa_alt_mensagens`.
+  As três do piloto ficaram `sent`, enquanto o esclarecimento e o link foram a
+  `delivered` e `read`. O livro grava a linha DEPOIS de enviar, e o aviso de
+  entrega pode chegar antes dela; além disso o WhatsApp não manda recibo de
+  leitura de conversa que a pessoa ainda não aceitou. Não afeta o envio — só
+  não dá para medir leitura da abertura por essa coluna.
 
 ### ⚠️ Achado, não corrigido: a guarda de supressão da venda não conta o SAIR de quem já recebeu
 
