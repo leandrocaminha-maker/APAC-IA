@@ -12,18 +12,39 @@ Pedido do responsável: uma pesquisa de satisfação para os **alunos adultos**,
 saindo por um **segundo número** da academia, com o público vindo do EVO pela
 segmentação (`crm.segmentation.batch`, o mesmo caminho das campanhas).
 
-**🚨 Estado em 14/10/2026: o WhatsApp RESTRINGIU o número da pesquisa, e ela
-está PAUSADA.** Nada sai por ele. A frequência de retomada está por decidir com
-o responsável — ver "A restrição de 14/10", logo abaixo. O plano de 150/dia
-(mais abaixo) **não vale mais**.
+**Estado em 15/10/2026: a pesquisa foi RETOMADA às 10h19**, depois de o
+WhatsApp restringir o número em 14/10 (ver "A restrição de 14/10", logo
+abaixo). O ritmo agora é o da seção "A retomada de 15/10". O plano de 150/dia
+mais abaixo **não vale mais**.
 
 | | |
 |---|---|
 | Migration 019 | aplicada (conferida por leitura) |
-| Deploy | `de1c671`, VPS igual ao repositório |
-| `.env` da VPS | `EVOLUTION_INSTANCE_ALT=apacademia-pesquisa`; o resto do bloco vale pelo padrão do código. Backup em `.env.bak-pesquisa-2026-10-13` |
-| Instância `apacademia-pesquisa` | pareada com o **11 98222-6548** em 13/10; **desconectada em 14/10 às 10h11** (401 `device_removed`), número **restrito** no celular. Não parear sem ler a seção abaixo |
-| Campanha | `satisfacao-2026` (id 4), **`pausada`**, gatilho `PESQ-2026`, sem link para quem não responde. 51 aberturas enviadas, 500 alunos pendentes, fila vazia |
+| Deploy | `51dce47`, VPS igual ao repositório |
+| `.env` da VPS | `EVOLUTION_INSTANCE_ALT=apacademia-pesquisa`, e o bloco da retomada (abaixo). Backups em `.env.bak-pesquisa-2026-10-13` e `.env.bak-retomada-2026-10-15` |
+| Instância `apacademia-pesquisa` | pareada com o **11 98222-6548**; caiu restrita em 14/10 às 10h11 (401 `device_removed`), a restrição saiu em 15/10 e foi **pareada de novo às 10h18** |
+| Campanha | `satisfacao-2026` (id 4), **`ativa`** desde 15/10 10h19, teto 150, gatilho `PESQ-2026`, sem link para quem não responde. Na retomada: 51 aberturas já enviadas, 500 alunos pendentes |
+
+### A retomada de 15/10/2026 (decisões do responsável)
+
+| O quê | Como ficou | Onde mexer |
+|---|---|---|
+| Intervalo entre aberturas | **sorteado entre 4 e 6 min**, uniforme, das 9h às 20h30 (13h no sábado). Média de 5 min: ~12/hora, ~138 num dia útil, ~48 no sábado. Os 500 acabam por volta de 20/10 | `ENVIO_ALT_INTERVALO_MIN`/`_MAX` no `.env` |
+| Teto | 150/dia no número e na campanha, sem rampa — quem manda no volume é o intervalo | `ENVIO_ALT_TETO_DIARIO`, `ENVIO_ALT_RAMPA=` e `crm_campanhas.teto_diario` |
+| Resposta a quem escreve | sai depois de 10–20 s sorteados (pausa calada + "digitando"); o webhook responde à Evolution antes de tratar | `ENVIO_ALT_RESPOSTA_MIN_SEG`/`_MAX_SEG` |
+| Guarda de supressão | **sem o piloto** (alvos `contexto.origem = 'manual'`), e com limiar por patamar: 10% até 100 avaliados, 8% de 100 a 149, 5% a partir de 150. Na retomada: 1 SAIR em 48 | `CAMPANHA_GUARDA_PESQUISA` (padrão `0:10,100:8,150:5`) |
+| Texto do link | "A sua opinião ajuda a gente a melhorar. Muito obrigado! 💙" — trocado no código e em `crm_campanhas.mensagem_link` | a campanha guarda os textos dela: mudar o padrão no código não muda campanha já criada |
+
+**O primeiro ciclo depois de ativar** agendou 121 aberturas para 15/10, de
+10h25 a 20h29, com intervalo médio de 5,03 min. A única lacuna fora de 4–6 min
+(8,5 min) é um número que não existe no WhatsApp: a checagem o barrou antes do
+envio, e o horário dele ficou vazio.
+
+O responsável conhecia o dado ao escolher: na manhã da restrição as aberturas
+saíram a cada 2,2–3,3 min (~22/hora); no primeiro dia, que passou, a ~9/hora.
+Entre 50 e 100 avaliados o limiar ficou em 10% porque a troca para 8% foi
+pedida "ao acumular 100" — se ele quiser 8% já a partir de 50, é
+`CAMPANHA_GUARDA_PESQUISA=0:10,50:8,150:5`.
 | Lista | 560 pessoas do EVO em 13/10, todas com status ativo: **550 viraram alvo**, 6 tinham telefone inutilizável e 4 repetiam o telefone de outro cadastro. Com os 3 do piloto, 553 alvos |
 | Avisados | recepção e as duas Leias (seção "Pesquisa de satisfação" de `knowledge/informacoes-gerais.md`, com o link) |
 
@@ -77,7 +98,7 @@ Vale para as duas pistas. Link e resposta fixa seguem como eram. Em
 14/10, depois do deploy, `campanha.js pausar satisfacao-2026` devolveu as 30
 aberturas que estavam marcadas para 15/10, 09h00–09h40.
 
-**Antes de retomar** (decisão do responsável pendente):
+**Antes de retomar** (feito em 15/10 — ver "A retomada de 15/10"):
 
 - A restrição precisa ter caído no celular do chip. Pareado com a conta
   restrita, responder costuma seguir liberado — é como os 34 que não
