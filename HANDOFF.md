@@ -1,6 +1,6 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 12/10/2026, depois da pesquisa pelo número alternativo.** Documento de
+> **Snapshot de 14/10/2026, depois da restrição do número da pesquisa.** Documento de
 > continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
@@ -12,21 +12,83 @@ Pedido do responsável: uma pesquisa de satisfação para os **alunos adultos**,
 saindo por um **segundo número** da academia, com o público vindo do EVO pela
 segmentação (`crm.segmentation.batch`, o mesmo caminho das campanhas).
 
-**Estado em 13/10/2026: a pesquisa está DISPARANDO.** Ativada às 14h50, com a
-lista do EVO dentro; as primeiras 21 saem hoje, entre 15h09 e 20h26. Ela segue
-sozinha, dia a dia, até a lista acabar — ver "O plano do disparo", logo abaixo.
+**🚨 Estado em 14/10/2026: o WhatsApp RESTRINGIU o número da pesquisa, e ela
+está PAUSADA.** Nada sai por ele. A frequência de retomada está por decidir com
+o responsável — ver "A restrição de 14/10", logo abaixo. O plano de 150/dia
+(mais abaixo) **não vale mais**.
 
 | | |
 |---|---|
 | Migration 019 | aplicada (conferida por leitura) |
-| Deploy | `76ce868`, VPS igual ao repositório |
+| Deploy | `de1c671`, VPS igual ao repositório |
 | `.env` da VPS | `EVOLUTION_INSTANCE_ALT=apacademia-pesquisa`; o resto do bloco vale pelo padrão do código. Backup em `.env.bak-pesquisa-2026-10-13` |
-| Instância `apacademia-pesquisa` | pareada com o **11 98222-6548** em 13/10, sessão `open`, perfil com nome e foto |
-| Campanha | `satisfacao-2026` (id 4), **`ativa`**, gatilho `PESQ-2026`, sem link para quem não responde |
+| Instância `apacademia-pesquisa` | pareada com o **11 98222-6548** em 13/10; **desconectada em 14/10 às 10h11** (401 `device_removed`), número **restrito** no celular. Não parear sem ler a seção abaixo |
+| Campanha | `satisfacao-2026` (id 4), **`pausada`**, gatilho `PESQ-2026`, sem link para quem não responde. 51 aberturas enviadas, 500 alunos pendentes, fila vazia |
 | Lista | 560 pessoas do EVO em 13/10, todas com status ativo: **550 viraram alvo**, 6 tinham telefone inutilizável e 4 repetiam o telefone de outro cadastro. Com os 3 do piloto, 553 alvos |
 | Avisados | recepção e as duas Leias (seção "Pesquisa de satisfação" de `knowledge/informacoes-gerais.md`, com o link) |
 
-### O plano do disparo (decisão do responsável, 13/10)
+### 🚨 A restrição de 14/10/2026
+
+**O que aconteceu.** Às 10h11:50, um segundo depois da 26ª abertura do dia, a
+Evolution perdeu a sessão: `401`, `conflict` / `device_removed`. No celular do
+chip, o WhatsApp mostra a conta **restrita**. O número segue registrado
+(`whatsappNumbers` devolve `exists: true`).
+
+**Os dois dias, medidos em `wa_alt_mensagens`:**
+
+| | 13/10 | 14/10 |
+|---|---|---|
+| Aberturas | 25 (3 do piloto), 14h09–16h50 | **26 em 70 min**, 09h01–10h11 |
+| Intervalo médio entre aberturas | 6,7 min | **2,8 min** (mínimo 2,2) |
+| Responderam | 9 | 8 |
+| Receberam o link | 7 | 7 |
+| SAIR | 2 (um do piloto) | 0 |
+
+A resposta foi boa — perto de 1 em 3, quase todos pedindo o link, zero
+recusa. O que derrubou foi o **ritmo da manhã de 14/10**, que ninguém pediu:
+a decisão era 40 espalhadas pelo dia.
+
+**Por que saiu assim — três defeitos somados, nenhuma regra quebrada:**
+
+1. **O agendador agendava acima do teto do número.** A cota do número conta o
+   que SAIU; o que estava na fila não entrava. A cada ciclo de 10 min ele via
+   o teto livre de novo: o número aceitava 25 em 13/10 e a pesquisa agendou 78.
+2. **A pausa não segurava a fila.** A guarda pausou a pesquisa às 16h35 de
+   13/10 (1 SAIR em 20 = 5%, limiar 3%), e 31 aberturas saíram DEPOIS disso.
+3. **O que sobrou virou o monte da manhã.** As 56 que não couberam em 13/10
+   foram para as 9h de 14/10 com a folga de 45 min de 31/08, e saíram no piso
+   da pista (60% de 4 min), uma atrás da outra.
+
+É o mesmo padrão da restrição de 31/08 no número principal ("o monte da
+abertura da janela saindo de uma vez" — ver a seção daquele dia). A folga de
+45 min resolveu o monte do mesmo SEGUNDO, mas não um monte de 56.
+
+**O conserto (`de1c671`).** Abertura que não sai na hora dela **volta para a
+campanha**, em vez de escoar: a linha sai da fila e o alvo volta a
+`pendente`, sem perder a vez, e o worker o reagenda espalhado pelo dia.
+
+| # | Era | É agora |
+|---|---|---|
+| 1 | Teto do número contava só o que saiu | `processarCampanha` desconta as aberturas que esperam na fila da pista (`aberturasNaFila`) |
+| 2 | Pausar (à mão ou pela guarda) só parava de agendar | Pausar devolve à campanha o que estava na fila (`devolverDaCampanha`); e a pista confere, na hora de enviar, se a campanha segue `ativa` |
+| 3 | Fora da janela, a abertura era empurrada para a manhã seguinte | Volta para a campanha. E abertura atrasada mais que `FILA_ATRASO_MAXIMO_ABERTURA_MIN` (20) também — é o acúmulo de sessão caída ou de teto batido |
+
+Vale para as duas pistas. Link e resposta fixa seguem como eram. Em
+14/10, depois do deploy, `campanha.js pausar satisfacao-2026` devolveu as 30
+aberturas que estavam marcadas para 15/10, 09h00–09h40.
+
+**Antes de retomar** (decisão do responsável pendente):
+
+- A restrição precisa ter caído no celular do chip. Pareado com a conta
+  restrita, responder costuma seguir liberado — é como os 34 que não
+  responderam ainda receberiam o link se escrevessem — e com a campanha
+  pausada nenhuma abertura sai.
+- A rampa conta da primeira abertura da instância: hoje ela daria 60 no dia
+  3. O teto de recomeço precisa ser escrito no `.env`
+  (`ENVIO_ALT_RAMPA`/`ENVIO_ALT_TETO_DIARIO`) e na campanha (`teto_diario`)
+  antes de `ativar`.
+
+### O plano do disparo (decisão do responsável, 13/10) — SUPERADO em 14/10
 
 Observar dois dias e acelerar: **21 em 13/10, 40 em 14/10** pela rampa que
 está no ar, e **150 por dia a partir de quinta, 15/10, se os dois primeiros
@@ -534,6 +596,10 @@ docker compose exec backend node scripts/campanha.js pausar <slug> "motivo"
 
 `pausar` impede NOVOS agendamentos mas **não cancela o que já está na fila**.
 Para estancar tudo: `docker compose stop backend` — a fila para junto.
+
+> **Desde 14/10/2026 isto mudou:** `pausar` (e a pausa da guarda) tira da fila
+> as aberturas da campanha e devolve os alvos a `pendente`. Ver "A restrição de
+> 14/10/2026". A régua de silêncio, abaixo, continua com a armadilha.
 
 **Parar a régua de silêncio** tem a mesma armadilha, e pior: pôr
 `FOLLOWUP_SILENCIO_HABILITADO=false` só impede varreduras novas — **o que já
