@@ -396,16 +396,24 @@ export async function registrarResposta(phone) {
  *   minutos, ativar uma campanha às 19h45 produzia 14 mensagens em 45
  *   minutos — o padrão que se está tentando evitar. Com 8, cabem 5 e o
  *   resto fica para o dia seguinte.
+ * @param {number} [opts.intervaloMaximoMin] - Acima do piso, liga o SORTEIO:
+ *   cada intervalo sai uniforme entre o piso e este máximo, a partir do
+ *   início, até a janela fechar ou a quantidade acabar. Quem manda no volume
+ *   é o intervalo, não a divisão do dia. É o modo da pesquisa desde 15/10.
  * @param {number} [opts.jitter] - Fração de variação (0.4 = ±40%).
  * @param {boolean} [opts.compacto] - Não estica pelo resto da janela: as
  *   mensagens saem a partir de agora, com o piso entre elas. É para o
  *   piloto — três pessoas espalhadas pelo dia inteiro esperam duas horas
  *   cada uma, e a última nem cabe. Só `campanha.js rodar --agora` liga; o
  *   worker nunca.
+ * @param {Date|string|null} [opts.aPartirDe] - A última abertura já agendada
+ *   na pista. O lote novo começa depois dela, em vez de se intercalar com o
+ *   que já está na fila e dobrar a densidade.
  * @returns {Date[]} Em ordem crescente, todos dentro da janela.
  */
 export function distribuirHorarios(quantidade, {
-  agora = new Date(), intervaloMinimoMin = 8, jitter = 0.4, compacto = false,
+  agora = new Date(), intervaloMinimoMin = 8, intervaloMaximoMin = 0, jitter = 0.4, compacto = false,
+  aPartirDe = null,
 } = {}) {
   if (quantidade <= 0) return [];
 
@@ -416,10 +424,15 @@ export function distribuirHorarios(quantidade, {
   const { hora, minuto } = partesSP(agora);
   const agoraMin = hora * 60 + minuto;
 
-  // Antes da janela: começa na abertura. Depois dela: nada hoje.
-  const inicioMin = Math.max(agoraMin, janela.inicioMin);
+  // Antes da janela: começa na abertura. Depois dela: nada hoje. E nunca
+  // antes da última que já está na fila.
+  const ultimaMin = aPartirDe
+    ? agoraMin + (new Date(aPartirDe).getTime() - agora.getTime()) / 60_000
+    : -Infinity;
+  const inicioMin = Math.max(agoraMin, janela.inicioMin, ultimaMin);
   if (inicioMin >= janela.fimMin) return [];
 
+  const sorteio = !compacto && intervaloMaximoMin > intervaloMinimoMin;
   const restanteMin = janela.fimMin - inicioMin;
   const intervaloBase = compacto
     ? intervaloMinimoMin
@@ -431,8 +444,16 @@ export function distribuirHorarios(quantidade, {
   for (let i = 0; i < quantidade; i++) {
     // A primeira não sai imediatamente: um minuto de folga evita que uma
     // remontagem de alvos vire uma saraivada no mesmo instante.
-    const variacao = 1 + (Math.random() * 2 - 1) * jitter;
-    deslocamento += Math.max(intervaloMinimoMin, intervaloBase * variacao);
+    if (sorteio) {
+      deslocamento += intervaloMinimoMin + Math.random() * (intervaloMaximoMin - intervaloMinimoMin);
+    } else {
+      // O piso também varia. Cravado, todo intervalo que caía abaixo dele
+      // saía IGUAL a ele — e é o caso comum quando o dia aperta (sábado,
+      // campanha ativada à tarde): cadência de relógio.
+      const variacao = 1 + (Math.random() * 2 - 1) * jitter;
+      const piso = intervaloMinimoMin * (1 + Math.random() * jitter);
+      deslocamento += Math.max(piso, intervaloBase * variacao);
+    }
 
     const minutoAlvo = inicioMin + deslocamento;
     if (minutoAlvo >= janela.fimMin) break;
@@ -658,24 +679,64 @@ export async function devolverSeNaoCabe(msg, { agora = new Date() } = {}) {
 }
 
 /**
- * Quantas aberturas de campanha esperam na fila de uma pista.
+ * Quantas aberturas de campanha esperam na fila de uma pista, e para quando
+ * está a última delas.
  *
  * @param {boolean} pesquisa - A pista do número alternativo, ou a principal.
- * @returns {Promise<number|null>} null quando a contagem falhou
+ * @returns {Promise<{quantas:number, ultima:string|null}|null>} null quando a
+ *   contagem falhou
  */
 async function aberturasNaFila(pesquisa) {
-  const { count, error } = await supabase
+  const { data, count, error } = await supabase
     .from('wa_message_queue')
-    .select('id', { count: 'exact' })
+    .select('scheduled_for', { count: 'exact' })
     .in('status', ['pending', 'processing'])
     .like('source_app', `${pesquisa ? PREFIXO_ABERTURA : PREFIXO_ABERTURA_PRINCIPAL}%`)
+    .order('scheduled_for', { ascending: false })
     .limit(1);
 
   if (error) {
     logger.error('[campanhas] Não consegui contar as aberturas na fila:', error.message);
     return null;
   }
-  return count ?? 0;
+  return { quantas: count ?? 0, ultima: data?.[0]?.scheduled_for ?? null };
+}
+
+/**
+ * Os números que a guarda de supressão lê.
+ *
+ * Contados aqui, e não na view, para deixar de fora os alvos postos à mão
+ * (`campanha.js alvo`, `contexto.origem = 'manual'`): são a equipe no
+ * piloto, e o SAIR de quem está testando o SAIR não é sinal do público. Em
+ * 13/10/2026 foi o SAIR do piloto que deu 1 em 20 e pausou a pesquisa; sem
+ * ele, o público estava em 1 em 48.
+ *
+ * @returns {Promise<{avaliados:number, suprimidos:number, taxa:number}|null>}
+ *   null quando a contagem falhou
+ */
+export async function numerosDaGuarda(campanhaId) {
+  const contar = (status) => supabase
+    .from('crm_campanha_alvos')
+    .select('id', { count: 'exact' })
+    .eq('campanha_id', campanhaId)
+    .in('status', status)
+    .or('contexto->>origem.is.null,contexto->>origem.neq.manual')
+    .limit(1);
+
+  const [avaliados, suprimidos] = await Promise.all([
+    contar(['enviado', 'respondeu', 'suprimido']),
+    contar(['suprimido']),
+  ]);
+
+  const erro = avaliados.error || suprimidos.error;
+  if (erro) {
+    logger.error('[campanhas] Não consegui contar para a guarda de supressão:', erro.message);
+    return null;
+  }
+
+  const a = avaliados.count ?? 0;
+  const s = suprimidos.count ?? 0;
+  return { avaliados: a, suprimidos: s, taxa: a ? s / a : 0 };
 }
 
 /**
@@ -688,21 +749,17 @@ async function aberturasNaFila(pesquisa) {
  * Pausar devolve à campanha o que ela tinha na fila. Sem isso a guarda só
  * parava de agendar, e o que já estava agendado saía do mesmo jeito.
  *
- * @returns {Promise<boolean>} true se pausou agora
+ * @returns {Promise<boolean>} true se a campanha não deve agendar agora —
+ *   pausou, ou não deu para contar
  */
 export async function conferirGuarda(campanha) {
-  const { data } = await supabase
-    .from('crm_campanhas_resumo')
-    .select('enviados, responderam, suprimidos, taxa_supressao')
-    .eq('id', campanha.id)
-    .single();
+  const numeros = await numerosDaGuarda(campanha.id);
+  // Sem a conta, nada é agendado neste ciclo — mas a campanha não é pausada:
+  // consulta que falhou não é sinal do público.
+  if (!numeros) return true;
 
-  if (!data) return false;
-
-  const avaliados = (data.enviados ?? 0) + (data.responderam ?? 0) + (data.suprimidos ?? 0);
+  const { avaliados, taxa } = numeros;
   if (avaliados < campanha.minimo_para_avaliar) return false;
-
-  const taxa = Number(data.taxa_supressao ?? 0);
   if (taxa <= Number(campanha.limiar_supressao)) return false;
 
   const motivo =
@@ -796,9 +853,9 @@ export async function processarCampanha(campanha, gerarTexto, { compacto = false
     return { agendados: 0, motivo: 'a contagem da fila falhou — nada é agendado sem ela' };
   }
 
-  const restante = Math.min(restanteDaCampanha, cota.restante - naFila);
+  const restante = Math.min(restanteDaCampanha, cota.restante - naFila.quantas);
   if (restante <= 0) {
-    return { agendados: 0, motivo: `o teto do número já está agendado (${naFila} abertura(s) na fila)` };
+    return { agendados: 0, motivo: `o teto do número já está agendado (${naFila.quantas} abertura(s) na fila)` };
   }
 
   const { data: alvos } = await supabase
@@ -843,8 +900,12 @@ export async function processarCampanha(campanha, gerarTexto, { compacto = false
   if (!elegiveis.length) return { agendados: 0, motivo: 'todos os pendentes estão suprimidos' };
 
   const horarios = distribuirHorarios(elegiveis.length, {
-    ...(pesquisa ? { intervaloMinimoMin: config.envioAlt.intervaloMinimoMin } : {}),
+    ...(pesquisa ? {
+      intervaloMinimoMin: config.envioAlt.intervaloMinimoMin,
+      intervaloMaximoMin: config.envioAlt.intervaloMaximoMin,
+    } : {}),
     compacto,
+    aPartirDe: naFila.ultima,
   });
 
   // Onde o alvo fica esperando a resposta, e por qual pista a mensagem sai.

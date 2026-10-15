@@ -108,7 +108,18 @@ export const config = {
     // principal usa 8. A pista da fila ainda segura 60% disto entre duas
     // aberturas, aconteça o que acontecer — é o que impede o acumulado de
     // uma queda sair em rajada na reconexão.
-    intervaloMinimoMin: parseInt(env('ENVIO_ALT_INTERVALO_MIN', '4'), 10),
+    intervaloMinimoMin: parseFloat(env('ENVIO_ALT_INTERVALO_MIN', '4')),
+
+    // Com um máximo acima do piso, o intervalo entre duas aberturas é
+    // SORTEADO entre os dois, uniforme, desde a abertura da janela até o
+    // fim dela ou o teto do dia — em vez de o teto ser espalhado pelo dia.
+    // Quem manda no volume passa a ser o intervalo: 3–5 min dá ~15 por hora
+    // e enche o teto de 150 num dia útil. 0 desliga (espalha, como antes).
+    //
+    // Pedido do responsável em 15/10/2026, depois da restrição de 14/10, com
+    // a faixa de 3–5 min. Naquela manhã as aberturas saíram a cada 2,2–3,3
+    // min (~22 por hora); no primeiro dia, que passou, a ~9 por hora.
+    intervaloMaximoMin: parseFloat(env('ENVIO_ALT_INTERVALO_MAX', '0')),
 
     // Intervalo médio entre dois envios quaisquer da pista (±40%), em
     // segundos. Vale para o link, que é a segunda mensagem de uma conversa.

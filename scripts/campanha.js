@@ -80,7 +80,7 @@ import { config } from '../src/config.js';
 import { NOMES_SEGMENTOS, montarSegmento } from '../src/services/segmentos.js';
 import {
   absorverSegmentacao, buscarCampanha, campanhaDoGatilho, codigoDoSegmento,
-  devolverDaCampanha, montarAlvos, processarCampanha, resumo, suprimir,
+  devolverDaCampanha, montarAlvos, numerosDaGuarda, processarCampanha, resumo, suprimir,
 } from '../src/services/campanhas.js';
 import { aiAgent } from '../src/services/ai-agent.js';
 import { supabase } from '../src/lib/supabase.js';
@@ -321,6 +321,13 @@ const comandos = {
       console.log(`   alvos ${c.alvos} · pendentes ${c.pendentes} · agendados ${c.agendados} · enviados ${c.enviados}`);
       console.log(`   responderam ${c.responderam} · suprimidos ${c.suprimidos} · erros ${c.erros} · hoje ${c.enviados_hoje}`);
       console.log(`   taxa de resposta ${c.taxa_resposta ?? '—'} · taxa de supressão ${c.taxa_supressao ?? '—'} (limiar ${c.limiar_supressao})`);
+      // A guarda não conta os alvos postos à mão (o piloto): quando há algum,
+      // o número que ela lê é outro, e é ele que decide a pausa.
+      const guarda = await numerosDaGuarda(c.id);
+      if (guarda && guarda.avaliados !== c.enviados + c.responderam + c.suprimidos) {
+        console.log(`   guarda (sem o piloto) ${guarda.suprimidos} supressão(ões) em ${guarda.avaliados} · ` +
+          `taxa ${guarda.taxa.toFixed(3)}`);
+      }
       if (c.finalidade === 'pesquisa') {
         console.log(`   pesquisa · com o link ${c.links_enviados} · sem resposta à abertura ${c.sem_resposta} · recusaram ${c.recusaram}`);
       }
@@ -576,7 +583,7 @@ const comandos = {
 
     const estado = await numeroAlternativo.estadoDaConexao({ maxIdadeMs: 0 });
     const cota = await limiteEnvio.cotaAlternativo();
-    const { tetoDiario, rampa, intervaloMinimoMin, espacamentoSeg } = config.envioAlt;
+    const { tetoDiario, rampa, intervaloMinimoMin, intervaloMaximoMin, espacamentoSeg } = config.envioAlt;
 
     const pendentes = async (prefixo) => (await supabase
       .from('wa_message_queue')
@@ -589,7 +596,9 @@ const comandos = {
     console.log(`Número alternativo — instância "${numeroAlternativo.instancia()}"`);
     console.log(`  sessão ......... ${estado === 'open' ? 'conectada' : `"${estado}" — nada sai (parear em Ajustes → WhatsApp — número alternativo)`}`);
     console.log(`  regulagem ...... teto ${Math.min(tetoDiario, TETO_MAXIMO)}/dia, rampa ${rampa.join(' → ') || 'desligada'}, ` +
-      `≥ ${intervaloMinimoMin} min entre aberturas no agendamento, ~${espacamentoSeg}s entre envios`);
+      `${intervaloMaximoMin > intervaloMinimoMin
+        ? `intervalo sorteado entre ${intervaloMinimoMin} e ${intervaloMaximoMin} min`
+        : `≥ ${intervaloMinimoMin} min entre aberturas no agendamento`}, ~${espacamentoSeg}s entre envios`);
     if (cota.usados == null) {
       console.log(`  hoje ........... ${cota.motivo}`);
     } else {

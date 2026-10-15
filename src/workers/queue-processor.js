@@ -437,10 +437,11 @@ export function startQueueProcessor() {
     return;
   }
 
-  const { tetoDiario, rampa, intervaloMinimoMin, espacamentoSeg } = config.envioAlt;
+  const { tetoDiario, rampa, intervaloMinimoMin, intervaloMaximoMin, espacamentoSeg } = config.envioAlt;
   logger.info(
     `[queue/alt] Pista do número alternativo iniciada (instância "${numeroAlternativo.instancia()}", ` +
     `teto de ${Math.min(tetoDiario, TETO_MAXIMO)}/dia${rampa.length ? ` depois da rampa ${rampa.join(' → ')}` : ''}, ` +
+    `${intervaloMaximoMin > intervaloMinimoMin ? `agendamento sorteado entre ${intervaloMinimoMin} e ${intervaloMaximoMin} min, ` : ''}` +
     `≥ ${(intervaloMinimoMin * 0.6).toFixed(1)} min entre aberturas, ~${espacamentoSeg}s entre envios)`
   );
   setInterval(() => {

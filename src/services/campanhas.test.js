@@ -72,3 +72,49 @@ test('perdeuAHora: passa da tolerância, e 0 desliga', () => {
 
   assert.equal(perdeuAHora(minutosAntes(600), { agora, toleranciaMin: 0 }), false);
 });
+
+test('sorteio: cada intervalo sai entre o mínimo e o máximo, até a janela fechar', () => {
+  const QUINTA_9H = new Date('2026-10-15T12:00:00Z');
+  for (let i = 0; i < 50; i++) {
+    const horarios = distribuirHorarios(150, { agora: QUINTA_9H, intervaloMinimoMin: 3, intervaloMaximoMin: 5 });
+    const minutos = horarios.map(h => (h.getTime() - QUINTA_9H.getTime()) / MIN);
+
+    // 9h–20h30 são 690 min: a 3–5 min cabem de 138 a 150 (o pedido).
+    assert.ok(horarios.length >= 138 && horarios.length <= 150, String(horarios.length));
+    assert.ok(minutos[0] >= 3 && minutos[0] <= 5);
+    for (let j = 1; j < minutos.length; j++) {
+      const passo = minutos[j] - minutos[j - 1];
+      assert.ok(passo >= 3 - 0.001 && passo <= 5 + 0.001, `${j}: ${passo}`);
+    }
+    assert.ok(minutos.at(-1) < 690);
+  }
+});
+
+test('o lote novo começa depois da última abertura que já está na fila', () => {
+  const ultima = new Date(TERCA_14H.getTime() + 120 * MIN);   // 16h
+  for (let i = 0; i < 50; i++) {
+    const sorteado = distribuirHorarios(5, { agora: TERCA_14H, intervaloMinimoMin: 3, intervaloMaximoMin: 5, aPartirDe: ultima });
+    assert.ok(minutosDepois(sorteado[0]) >= 123, String(minutosDepois(sorteado[0])));
+
+    const espalhado = distribuirHorarios(5, { agora: TERCA_14H, intervaloMinimoMin: 4, aPartirDe: ultima });
+    assert.ok(minutosDepois(espalhado[0]) > 120, String(minutosDepois(espalhado[0])));
+  }
+
+  // A última já está depois do fechamento: nada mais cabe hoje.
+  const depoisDaJanela = new Date('2026-10-13T23:35:00Z');   // 20h35
+  assert.deepEqual(distribuirHorarios(5, { agora: TERCA_14H, intervaloMinimoMin: 3, intervaloMaximoMin: 5, aPartirDe: depoisDaJanela }), []);
+
+  // Uma última no passado não atrasa nada.
+  const passada = new Date(TERCA_14H.getTime() - 60 * MIN);
+  const h = distribuirHorarios(3, { agora: TERCA_14H, intervaloMinimoMin: 3, intervaloMaximoMin: 5, aPartirDe: passada });
+  assert.ok(minutosDepois(h[0]) >= 3 && minutosDepois(h[0]) <= 5);
+});
+
+test('com o dia apertado, o intervalo não fica cravado no piso', () => {
+  // Sábado 9h: 240 min de janela para 100 — o piso de 4 manda em quase todos.
+  const SABADO_9H = new Date('2026-10-17T12:00:00Z');
+  const horarios = distribuirHorarios(100, { agora: SABADO_9H, intervaloMinimoMin: 4 });
+  const passos = horarios.slice(1).map((h, j) => Math.round((h - horarios[j]) / 1000));
+  assert.ok(new Set(passos).size > passos.length / 2, `passos repetidos: ${passos.join(',')}`);
+  for (const p of passos) assert.ok(p >= 240 - 1 && p <= 240 * 1.4 + 1, String(p));
+});
