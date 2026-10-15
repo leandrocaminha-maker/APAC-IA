@@ -23,6 +23,8 @@
  *       Monta a coorte e grava os alvos. Idempotente.
  *
  *   node scripts/campanha.js ativar <slug>   |   pausar <slug> [motivo]
+ *       Pausar também tira da fila as aberturas que ainda não saíram — os
+ *       alvos voltam para "pendente" e são reagendados quando ativar.
  *
  *   node scripts/campanha.js rodar <slug> [--agora]
  *       Roda UM ciclo agora, sem esperar o worker. Respeita CAMPANHA_DRY_RUN.
@@ -78,7 +80,7 @@ import { config } from '../src/config.js';
 import { NOMES_SEGMENTOS, montarSegmento } from '../src/services/segmentos.js';
 import {
   absorverSegmentacao, buscarCampanha, campanhaDoGatilho, codigoDoSegmento,
-  montarAlvos, processarCampanha, resumo, suprimir,
+  devolverDaCampanha, montarAlvos, processarCampanha, resumo, suprimir,
 } from '../src/services/campanhas.js';
 import { aiAgent } from '../src/services/ai-agent.js';
 import { supabase } from '../src/lib/supabase.js';
@@ -272,12 +274,20 @@ const comandos = {
 
   async pausar() {
     const campanha = await exigirCampanha(posicionais[0]);
+    // Concluída não volta a pausada: o `status` passaria a dizer que falta
+    // alguma coisa, e não falta (HANDOFF, 31/08).
+    if (campanha.status === 'concluida') sair(`Campanha "${campanha.slug}" está concluída — nada a pausar.`);
+
     const motivo = posicionais[1] || 'pausada manualmente';
     await supabase
       .from('crm_campanhas')
       .update({ status: 'pausada', pausada_motivo: motivo })
       .eq('id', campanha.id);
+
+    // Pausar devolve o que estava na fila: sem isto só parava de agendar.
+    const devolvidas = await devolverDaCampanha(campanha, `pausada: ${motivo}`);
     console.log(`Campanha "${campanha.slug}" pausada: ${motivo}`);
+    console.log(`  ${devolvidas} abertura(s) tirada(s) da fila — os alvos voltaram para "pendente".`);
   },
 
   async rodar() {

@@ -38,8 +38,9 @@
 
 export const PREFIXO_ALT = 'alt:';
 export const PREFIXO_LINK = 'alt:link:';
+export const PREFIXO_ABERTURA = 'alt:campanha:';
 export const ORIGEM_AUTO = 'alt:auto';
-export const origemAbertura = (slug) => `alt:campanha:${slug}`;
+export const origemAbertura = (slug) => `${PREFIXO_ABERTURA}${slug}`;
 export const origemLink = (slug) => `${PREFIXO_LINK}${slug}`;
 export const ehOrigemDeLink = (origem) => String(origem ?? '').startsWith(PREFIXO_LINK);
 

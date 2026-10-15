@@ -40,6 +40,7 @@ import { dentroDaJanela } from '../services/followup.js';
 import { limiteEnvio } from '../services/limite-envio.js';
 import { getOrCreateContact, getOrCreateConversation, saveMessage } from '../services/contacts.js';
 import { numeroAlternativo } from '../services/numero-alternativo.js';
+import { campanhaDaAbertura, devolverAberturas, devolverSeNaoCabe } from '../services/campanhas.js';
 import { PREFIXO_ALT, PREFIXO_LINK, TETO_MAXIMO, ehOrigemDeLink } from '../services/pesquisa-regras.js';
 
 const POLL_INTERVAL_MS = 5_000;   // Poll a cada 5s
@@ -119,17 +120,26 @@ async function processBatch() {
     // Fora da janela ninguém envia: o lote inteiro é empurrado para a
     // próxima abertura, espalhado. Não gasta tentativa — não é falha,
     // é hora errada.
+    //
+    // Menos a abertura de campanha, que volta para a campanha (ver
+    // `devolverAberturas`): empurrada, ela faria parte do monte da manhã.
     if (foraDaJanela()) {
-      for (const msg of messages) {
+      const aberturas = messages.filter(m => campanhaDaAbertura(m.source_app));
+      const outras = messages.filter(m => !campanhaDaAbertura(m.source_app));
+
+      await devolverAberturas(aberturas.map(m => m.id), 'fora da janela de contato');
+      for (const msg of outras) {
         await supabase
           .from('wa_message_queue')
           .update({ scheduled_for: proximaSaidaComFolga().toISOString() })
           .eq('id', msg.id);
       }
-      logger.info(
-        `[queue] ${messages.length} mensagem(ns) fora da janela de contato — ` +
-        'reagendadas para a próxima abertura'
-      );
+      if (outras.length) {
+        logger.info(
+          `[queue] ${outras.length} mensagem(ns) fora da janela de contato — ` +
+          'reagendadas para a próxima abertura'
+        );
+      }
       return;
     }
 
@@ -138,6 +148,11 @@ async function processBatch() {
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
       let saiuMensagem = false;
+
+      // Abertura atrasada demais, ou de campanha que não está ativa, volta
+      // para a campanha. `break`: a devolução pode ter levado outras linhas
+      // deste lote, e o próximo poll relê a fila.
+      if (await devolverSeNaoCabe(msg)) break;
 
       try {
         // Número morto é sinal pesado no detector de spam, e a fila carrega
@@ -236,11 +251,14 @@ async function processBatch() {
 //
 //   - **O número novo pede uma regra a mais.** Aqui sai UMA mensagem por
 //     vez, e duas ABERTURAS nunca saem com menos de 60% do piso do
-//     agendamento entre elas — aconteça o que acontecer. É o que impede o
-//     acumulado de uma queda de sessão, ou de uma noite, de virar rajada na
-//     volta: o que venceu escoa no ritmo de sempre, e o que não couber no
-//     teto do dia espera o seguinte. (Na pista principal isso já foi
-//     incidente: 22 mensagens em 22s na reconexão de 28/08/2026.)
+//     agendamento entre elas — aconteça o que acontecer. (Na pista principal
+//     já foi incidente: 22 mensagens em 22s na reconexão de 28/08/2026.)
+//
+// O piso não basta contra acúmulo, e isto foi aprendido no número: em
+// 14/10/2026 as 56 aberturas que sobraram do dia anterior saíram a uma por
+// ~2,8 min — no piso, sem quebrar regra nenhuma —, e o WhatsApp restringiu
+// o número na 26ª. Desde então abertura que perde a hora não escoa: volta
+// para a campanha (`devolverSeNaoCabe`), e a campanha a reagenda espalhada.
 //
 // O link e as respostas não abrem conversa: não contam no teto e só
 // respeitam o espaçamento curto.
@@ -335,26 +353,37 @@ async function processarAlternativo() {
     let msg = await proximaDoAlternativo();
     if (!msg) return;
 
-    // Fora da janela: tudo o que venceu vai para a próxima abertura, com
-    // folga — como na pista principal.
+    // Fora da janela: o link que venceu vai para a próxima abertura, com
+    // folga — como na pista principal. A abertura volta para a campanha:
+    // empurradas para as 9h, as 56 que sobraram de 13/10 saíram em
+    // sequência na manhã de 14/10, e o número foi restringido.
     if (foraDaJanela()) {
       const { data: vencidas } = await supabase
         .from('wa_message_queue')
-        .select('id')
+        .select('id, source_app')
         .eq('status', 'pending')
         .lte('scheduled_for', new Date().toISOString())
         .like('source_app', `${PREFIXO_ALT}%`)
         .limit(500);
 
-      for (const vencida of vencidas ?? []) {
+      const aberturas = (vencidas ?? []).filter(v => campanhaDaAbertura(v.source_app));
+      const outras = (vencidas ?? []).filter(v => !campanhaDaAbertura(v.source_app));
+
+      await devolverAberturas(aberturas.map(v => v.id), 'fora da janela de contato');
+      for (const vencida of outras) {
         await supabase
           .from('wa_message_queue')
           .update({ scheduled_for: proximaSaidaComFolga().toISOString() })
           .eq('id', vencida.id);
       }
-      logger.info(`[queue/alt] ${vencidas?.length ?? 0} mensagem(ns) fora da janela de contato — reagendadas`);
+      if (outras.length) logger.info(`[queue/alt] ${outras.length} mensagem(ns) fora da janela de contato — reagendadas`);
       return;
     }
+
+    // Abertura atrasada demais, ou de campanha que não está ativa, volta
+    // para a campanha. Antes da sessão, de propósito: é durante a queda que
+    // o atraso se acumula.
+    if (await devolverSeNaoCabe(msg)) return;
 
     // Abertura só sai com o piso cumprido e com cota. Sem um dos dois, a
     // vez é de um link, se houver — conversa já aberta não espera teto.

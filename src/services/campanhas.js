@@ -31,7 +31,9 @@ import { montarSegmento } from './segmentos.js';
 import { normalizePhone, telefoneValido, numeroExiste } from './evolution.js';
 import { limiteEnvio } from './limite-envio.js';
 import { numeroAlternativo } from './numero-alternativo.js';
-import { ETAPA, PREFIXO_ETAPA, ehPesquisa, origemAbertura, textoDeAbertura } from './pesquisa-regras.js';
+import {
+  ETAPA, PREFIXO_ABERTURA, PREFIXO_ETAPA, ehPesquisa, origemAbertura, textoDeAbertura,
+} from './pesquisa-regras.js';
 
 // A pesquisa de satisfação (migration 019) é uma campanha com
 // `finalidade = 'pesquisa'`, e tudo o que ela tem de próprio parte disso:
@@ -442,6 +444,39 @@ export function distribuirHorarios(quantidade, {
   return horarios;
 }
 
+/** Origem das aberturas de campanha do número principal (`campanha:<slug>`). */
+export const PREFIXO_ABERTURA_PRINCIPAL = 'campanha:';
+
+/**
+ * O slug da campanha de uma linha da fila, quando ela é uma ABERTURA de
+ * campanha — `campanha:<slug>` no número principal, `alt:campanha:<slug>` na
+ * pesquisa. Link por prazo, resposta fixa e apps irmãos devolvem null.
+ */
+export function campanhaDaAbertura(origem) {
+  const texto = String(origem ?? '');
+  for (const prefixo of [PREFIXO_ABERTURA, PREFIXO_ABERTURA_PRINCIPAL]) {
+    if (texto.startsWith(prefixo) && texto.length > prefixo.length) {
+      return { slug: texto.slice(prefixo.length), prefixo };
+    }
+  }
+  return null;
+}
+
+/**
+ * A abertura atrasou além do que ainda pode sair?
+ *
+ * @param {string|Date} agendadaPara - `scheduled_for` da linha
+ * @param {object} [opts]
+ * @param {Date} [opts.agora]
+ * @param {number} [opts.toleranciaMin] - 0 desliga
+ */
+export function perdeuAHora(agendadaPara, {
+  agora = new Date(), toleranciaMin = config.fila.atrasoMaximoAberturaMin,
+} = {}) {
+  if (!(toleranciaMin > 0)) return false;
+  return agora.getTime() - new Date(agendadaPara).getTime() > toleranciaMin * 60_000;
+}
+
 /**
  * Quantas mensagens desta campanha já saíram hoje.
  *
@@ -496,12 +531,162 @@ export async function enfileirar({ phone, texto, quando, origem }) {
   return data.id;
 }
 
+// ──────────────────────────────────────────────
+// Devolver à campanha
+//
+// Abertura que não deve mais sair não é apagada nem reagendada: a linha some
+// da fila e a pessoa volta para a lista como `pendente`, sem perder a vez.
+// Quem a reagenda é o worker de campanha, espalhada pelo dia e dentro do
+// teto — quando a campanha estiver ativa e o número no ar.
+//
+// Até 14/10/2026 nada fazia isso, e a pesquisa mostrou o custo. A guarda a
+// pausou às 16h35 de 13/10 e 31 aberturas saíram depois, porque pausar só
+// parava de AGENDAR. O que não coube no teto do dia foi para as 9h do dia
+// seguinte, e saiu em rajada até o WhatsApp restringir o número.
+// ──────────────────────────────────────────────
+
+/**
+ * Tira aberturas da fila e devolve os alvos delas à campanha.
+ *
+ * Só apaga o que ainda está `pending`: a linha que a fila já pegou
+ * (`processing`) está saindo, e o alvo dela fica como está. `delete`, como
+ * em `suprimir` — a fila é transporte, o razão é `crm_campanha_alvos`.
+ *
+ * @param {number[]} ids - Linhas de `wa_message_queue`.
+ * @param {string} motivo - Vai para o log.
+ * @returns {Promise<number>} quantas voltaram
+ */
+export async function devolverAberturas(ids, motivo) {
+  if (!ids?.length) return 0;
+
+  const { data: apagadas, error } = await supabase
+    .from('wa_message_queue')
+    .delete()
+    .in('id', ids)
+    .eq('status', 'pending')
+    .select('id');
+
+  if (error) {
+    logger.error('[campanhas] Não consegui devolver as aberturas:', error.message);
+    return 0;
+  }
+  if (!apagadas?.length) return 0;
+
+  // A etapa volta a nula junto: um alvo `pendente` ainda não recebeu nada,
+  // e uma mensagem dele não é resposta a abertura nenhuma.
+  await supabase
+    .from('crm_campanha_alvos')
+    .update({ status: 'pendente', etapa_conversa: null, mensagem: null, queue_id: null, scheduled_for: null })
+    .in('queue_id', apagadas.map(a => a.id))
+    .eq('status', 'agendado');
+
+  logger.warn(`[campanhas] ${apagadas.length} abertura(s) tirada(s) da fila e devolvida(s) à campanha — ${motivo}`);
+  return apagadas.length;
+}
+
+/** Devolve à campanha todas as aberturas dela que ainda esperam na fila. */
+export async function devolverDaCampanha(campanha, motivo) {
+  const origem = ehPesquisa(campanha)
+    ? origemAbertura(campanha.slug)
+    : `${PREFIXO_ABERTURA_PRINCIPAL}${campanha.slug}`;
+
+  const { data } = await supabase
+    .from('wa_message_queue')
+    .select('id')
+    .eq('status', 'pending')
+    .eq('source_app', origem)
+    .limit(1000);
+
+  return devolverAberturas((data ?? []).map(l => l.id), motivo);
+}
+
+/**
+ * A última conferência de uma abertura de campanha, na pista, antes de sair.
+ *
+ * Ela não sai — e volta para a campanha, junto com as outras que não saem
+ * pelo mesmo motivo — quando:
+ *
+ *   - atrasou mais que `FILA_ATRASO_MAXIMO_ABERTURA_MIN`: acúmulo de sessão
+ *     caída ou de teto batido, que sairia em sequência;
+ *   - a campanha não está `ativa` (pausada à mão, pela guarda, por SQL);
+ *   - não deu para ler a campanha. Devolver custa só um atraso; mandar
+ *     abertura de campanha pausada custa o número.
+ *
+ * Fora da janela quem devolve é a própria pista (ver `queue-processor`).
+ *
+ * @returns {Promise<boolean>} true se a abertura foi devolvida — não envie
+ */
+export async function devolverSeNaoCabe(msg, { agora = new Date() } = {}) {
+  const abertura = campanhaDaAbertura(msg.source_app);
+  if (!abertura) return false;
+
+  const toleranciaMin = config.fila.atrasoMaximoAberturaMin;
+  if (perdeuAHora(msg.scheduled_for, { agora, toleranciaMin })) {
+    const limite = new Date(agora.getTime() - toleranciaMin * 60_000);
+    const { data } = await supabase
+      .from('wa_message_queue')
+      .select('id')
+      .eq('status', 'pending')
+      .like('source_app', `${abertura.prefixo}%`)
+      .lt('scheduled_for', limite.toISOString())
+      .limit(500);
+
+    const ids = new Set([msg.id, ...(data ?? []).map(l => l.id)]);
+    await devolverAberturas([...ids], `atrasada(s) mais de ${toleranciaMin} min`);
+    return true;
+  }
+
+  const { data: campanha, error } = await supabase
+    .from('crm_campanhas')
+    .select('id, slug, status, finalidade')
+    .eq('slug', abertura.slug)
+    .maybeSingle();
+
+  if (error || !campanha) {
+    await devolverAberturas([msg.id], error
+      ? `não consegui conferir a campanha "${abertura.slug}" (${error.message})`
+      : `a campanha "${abertura.slug}" não existe`);
+    return true;
+  }
+
+  if (campanha.status !== 'ativa') {
+    await devolverDaCampanha(campanha, `a campanha "${campanha.slug}" está ${campanha.status}`);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Quantas aberturas de campanha esperam na fila de uma pista.
+ *
+ * @param {boolean} pesquisa - A pista do número alternativo, ou a principal.
+ * @returns {Promise<number|null>} null quando a contagem falhou
+ */
+async function aberturasNaFila(pesquisa) {
+  const { count, error } = await supabase
+    .from('wa_message_queue')
+    .select('id', { count: 'exact' })
+    .in('status', ['pending', 'processing'])
+    .like('source_app', `${pesquisa ? PREFIXO_ABERTURA : PREFIXO_ABERTURA_PRINCIPAL}%`)
+    .limit(1);
+
+  if (error) {
+    logger.error('[campanhas] Não consegui contar as aberturas na fila:', error.message);
+    return null;
+  }
+  return count ?? 0;
+}
+
 /**
  * Confere a guarda de supressão e pausa a campanha se ela estourou.
  *
  * É a realimentação que protege o número: se a lista estava errada, quem
  * avisa são as próprias pessoas, e a campanha para antes de a conta do
  * WhatsApp reagir. Sem isto o sinal só chegaria como bloqueio.
+ *
+ * Pausar devolve à campanha o que ela tinha na fila. Sem isso a guarda só
+ * parava de agendar, e o que já estava agendado saía do mesmo jeito.
  *
  * @returns {Promise<boolean>} true se pausou agora
  */
@@ -530,6 +715,7 @@ export async function conferirGuarda(campanha) {
     .eq('id', campanha.id);
 
   logger.warn(`[campanhas] "${campanha.slug}" — ${motivo}`);
+  await devolverDaCampanha(campanha, 'pausada pela guarda de supressão');
   return true;
 }
 
@@ -598,7 +784,22 @@ export async function processarCampanha(campanha, gerarTexto, { compacto = false
     return { agendados: 0, motivo: cota.motivo || 'teto diário do número atingido' };
   }
 
-  const restante = Math.min(restanteDaCampanha, cota.restante);
+  // O que já espera na fila desta pista também é do teto de hoje.
+  //
+  // A cota do número conta o que SAIU. Sem descontar o agendado, cada ciclo
+  // de 10 min via o teto inteiro livre de novo e agendava mais — o erro que
+  // `enviadosHoje` já evitava para o teto da campanha, e não para o do
+  // número. Em 13/10/2026 o número alternativo aceitava 25 e a pesquisa
+  // agendou 78; o que não saiu no dia virou a rajada da manhã seguinte.
+  const naFila = await aberturasNaFila(pesquisa);
+  if (naFila === null) {
+    return { agendados: 0, motivo: 'a contagem da fila falhou — nada é agendado sem ela' };
+  }
+
+  const restante = Math.min(restanteDaCampanha, cota.restante - naFila);
+  if (restante <= 0) {
+    return { agendados: 0, motivo: `o teto do número já está agendado (${naFila} abertura(s) na fila)` };
+  }
 
   const { data: alvos } = await supabase
     .from('crm_campanha_alvos')

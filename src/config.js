@@ -135,6 +135,18 @@ export const config = {
     // minutos. Sem isso ela refaria a contagem a cada poll de 5s até a
     // meia-noite.
     pausaTetoMin: parseInt(env('FILA_PAUSA_TETO_MIN', '20'), 10),
+
+    // Quanto uma ABERTURA de campanha pode atrasar e ainda sair, em
+    // minutos. Passou disso ela não sai mais: volta para a campanha, que a
+    // reagenda espalhada pelo resto do dia. 0 desliga.
+    //
+    // Atraso é acúmulo — sessão que caiu, teto batido, a noite —, e acúmulo
+    // que sai de uma vez é rajada. A folga de 45 min na abertura da janela
+    // (31/08) desmancha o monte do mesmo segundo, mas não um monte grande:
+    // em 14/10/2026 as 56 aberturas que sobraram de um dia saíram na manhã
+    // seguinte uma a cada ~2,8 min, e o número alternativo foi restringido
+    // na 26ª. Link e resposta não entram: são conversa que já existe.
+    atrasoMaximoAberturaMin: parseInt(env('FILA_ATRASO_MAXIMO_ABERTURA_MIN', '20'), 10),
   },
 
   // Anthropic (Claude) — cérebro do agente
