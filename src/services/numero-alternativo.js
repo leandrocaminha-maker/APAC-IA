@@ -26,7 +26,9 @@
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
-import { getConnectionStatus, normalizePhone, sendText } from './evolution.js';
+import { dormir } from '../lib/ritmo.js';
+import { getConnectionStatus, normalizePhone, sendText, tempoDeDigitacao } from './evolution.js';
+import { tempoDeResposta } from './pesquisa-regras.js';
 
 /** O nome da instância, ou null quando não há número alternativo. */
 export const instancia = () => config.evolution.instanciaAlt || null;
@@ -123,11 +125,26 @@ export async function registrar({
  * @param {object} p
  * @param {'abertura'|'link'|'auto'} p.tipo
  * @param {string} p.origem - `alt:campanha:<slug>`, `alt:link:<slug>` ou `alt:auto`
+ * @param {boolean} [p.resposta] - Responde a quem acabou de escrever: sai
+ *   depois de `ENVIO_ALT_RESPOSTA_MIN_SEG`–`_MAX_SEG`, sorteado (ver
+ *   `tempoDeResposta`). Sem isto, só o "digitando" do tamanho do texto.
  */
-export async function enviar(phone, texto, { tipo, origem }) {
+export async function enviar(phone, texto, { tipo, origem, resposta: ehResposta = false }) {
   if (!configurado()) throw new Error('número alternativo não configurado (EVOLUTION_INSTANCE_ALT)');
 
-  const resposta = await sendText(phone, texto, { instancia: instancia() });
+  let delayMs;
+  if (ehResposta) {
+    const { pausaMs, digitandoMs } = tempoDeResposta({
+      minSeg: config.envioAlt.respostaMinSeg,
+      maxSeg: config.envioAlt.respostaMaxSeg,
+      digitacaoMs: tempoDeDigitacao(texto),
+    });
+    logger.debug(`[alt] Resposta a ${normalizePhone(phone)} em ${((pausaMs + digitandoMs) / 1000).toFixed(1)}s`);
+    await dormir(pausaMs);
+    delayMs = digitandoMs;
+  }
+
+  const resposta = await sendText(phone, texto, { instancia: instancia(), delayMs });
   await registrar({
     phone, direction: 'outbound', tipo, origem, content: texto,
     evolutionMsgId: resposta?.key?.id || null,

@@ -80,7 +80,7 @@ import { config } from '../src/config.js';
 import { NOMES_SEGMENTOS, montarSegmento } from '../src/services/segmentos.js';
 import {
   absorverSegmentacao, buscarCampanha, campanhaDoGatilho, codigoDoSegmento,
-  devolverDaCampanha, montarAlvos, numerosDaGuarda, processarCampanha, resumo, suprimir,
+  devolverDaCampanha, limiarDaGuarda, montarAlvos, numerosDaGuarda, processarCampanha, resumo, suprimir,
 } from '../src/services/campanhas.js';
 import { aiAgent } from '../src/services/ai-agent.js';
 import { supabase } from '../src/lib/supabase.js';
@@ -321,12 +321,15 @@ const comandos = {
       console.log(`   alvos ${c.alvos} · pendentes ${c.pendentes} · agendados ${c.agendados} · enviados ${c.enviados}`);
       console.log(`   responderam ${c.responderam} · suprimidos ${c.suprimidos} · erros ${c.erros} · hoje ${c.enviados_hoje}`);
       console.log(`   taxa de resposta ${c.taxa_resposta ?? '—'} · taxa de supressão ${c.taxa_supressao ?? '—'} (limiar ${c.limiar_supressao})`);
-      // A guarda não conta os alvos postos à mão (o piloto): quando há algum,
-      // o número que ela lê é outro, e é ele que decide a pausa.
+      // A guarda não conta os alvos postos à mão (o piloto), e na pesquisa o
+      // limiar muda com o tamanho da amostra: o que ela lê pode ser outro
+      // número, e é ele que decide a pausa.
       const guarda = await numerosDaGuarda(c.id);
-      if (guarda && guarda.avaliados !== c.enviados + c.responderam + c.suprimidos) {
-        console.log(`   guarda (sem o piloto) ${guarda.suprimidos} supressão(ões) em ${guarda.avaliados} · ` +
-          `taxa ${guarda.taxa.toFixed(3)}`);
+      const semPiloto = guarda && guarda.avaliados !== c.enviados + c.responderam + c.suprimidos;
+      if (guarda && (semPiloto || ehPesquisa(c))) {
+        const limiar = limiarDaGuarda(c, guarda.avaliados);
+        console.log(`   guarda${semPiloto ? ' (sem o piloto)' : ''} ${guarda.suprimidos} supressão(ões) em ` +
+          `${guarda.avaliados} · taxa ${guarda.taxa.toFixed(3)} · limiar agora ${limiar ?? '— (ainda não avalia)'}`);
       }
       if (c.finalidade === 'pesquisa') {
         console.log(`   pesquisa · com o link ${c.links_enviados} · sem resposta à abertura ${c.sem_resposta} · recusaram ${c.recusaram}`);

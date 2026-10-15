@@ -11,7 +11,7 @@ import {
   ABERTURA_PADRAO, DICA_DO_LINK, ETAPA, LINK_PADRAO, TETO_MAXIMO,
   decidirResposta, diasDeUso, ehOrigemDeLink, ehPesquisa, escolherVariante, formasDoTelefone,
   lerMensagemRecebida, lerResposta, linkDoNumero, nomeDeTratamento, origemAbertura, origemLink, preencher,
-  problemasDosModelos, tetoDoDia, textoDeAbertura, textoDoLink, textoFixo, variantes,
+  problemasDosModelos, tempoDeResposta, tetoDoDia, textoDeAbertura, textoDoLink, textoFixo, variantes, TEXTOS,
 } from './pesquisa-regras.js';
 
 const NUMERO = '11 94071-5006';
@@ -266,4 +266,26 @@ test('SAIR vale em qualquer ponto, inclusive de quem não é alvo — e quem sai
 test('quem escreve sem ser alvo recebe o aviso, nunca o link', () => {
   assert.deepEqual(decide(null, 'sim'), { acao: 'aviso', etapa: null });
   assert.deepEqual(decide('aguardando_consentimento', 'sim'), { acao: 'aviso', etapa: null });
+});
+
+test('resposta: o total sorteado fica entre 10 e 20 s, com o digitando dentro dele', () => {
+  const p = { minSeg: 10, maxSeg: 20 };
+  assert.deepEqual(tempoDeResposta({ ...p, digitacaoMs: 4_000, sorteio: 0 }), { pausaMs: 6_000, digitandoMs: 4_000 });
+  assert.deepEqual(tempoDeResposta({ ...p, digitacaoMs: 4_000, sorteio: 1 }), { pausaMs: 16_000, digitandoMs: 4_000 });
+  // Texto comprido: o digitando é cortado no total, e não há pausa calada.
+  assert.deepEqual(tempoDeResposta({ ...p, digitacaoMs: 15_000, sorteio: 0 }), { pausaMs: 0, digitandoMs: 10_000 });
+
+  for (let i = 0; i < 200; i++) {
+    const { pausaMs, digitandoMs } = tempoDeResposta({ ...p, digitacaoMs: 9_000 });
+    const total = pausaMs + digitandoMs;
+    assert.ok(total >= 10_000 && total <= 20_000, String(total));
+    assert.ok(pausaMs >= 0 && digitandoMs <= 9_000);
+  }
+});
+
+test('o texto do link e o agradecimento não repetem "a gente"', () => {
+  const vezes = (t) => (t.match(/a gente/gi) ?? []).length;
+  for (const texto of [LINK_PADRAO, TEXTOS.encerramento, ...variantes(ABERTURA_PADRAO)]) {
+    for (const paragrafo of texto.split('\n\n')) assert.ok(vezes(paragrafo) <= 1, paragrafo);
+  }
 });

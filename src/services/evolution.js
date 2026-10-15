@@ -167,7 +167,7 @@ export function telefoneValido(bruto) {
  * duas mensagens do mesmo tamanho não podem levar exatamente o mesmo
  * tempo.
  */
-function tempoDeDigitacao(texto) {
+export function tempoDeDigitacao(texto) {
   const { digitacaoMinMs, digitacaoMaxMs, digitacaoMsPorChar } = config.envio;
   const bruto = digitacaoMinMs + String(texto || '').length * digitacaoMsPorChar;
   const variacao = 1 + (Math.random() * 2 - 1) * 0.25;

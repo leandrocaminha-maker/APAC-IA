@@ -89,8 +89,11 @@ const fila = () => supabase.from('wa_message_queue');
 // Quem respondeu
 // ──────────────────────────────────────────────
 
+// Toda resposta a quem escreveu sai depois de 10–20 s (`resposta: true`).
+// A espera acontece dentro de `umaPorVez`: o segundo balão da mesma pessoa
+// aguarda o primeiro terminar, e já encontra a etapa nova.
 const responder = (phone, qual) => numeroAlternativo.enviar(
-  phone, textoFixo(qual, { numeroPrincipal: numeroPrincipal() }), { tipo: 'auto', origem: ORIGEM_AUTO },
+  phone, textoFixo(qual, { numeroPrincipal: numeroPrincipal() }), { tipo: 'auto', origem: ORIGEM_AUTO, resposta: true },
 );
 
 /**
@@ -122,7 +125,7 @@ async function mandarLink(phone, alvo) {
   if (!(await moverEtapa(alvo, ETAPA.link))) return;   // o worker chegou antes: o link já está na fila
 
   try {
-    await numeroAlternativo.enviar(phone, texto, { tipo: 'link', origem: origemLink(alvo.campanha.slug) });
+    await numeroAlternativo.enviar(phone, texto, { tipo: 'link', origem: origemLink(alvo.campanha.slug), resposta: true });
   } catch (err) {
     // Não saiu: a pessoa volta para onde estava, e o próximo "sim" tenta de novo.
     await supabase.from('crm_campanha_alvos').update({ etapa_conversa: alvo.etapa_conversa }).eq('id', alvo.id);

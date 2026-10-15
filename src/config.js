@@ -124,6 +124,12 @@ export const config = {
     // Intervalo médio entre dois envios quaisquer da pista (±40%), em
     // segundos. Vale para o link, que é a segunda mensagem de uma conversa.
     espacamentoSeg: parseInt(env('ENVIO_ALT_ESPACAMENTO_SEG', '45'), 10),
+
+    // Quanto a RESPOSTA a quem escreveu — o link do "sim", o esclarecimento,
+    // o agradecimento — leva para sair, sorteado entre os dois, em segundos.
+    // Inclui o "digitando". Pedido do responsável em 15/10/2026.
+    respostaMinSeg: parseFloat(env('ENVIO_ALT_RESPOSTA_MIN_SEG', '10')),
+    respostaMaxSeg: parseFloat(env('ENVIO_ALT_RESPOSTA_MAX_SEG', '20')),
   },
 
   // Fila de saída (`wa_message_queue`) — campanha e apps irmãos.
@@ -287,6 +293,21 @@ export const config = {
     // 0 desliga (todo mundo volta a ser elegível assim que a campanha
     // anterior encerra).
     carenciaDias: parseInt(env('CAMPANHA_CARENCIA_DIAS', '30'), 10),
+
+    // O limiar da guarda de supressão da PESQUISA, por patamar de contatos
+    // avaliados: "a partir de N:percentual", separados por vírgula. Na
+    // campanha de venda vale o `limiar_supressao` dela.
+    //
+    // Um limiar só, de 3%, em amostra pequena é falso positivo: 1 SAIR em
+    // 20 já passava. Decisão do responsável em 15/10/2026: 10% no começo, 8%
+    // ao acumular 100, 5% a partir de 150. O mínimo para avaliar continua
+    // sendo o `minimo_para_avaliar` da campanha (20). Vazio volta ao limiar
+    // da campanha.
+    guardaPesquisa: env('CAMPANHA_GUARDA_PESQUISA', '0:10,100:8,150:5')
+      .split(',').map(p => p.split(':').map(Number))
+      .filter(([n, pct]) => Number.isFinite(n) && n >= 0 && Number.isFinite(pct) && pct > 0)
+      .map(([aPartirDe, pct]) => ({ aPartirDe, limiar: pct / 100 }))
+      .sort((a, b) => a.aPartirDe - b.aPartirDe),
   },
 
   // Acompanhamento dos alunos avaliados no Prescrev (PLANO_ACOMPANHAMENTO.md,

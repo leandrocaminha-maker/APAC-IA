@@ -8,7 +8,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { campanhaDaAbertura, distribuirHorarios, perdeuAHora } from './campanhas.js';
+import { campanhaDaAbertura, distribuirHorarios, limiarDoPatamar, perdeuAHora } from './campanhas.js';
 
 // Terça, 14h em São Paulo: sobram 6h30 de janela (fecha 20h30).
 const TERCA_14H = new Date('2026-10-13T17:00:00Z');
@@ -117,4 +117,18 @@ test('com o dia apertado, o intervalo não fica cravado no piso', () => {
   const passos = horarios.slice(1).map((h, j) => Math.round((h - horarios[j]) / 1000));
   assert.ok(new Set(passos).size > passos.length / 2, `passos repetidos: ${passos.join(',')}`);
   for (const p of passos) assert.ok(p >= 240 - 1 && p <= 240 * 1.4 + 1, String(p));
+});
+
+test('guarda da pesquisa: 10% no começo, 8% a partir de 100, 5% a partir de 150', () => {
+  const patamares = [{ aPartirDe: 0, limiar: 0.10 }, { aPartirDe: 100, limiar: 0.08 }, { aPartirDe: 150, limiar: 0.05 }];
+  assert.equal(limiarDoPatamar(20, patamares), 0.10);
+  assert.equal(limiarDoPatamar(99, patamares), 0.10);
+  assert.equal(limiarDoPatamar(100, patamares), 0.08);
+  assert.equal(limiarDoPatamar(149, patamares), 0.08);
+  assert.equal(limiarDoPatamar(150, patamares), 0.05);
+  assert.equal(limiarDoPatamar(553, patamares), 0.05);
+
+  // Primeiro patamar acima de zero: antes dele, não avalia.
+  assert.equal(limiarDoPatamar(30, [{ aPartirDe: 50, limiar: 0.10 }]), null);
+  assert.equal(limiarDoPatamar(30, []), null);
 });

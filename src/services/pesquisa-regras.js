@@ -134,7 +134,7 @@ export const ABERTURA_PADRAO = [
 
 export const LINK_PADRAO =
   '{nome}, este é o link da pesquisa de satisfação da AP Academia:\n{link}\n\n' +
-  'A sua opinião ajuda muito a gente a melhorar. A gente agradece! 💙';
+  'A sua opinião ajuda a gente a melhorar. Muito obrigado! 💙';
 
 /** Vai junto do link que saiu por prazo: sem resposta, ele chega sem ser clicável. */
 export const DICA_DO_LINK =
@@ -159,7 +159,7 @@ export const TEXTOS = {
     'Quer que eu mande o link da pesquisa? É só responder SIM.',
 
   encerramento:
-    'A gente agradece! 💙 O link da pesquisa está na mensagem acima.\n\n' +
+    'Muito obrigado! 💙 O link da pesquisa está na mensagem acima.\n\n' +
     'Este número é só da pesquisa — para qualquer outro assunto, fale com a gente no WhatsApp de atendimento, ' +
     '{numero_principal}:\n{link_principal}',
 
@@ -250,6 +250,31 @@ export function textoDoLink(alvo, campanha, { numeroPrincipal = '', semResposta 
     nome: nomeDeTratamento(alvo?.nome), link: campanha.link, numeroPrincipal,
   });
   return semResposta ? `${texto}\n\n${DICA_DO_LINK}` : texto;
+}
+
+/**
+ * Quanto uma RESPOSTA do número alternativo leva para sair, e como esse
+ * tempo se divide.
+ *
+ * O total é sorteado entre `minSeg` e `maxSeg`. Dele sai o "digitando" do
+ * tamanho do texto, que nunca passa do total; o resto é uma pausa calada
+ * ANTES — quem responde primeiro lê. Link que chegava um segundo depois do
+ * "sim", sempre no mesmo tempo, era resposta de máquina (pedido do
+ * responsável, 15/10/2026: entre 10 e 20 s).
+ *
+ * @param {object} p
+ * @param {number} p.minSeg
+ * @param {number} p.maxSeg
+ * @param {number} p.digitacaoMs - O "digitando" que o texto pediria sozinho.
+ * @param {number} [p.sorteio] - Entre 0 e 1; para os testes.
+ * @returns {{pausaMs:number, digitandoMs:number}}
+ */
+export function tempoDeResposta({ minSeg, maxSeg, digitacaoMs, sorteio = Math.random() }) {
+  const menor = Math.max(0, Math.min(minSeg, maxSeg));
+  const maior = Math.max(menor, minSeg, maxSeg);
+  const totalMs = Math.round((menor + sorteio * (maior - menor)) * 1000);
+  const digitandoMs = Math.min(Math.max(0, Math.round(digitacaoMs)), totalMs);
+  return { pausaMs: totalMs - digitandoMs, digitandoMs };
 }
 
 /** Uma resposta fixa, com o número de atendimento no lugar. */

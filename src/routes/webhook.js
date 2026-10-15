@@ -71,9 +71,16 @@ router.post('/evolution', async (req, res) => {
     // como lead e a Leia responderia — pelo número principal, a alguém que
     // escreveu para o outro. E o eco do que sai por lá seria lido como
     // "consultor escrevendo do aparelho", pondo a conversa em modo humano.
+    //
+    // A resposta à Evolution sai ANTES do tratamento, como em `/evo`: a
+    // pesquisa espera 10–20 s para responder a quem escreveu, e a Evolution
+    // não pode ficar com a conexão presa esse tempo (nem reentregar por
+    // timeout — a reentrega cai no `jaRegistrada`, mas não precisa existir).
     if (numeroAlternativo.ehDaInstancia(event)) {
-      await pesquisa.tratarEvento(event);
-      return res.status(200).json({ received: true });
+      res.status(200).json({ received: true });
+      pesquisa.tratarEvento(event).catch(err =>
+        logger.error('[webhook] Evento do número alternativo falhou:', err.message));
+      return;
     }
 
     switch (eventType) {

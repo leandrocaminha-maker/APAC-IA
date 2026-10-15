@@ -740,6 +740,26 @@ export async function numerosDaGuarda(campanhaId) {
 }
 
 /**
+ * O limiar do patamar em que a contagem está: o do último patamar cujo
+ * "a partir de" ela já alcançou. null antes do primeiro — ainda não avalia.
+ *
+ * @param {number} avaliados
+ * @param {{aPartirDe:number, limiar:number}[]} patamares - em ordem crescente
+ */
+export function limiarDoPatamar(avaliados, patamares) {
+  let limiar = null;
+  for (const p of patamares) if (avaliados >= p.aPartirDe) limiar = p.limiar;
+  return limiar;
+}
+
+/** O limiar que vale agora para esta campanha (ver `CAMPANHA_GUARDA_PESQUISA`). */
+export function limiarDaGuarda(campanha, avaliados) {
+  const patamares = config.campanha.guardaPesquisa;
+  if (ehPesquisa(campanha) && patamares.length) return limiarDoPatamar(avaliados, patamares);
+  return Number(campanha.limiar_supressao);
+}
+
+/**
  * Confere a guarda de supressão e pausa a campanha se ela estourou.
  *
  * É a realimentação que protege o número: se a lista estava errada, quem
@@ -760,11 +780,13 @@ export async function conferirGuarda(campanha) {
 
   const { avaliados, taxa } = numeros;
   if (avaliados < campanha.minimo_para_avaliar) return false;
-  if (taxa <= Number(campanha.limiar_supressao)) return false;
+
+  const limiar = limiarDaGuarda(campanha, avaliados);
+  if (limiar == null || taxa <= limiar) return false;
 
   const motivo =
     `Pausada automaticamente: ${(taxa * 100).toFixed(1)}% de supressão em ${avaliados} ` +
-    `contatos, acima do limiar de ${(Number(campanha.limiar_supressao) * 100).toFixed(1)}%.`;
+    `contatos, acima do limiar de ${(limiar * 100).toFixed(1)}%.`;
 
   await supabase
     .from('crm_campanhas')
