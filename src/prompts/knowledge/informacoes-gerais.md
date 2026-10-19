@@ -28,7 +28,7 @@
 | Ponto de referência / como chegar | Ao lado da UBS Vila Boaçava |
 | Telefone | 11 94071-5006 |
 | WhatsApp de atendimento | 11 94071-5006 |
-| WhatsApp de pesquisas (não atende) | 11 98222-6548 |
+| WhatsApp de comunicados (não atende) | 11 98222-6548 |
 | Instagram | @apacademia |
 | Site | <www.apacademia.com.br> |
 
@@ -40,14 +40,18 @@ perguntou por ele, e nunca mande ninguém falar com a academia por lá.
 ## Pesquisa de satisfação
 
 A direção da AP está ouvindo os **alunos adultos** numa pesquisa de satisfação.
-O convite chega por WhatsApp, por um número da academia usado só para isso —
-**11 98222-6548**, diferente do de atendimento. A mensagem começa com "Aqui é
-da direção da AP Academia" e pergunta se pode enviar o link; o link vai para
-quem responde.
+O convite chega por WhatsApp, pelo número de comunicados da academia —
+**11 98222-6548**, diferente do de atendimento. A mensagem é do **Leandro,
+sócio proprietário da AP**: avisa que o número é para comunicados e
+divulgações internas, diz que dá para confirmar com a Cátia, a Shirlei ou o
+Lucas, e pergunta se pode encaminhar o link do formulário do Google; o link
+vai para quem responde. Os primeiros convites, até 15/10, começavam com "Aqui
+é da direção da AP Academia" — também são nossos.
 
 | | |
 | --- | --- |
-| É da academia? | **Sim.** O 11 98222-6548 é da AP |
+| É da academia? | **Sim.** O 11 98222-6548 é da AP, e a mensagem é mesmo do Leandro |
+| Falar direto com o Leandro | Pelo e-mail <apacademia@apacademia.com.br> |
 | Quem recebe | Alunos adultos com plano ativo |
 | O formulário | "Sua experiência na AP - Queremos ouvir você!" — rápido e sigiloso |
 | Link do formulário | <https://forms.gle/qgJ3Zd4EPy2qWVzz6> |

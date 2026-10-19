@@ -105,31 +105,46 @@ export function tetoDoDia(dia, { tetoDiario, rampa = [] } = {}) {
 /**
  * A abertura que vale quando a campanha não traz a sua. Três redações do
  * mesmo recado, cada uma com o que dá credibilidade a um número novo: o
- * nome da pessoa, o porquê do número diferente, um jeito de conferir fora
- * daqui, UMA pergunta fácil no fim e a saída.
+ * nome da pessoa, quem assina, para que serve o número, pessoas e um
+ * número conhecidos para conferir, UMA pergunta fácil no fim e a saída.
  *
- * Nenhuma tem link, e `problemasDosModelos` recusa a que tiver.
+ * A primeira é o texto do responsável (19/10/2026), com a frase "este
+ * número será apenas para envio" trocada: a abertura pede resposta. As
+ * outras duas dizem o mesmo em outra ordem, para não ir o mesmo texto a
+ * centenas de pessoas.
+ *
+ * Nenhuma tem link, e `problemasDosModelos` recusa a que tiver. O e-mail
+ * não é link: não abre página nenhuma.
  */
 export const ABERTURA_PADRAO = [
-  'Oi, {nome}! Aqui é da direção da AP Academia 💙\n\n' +
-  'Este é o número que a gente usa para pesquisas — por isso é diferente do WhatsApp de atendimento, ' +
-  'que continua sendo o {numero_principal}.\n\n' +
-  'Estamos ouvindo os alunos para melhorar a academia, e a sua opinião conta. ' +
-  'Posso te enviar o link?\n\n' +
-  'Se preferir não receber mensagens deste número, é só responder SAIR.',
+  'Olá, {nome}!\n' +
+  'Aqui é o Leandro, sócio proprietário da AP Academia. Tô passando para avisar que utilizaremos este número ' +
+  'para comunicados e divulgações internas. Se quiser confirmar que é um número nosso, pergunte para a Cátia, ' +
+  'a Shirlei ou o Lucas, do time de consultores, pessoalmente ou pelo número principal, {numero_principal}. ' +
+  'Se não deseja receber este tipo de mensagem, é só responder SAIR.\n\n' +
+  'Ah, por este número não tem atendimento. Se quiser se comunicar diretamente comigo, ' +
+  'pode enviar um e-mail para apacademia@apacademia.com.br\n\n' +
+  'A primeira ação é uma pesquisa de satisfação bem rápida, de menos de 3 minutos, ' +
+  'e você não precisa se identificar.\n' +
+  'Posso te encaminhar o link do formulário do Google?',
 
-  'Olá, {nome}! Aqui é da direção da AP Academia.\n\n' +
-  'Estamos fazendo uma pesquisa de satisfação com os alunos, e ela sai por este número, separado do atendimento. ' +
-  'Se quiser confirmar que somos nós, é só perguntar na recepção ou chamar no WhatsApp de sempre: {numero_principal}.\n\n' +
-  'Posso te enviar o link?\n\n' +
-  'Para não receber mais mensagens por aqui, responda SAIR.',
+  'Oi, {nome}!\n' +
+  'Sou o Leandro, sócio proprietário da AP Academia. Este número passa a ser o dos comunicados ' +
+  'e divulgações internas da academia. Para conferir que é nosso mesmo, é só perguntar para a Cátia, ' +
+  'a Shirlei ou o Lucas, da equipe de consultores, pessoalmente ou no número principal, {numero_principal}.\n\n' +
+  'Por aqui não tem atendimento: se quiser falar diretamente comigo, o e-mail é apacademia@apacademia.com.br. ' +
+  'E se não quiser receber este tipo de mensagem, responda SAIR.\n\n' +
+  'Começamos com uma pesquisa de satisfação rápida, que leva menos de 3 minutos e não pede identificação.\n' +
+  'Posso te mandar o link do formulário do Google?',
 
-  '{nome}, oi! Aqui é da direção da AP Academia.\n\n' +
-  'Queremos saber como está sendo a sua experiência com a gente, e preparamos uma pesquisa para os alunos. ' +
-  'Ela está sendo enviada por este número, que é da academia mas não é o do atendimento — ' +
-  'o atendimento segue no {numero_principal}.\n\n' +
-  'Posso te enviar o link?\n\n' +
-  'Se não quiser receber mensagens deste número, responda SAIR.',
+  '{nome}, olá!\n' +
+  'Aqui é o Leandro, sócio proprietário da AP Academia. A partir de agora, os comunicados e as divulgações ' +
+  'internas da academia vão sair por este número. Se quiser confirmar, pergunte para a Cátia, a Shirlei ' +
+  'ou o Lucas, do time de consultores, pessoalmente ou pelo número principal, {numero_principal}.\n\n' +
+  'Este número não tem atendimento. Para falar diretamente comigo, mande um e-mail para ' +
+  'apacademia@apacademia.com.br. Se não quiser receber estas mensagens, é só responder SAIR.\n\n' +
+  'O primeiro comunicado é uma pesquisa de satisfação curtinha: menos de 3 minutos, sem precisar se identificar.\n' +
+  'Posso te encaminhar o link do formulário do Google?',
 ].join('\n---\n');
 
 export const LINK_PADRAO =
@@ -151,21 +166,23 @@ export const TEXTOS = {
   // falou primeiro: estas respondem a alguém que já escreveu, então o link
   // chega clicável e não é "número desconhecido mandando link". O endereço
   // fica no fim da linha, sozinho — pontuação colada entra no link.
+  // Na voz da abertura de 19/10/2026: o Leandro assina, o número é o dos
+  // comunicados, e quem confirma são os consultores.
   esclarecimento:
-    'Aqui é da direção da AP Academia. Este número é o que usamos para a pesquisa de satisfação com os alunos, ' +
-    'e ninguém acompanha conversa por ele.\n\n' +
-    'Se quiser confirmar que somos nós, pergunte na recepção ou chame no nosso WhatsApp de atendimento, ' +
-    '{numero_principal}:\n{link_principal}\n\n' +
+    'Aqui é o Leandro, sócio da AP Academia. Este é o número dos comunicados da academia, ' +
+    'e por ele não tem atendimento.\n\n' +
+    'Se quiser confirmar que é nosso, pergunte para a Cátia, a Shirlei ou o Lucas, pessoalmente ' +
+    'ou no número principal, {numero_principal}:\n{link_principal}\n\n' +
     'Quer que eu mande o link da pesquisa? É só responder SIM.',
 
   encerramento:
     'Muito obrigado! 💙 O link da pesquisa está na mensagem acima.\n\n' +
-    'Este número é só da pesquisa — para qualquer outro assunto, fale com a gente no WhatsApp de atendimento, ' +
+    'Por este número não tem atendimento — para qualquer outro assunto, fale com a gente no número principal, ' +
     '{numero_principal}:\n{link_principal}',
 
   aviso:
-    'Oi! Este número da AP Academia é usado só para pesquisas, e ninguém acompanha as mensagens por aqui 🙂\n\n' +
-    'Para falar com a gente, chame no WhatsApp de atendimento, {numero_principal}:\n{link_principal}',
+    'Oi! Este é o número de comunicados da AP Academia, e ninguém acompanha as mensagens por aqui 🙂\n\n' +
+    'Para falar com a gente, chame no número principal, {numero_principal}:\n{link_principal}',
 };
 
 /**
@@ -398,7 +415,7 @@ const RECUSA = [
   /^sem interesse\b/, /^dispenso\b/, /^negativo\b/, /^deixa (pra la|quieto)\b/,
 ];
 
-const ACEITE = /\b(sim|pode|podem|claro|manda|mande|mandar|envia|envie|enviar|quero|ok|okay|okey|blz|beleza|bora|vamos|aceito|positivo|certo|certeza|por favor|pfv|fechado|combinado|uhum|aham|ta bom|ta bem)\b/;
+const ACEITE = /\b(sim|pode|podem|claro|manda|mande|mandar|envia|envie|enviar|encaminha|encaminhe|encaminhar|quero|ok|okay|okey|blz|beleza|bora|vamos|aceito|positivo|certo|certeza|por favor|pfv|fechado|combinado|uhum|aham|ta bom|ta bem)\b/;
 
 // Com uma destas a frase não é um sim, mesmo trazendo "pode" ou "ok".
 const DUVIDA = /\b(nao|nunca|nem|golpe|fraude|quem|qual|como|onde|porque|por que)\b/;

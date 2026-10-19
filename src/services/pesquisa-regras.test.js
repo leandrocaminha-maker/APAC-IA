@@ -70,20 +70,23 @@ test('sem nome, o marcador sai com a vírgula dele — e a frase segue de pé', 
   assert.equal(preencher('{nome}, este é o link:\n{link}', { link: 'https://x.y' }), 'Este é o link:\nhttps://x.y');
 });
 
-test('as três aberturas padrão: nome, número de atendimento, uma pergunta, SAIR — e nenhum link', () => {
+test('as três aberturas padrão: nome, quem assina, quem confirma, uma pergunta, SAIR — e nenhum link', () => {
   for (const id of [0, 1, 2]) {
     const texto = textoDeAbertura({ id, nome: 'CLAUDIA' }, campanha, { numeroPrincipal: NUMERO });
     assert.match(texto, /Claudia/);
-    assert.match(texto, /Aqui é da direção da AP Academia/);
-    assert.match(texto, /Posso te enviar o link\?/);
+    assert.match(texto, /(Aqui é|Sou) o Leandro, sócio proprietário da AP Academia/);
+    assert.match(texto, /Cátia, a Shirlei ou o Lucas/);
+    assert.match(texto, /apacademia@apacademia\.com\.br/);
+    assert.match(texto, /Posso te (encaminhar|mandar) o link do formulário do Google\?$/);
     assert.ok(texto.includes(NUMERO));
     assert.match(texto, /\bSAIR\b/);
     assert.equal(texto.match(/\?/g).length, 1);
-    assert.doesNotMatch(texto, /https?:|\{/);
+    assert.doesNotMatch(texto, /https?:|www\.|\{/);
+    assert.doesNotMatch(texto, /apenas para envio/);
   }
 
   const semNome = textoDeAbertura({ id: 2, nome: null }, campanha, { numeroPrincipal: NUMERO });
-  assert.match(semNome, /^Oi! Aqui é da direção da AP Academia\./);
+  assert.match(semNome, /^Olá!\nAqui é o Leandro/);
 });
 
 test('a abertura da campanha vale no lugar da padrão', () => {
@@ -214,7 +217,7 @@ test('o mesmo celular com e sem o nono dígito', () => {
 
 test('sim: no começo, no meio da frase, e por emoji', () => {
   for (const t of ['Sim', 'pode', 'Pode sim!', 'Bom dia! Pode mandar', 'oi, claro', 'manda aí', 'ok obrigado',
-    's', 'Quero', 'por favor', '👍', '👍🏽', '🙏🙏', 'blz']) {
+    's', 'Quero', 'por favor', '👍', '👍🏽', '🙏🙏', 'blz', 'Encaminha', 'encaminhe por favor', 'Pode encaminhar']) {
     assert.equal(lerResposta(t), 'sim', t);
   }
 });
