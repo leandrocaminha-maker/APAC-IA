@@ -12,18 +12,19 @@ Pedido do responsável: uma pesquisa de satisfação para os **alunos adultos**,
 saindo por um **segundo número** da academia, com o público vindo do EVO pela
 segmentação (`crm.segmentation.batch`, o mesmo caminho das campanhas).
 
-**Estado em 19/10/2026: a pesquisa está PAUSADA**, e o número, restrito pela
-segunda vez — caiu em 15/10 às 14h39 (ver "A segunda restrição, de 15/10",
-logo abaixo). O próximo passo é o teste da seção "O teste de 19/10": mensagem
-nova, mesmo ritmo. O plano de 150/dia mais abaixo **não vale mais**.
+**Estado em 19/10/2026: o TESTE da mensagem nova está no ar desde 13h24**
+(ver "O teste de 19/10"): mensagem nova, mesmo ritmo. O número foi restrito
+pela segunda vez em 15/10 às 14h39 (ver "A segunda restrição, de 15/10", logo
+abaixo), a restrição saiu, e ele foi pareado de novo em 19/10 às 13h09. O
+plano de 150/dia mais abaixo **não vale mais**.
 
 | | |
 |---|---|
 | Migration 019 | aplicada (conferida por leitura) |
 | Deploy | ver o último commit da branch `crm-painel`; VPS igual ao repositório |
 | `.env` da VPS | `EVOLUTION_INSTANCE_ALT=apacademia-pesquisa`, e o bloco da retomada (abaixo). Backups em `.env.bak-pesquisa-2026-10-13` e `.env.bak-retomada-2026-10-15` |
-| Instância `apacademia-pesquisa` | **11 98222-6548**. Restrita em 14/10 às 10h11 e em 15/10 às 14h39:24 (as duas vezes 401 `device_removed`). Sessão `close`; parear de novo só quando a restrição sair no celular do chip |
-| Campanha | `satisfacao-2026` (id 4), **`pausada`** desde 19/10 (à mão), teto 150, gatilho `PESQ-2026`. 102 abordados, 27 responderam, 4 SAIR, **448 pendentes** |
+| Instância `apacademia-pesquisa` | **11 98222-6548**. Restrita em 14/10 às 10h11 e em 15/10 às 14h39:24 (as duas vezes 401 `device_removed`). **Pareada de novo em 19/10 às 13h09**, a primeira vez com o aparelho "Mac OS" + "Chrome" (falta o responsável conferir no celular, em "Aparelhos conectados") |
+| Campanha | `satisfacao-2026` (id 4), **`ativa`** desde 19/10 13h24 (ficou pausada à mão de 19/10 de manhã até o pareamento), teto 150, gatilho `PESQ-2026`. Antes do teste: 102 abordados, 27 responderam, 4 SAIR, **448 pendentes** |
 
 ### A segunda restrição, de 15/10/2026
 
@@ -93,9 +94,20 @@ conclusão":
 | Ritmo | **o mesmo**: 4–6 min sorteados, teto 150 |
 | Nome do aparelho | "Mac OS" + "Chrome" (decidido junto: o nome já conviveu com dias que passaram) |
 
-**Para rodar o teste:** a restrição sai no celular do chip → avisar a Cátia, a
-Shirlei e o Lucas → parear pelo painel → conferir em "Aparelhos conectados"
-que aparece Chrome (Mac OS) → `campanha.js ativar satisfacao-2026`.
+**Como foi ao ar (19/10):** deploy de `f01fae4` e `fa8df36` às 13h06 (o
+`up --build backend` recriou a Evolution junto, por causa do `depends_on`; o
+número principal voltou em ~20 s) → `mensagem_abertura` da campanha trocada
+pelas três redações novas → pareado às 13h09 → `campanha.js ativar` às 13h24.
+
+**O primeiro ciclo** agendou 83 aberturas, das 13h31 às 20h28, com intervalo
+médio de 5,09 min. A única lacuna fora de 4–6 min (9,2 min) é um número sem
+WhatsApp, barrado antes do envio (erros 3 → 4). Nenhuma com o texto antigo. A
+primeira saiu às 13h31 (redação 2, 622 caracteres).
+
+**O que comparar com 15/10:** naquele dia o número caiu na 51ª abertura,
+4h14 depois da primeira. Neste ritmo, a 51ª de hoje sai por volta das 17h45.
+Ao fim do dia, comparar taxa de resposta, pedidos de link e SAIR com os de
+15/10 (14 de 51 responderam, 10 pediram o link, 2 SAIR).
 
 ### A retomada de 15/10/2026 (decisões do responsável)
 
