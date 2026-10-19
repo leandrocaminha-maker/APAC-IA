@@ -1,6 +1,6 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 14/10/2026, depois da restrição do número da pesquisa.** Documento de
+> **Snapshot de 19/10/2026, depois da segunda restrição do número da pesquisa.** Documento de
 > continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
@@ -12,18 +12,90 @@ Pedido do responsável: uma pesquisa de satisfação para os **alunos adultos**,
 saindo por um **segundo número** da academia, com o público vindo do EVO pela
 segmentação (`crm.segmentation.batch`, o mesmo caminho das campanhas).
 
-**Estado em 15/10/2026: a pesquisa foi RETOMADA às 10h19**, depois de o
-WhatsApp restringir o número em 14/10 (ver "A restrição de 14/10", logo
-abaixo). O ritmo agora é o da seção "A retomada de 15/10". O plano de 150/dia
-mais abaixo **não vale mais**.
+**Estado em 19/10/2026: a pesquisa está PAUSADA**, e o número, restrito pela
+segunda vez — caiu em 15/10 às 14h39 (ver "A segunda restrição, de 15/10",
+logo abaixo). O próximo passo é o teste da seção "O teste de 19/10": mensagem
+nova, mesmo ritmo. O plano de 150/dia mais abaixo **não vale mais**.
 
 | | |
 |---|---|
 | Migration 019 | aplicada (conferida por leitura) |
-| Deploy | `51dce47`, VPS igual ao repositório |
+| Deploy | ver o último commit da branch `crm-painel`; VPS igual ao repositório |
 | `.env` da VPS | `EVOLUTION_INSTANCE_ALT=apacademia-pesquisa`, e o bloco da retomada (abaixo). Backups em `.env.bak-pesquisa-2026-10-13` e `.env.bak-retomada-2026-10-15` |
-| Instância `apacademia-pesquisa` | pareada com o **11 98222-6548**; caiu restrita em 14/10 às 10h11 (401 `device_removed`), a restrição saiu em 15/10 e foi **pareada de novo às 10h18** |
-| Campanha | `satisfacao-2026` (id 4), **`ativa`** desde 15/10 10h19, teto 150, gatilho `PESQ-2026`, sem link para quem não responde. Na retomada: 51 aberturas já enviadas, 500 alunos pendentes |
+| Instância `apacademia-pesquisa` | **11 98222-6548**. Restrita em 14/10 às 10h11 e em 15/10 às 14h39:24 (as duas vezes 401 `device_removed`). Sessão `close`; parear de novo só quando a restrição sair no celular do chip |
+| Campanha | `satisfacao-2026` (id 4), **`pausada`** desde 19/10 (à mão), teto 150, gatilho `PESQ-2026`. 102 abordados, 27 responderam, 4 SAIR, **448 pendentes** |
+
+### A segunda restrição, de 15/10/2026
+
+**Nada saiu fora do programado.** Conferido no log do backend e no banco da
+própria Evolution (tabela `Message`, que bate com o log: 66 enviadas pela API):
+
+| | Programado | O que saiu (10h25–14h39) |
+|---|---|---|
+| Aberturas | sorteadas a cada 4–6 min | 51 · mínimo 4,00 · máximo 6,00 · média 5,08 min |
+| Respostas | 10–20 s depois | 15, entre 13 e 20 s |
+| Mesma pessoa duas vezes | nunca | 0 |
+| Fora do sistema | — | 2 digitadas no iPhone às 8h17, antes do pareamento |
+| Depois da queda | nada | nada: as aberturas da fila voltaram à campanha, uma a uma |
+
+A queda veio 17 s depois da 51ª abertura. Com os três dias lado a lado, o
+que derrubou foi a **própria regulagem** — volume de conversas novas com quem
+não tem o número salvo, num chip de 3 dias recém-saído de restrição:
+
+| Dia | Aberturas | Ritmo | Resultado |
+|---|---|---|---|
+| 13/10 | 25 | 1 a cada 6,7 min | passou |
+| 14/10 | 26 | 1 a cada 2,8 min, em 70 min | restrito |
+| 15/10 | 51 | 1 a cada 5 min | restrito |
+
+A resposta foi boa (14 de 51 responderam, 10 pediram o link, 2 SAIR), mas
+houve desconfiança ("Com quem eu falo...", e uma aluna perguntou no número
+principal se o 98222-6548 era da AP). Denúncia não aparece para nós.
+
+Em 16/10 às 19h19 o Docker reiniciou os quatro containers sozinho (o servidor
+não): sem relação com a restrição, e os dois números voltaram como estavam.
+
+**A varredura dos metadados (19/10).** O que vai ao WhatsApp e indica
+automação:
+
+- **O nome do aparelho, no pareamento por QR**: a Evolution registrava
+  `os: "Evolution API"` (padrão de `CONFIG_SESSION_PHONE_CLIENT`), navegador
+  "Chrome", versão fixa 10.15.7 da biblioteca — a versão do servidor NÃO vai
+  (`release()` só entra no pareamento por código, que não usamos). Trocado
+  em 19/10 para **"Mac OS" + "Chrome"** no `docker-compose.yml`, que é o
+  padrão do próprio Baileys. Vale no próximo pareamento; o número principal
+  segue "Evolution API" até ser pareado de novo — e funciona assim desde
+  22/08, então o nome sozinho não é gatilho.
+- **A assinatura do Baileys**, igual em qualquer ferramenta feita com ele:
+  idioma "en", sistema "0.1", operadora "000". Não muda sem mexer na Evolution.
+- **A mensagem não leva marca**: id no formato do WhatsApp Web (`3EB0…`, 22
+  caracteres — a Evolution classifica as nossas como `web`), sem campo a mais.
+  "Sempre online" e rejeitar chamada estão desligados.
+- **Comportamento**: o número não marca como lida a mensagem que recebe
+  (`readMessages: false`) e mesmo assim responde; a conexão sai do IP do
+  servidor, não de operadora.
+- **À parte, no número PRINCIPAL**: `processarCampanha` confere a existência
+  de cada alvo com `numeroExiste`, que usa a instância principal. Ao ativar em
+  15/10 foram 122 consultas em ~2 min. Não afeta o número da pesquisa, mas é
+  padrão de robô no número de vendas. Não corrigido.
+
+### O teste de 19/10/2026 (decisões do responsável)
+
+Uma variável por vez — "se alterarmos 2 variáveis ao mesmo tempo não temos
+conclusão":
+
+| O quê | Como ficou |
+|---|---|
+| Mensagem de abertura | **nova**, assinada pelo Leandro (sócio proprietário): o número passa a ser o de comunicados, quem confirma são a Cátia, a Shirlei e o Lucas, e o contato direto é <apacademia@apacademia.com.br>. Três redações em `ABERTURA_PADRAO` (a 1ª é o texto dele, com "apenas para envio" trocado por "não tem atendimento") e as mesmas em `crm_campanhas.mensagem_abertura` |
+| Respostas fixas | esclarecimento, agradecimento e aviso na mesma voz ("número de comunicados", confirmar com os consultores) |
+| Leia | `informacoes-gerais.md`: o número é o de comunicados, a mensagem é do Leandro, e o e-mail dele |
+| Sim | "encaminha", "encaminhe", "encaminhar" contam como sim |
+| Ritmo | **o mesmo**: 4–6 min sorteados, teto 150 |
+| Nome do aparelho | "Mac OS" + "Chrome" (decidido junto: o nome já conviveu com dias que passaram) |
+
+**Para rodar o teste:** a restrição sai no celular do chip → avisar a Cátia, a
+Shirlei e o Lucas → parear pelo painel → conferir em "Aparelhos conectados"
+que aparece Chrome (Mac OS) → `campanha.js ativar satisfacao-2026`.
 
 ### A retomada de 15/10/2026 (decisões do responsável)
 
