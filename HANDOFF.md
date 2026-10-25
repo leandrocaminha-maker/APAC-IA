@@ -6,6 +6,28 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## A condição 10x R$ 264 do Aqua Anual foi encerrada (25/10/2026)
+
+Pedido do responsável: a condição de lançamento do Estilo Aqua Anual (10x R$ 264
+no lugar de 12x) acabou. Tirada dos três lugares onde vivia:
+
+| Onde | O que mudou |
+|---|---|
+| `vendas.md` (banco, `npm run prompt`) | saiu o bloco que mandava apresentar a condição no turno do Anual. Backup em `data/backups/prompt-vendas-2026-10-25T23-17-59-271Z.md` |
+| `planos-e-valores.md` (disco, deploy) | a seção da condição virou uma linha: encerrada, o Anual é 12x R$ 264, e só se fala dela se perguntarem |
+| `crm_campanhas.oferta` das campanhas 2 e 3 | reescrita: encerrada para todos, inclusive quem a recebeu; quem insistir que foi prometido vai para o humano. Backups em `data/backups/campanha-*-oferta-2026-10-25T23-19-03-586Z.txt` |
+
+**Por que a oferta da campanha importava:** `campanhaDoContato` não olha o status
+da campanha, só a etapa do alvo. As duas estão `concluida`, mas em 25/10 havia
+**108 alvos** em etapa viva (78 em `aguardando_consentimento`, 30 em
+`aceitou`/`conversando`). Um "sim" atrasado gerava a oferta com o 10x, e
+qualquer mensagem deles punha o 10x no contexto como "o ÚNICO conjunto de
+condições que vale para ela".
+
+⚠️ **Os `link_checkout` desses alvos não foram tocados** (são tokens do EVO,
+irrecuperáveis). Se apontam para um contrato promocional no EVO, quem clicar
+pode cair nele — conferir no EVO se aquele contrato foi desativado.
+
 ## Pesquisa de satisfação pelo número alternativo (12/10/2026)
 
 Pedido do responsável: uma pesquisa de satisfação para os **alunos adultos**,
