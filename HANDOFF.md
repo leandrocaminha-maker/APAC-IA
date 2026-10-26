@@ -1,10 +1,79 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 19/10/2026, depois da segunda restrição do número da pesquisa.** Documento de
-> continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
+> **Snapshot de 26/10/2026, com o registro de vendas por canal pronto e ainda não no ar.**
+> Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## O funil passa a contar as vendas por canal (26/10/2026)
+
+Pedido do responsável, depois de uma análise do funil: separar as vendas de
+quem chegou pelo **WhatsApp** das de quem foi atendido no **balcão** (recepção,
+telefone, e-mail — tudo o que não é WhatsApp), e saber quantos atendidos pelo
+WhatsApp foram à academia.
+
+**Estado: código pronto, testado e simulado. Falta aplicar a migration 020, o
+deploy e a reconstrução `--valendo`** (ver "Para pôr no ar").
+
+### O que a análise achou
+
+| Problema | Efeito no painel |
+|---|---|
+| `metricasFunil` lia `crm_leads` sem paginar; o PostgREST corta em 1.000 linhas e já eram 1.174 | 191 leads abertos em vez de 290; as linhas que sumiam eram as mais mexidas |
+| O painel não tinha período: "abertos/parados" eram o momento, "ganhos/conversão" o acumulado desde 22/08 | números de naturezas diferentes lado a lado |
+| O valor da venda era lido de `detalhe.saleValue`, que não existe (está em `saleItens[].saleValue`) | receita sempre R$ 0 |
+| Qualquer venda que não fosse experimental fechava o lead como ganho | 3 ganhos falsos (touca, venda vazia) |
+| A venda de balcão chega com o número de ALUNO novo e `idProspect` nulo; o lead só conhecia o prospect | de 56 vendas a novos/ex-alunos que falaram pelo WhatsApp, só 20 eram ganho |
+| A leitura de presença mandava `idMember` + `idProspect` juntos (o EVO recusa: 400) e descartava presença lançada depois das 22h | nenhuma presença lida em 28 aulas; os consultores FINALIZAM as aulas normalmente |
+
+### O que mudou
+
+- **`crm_vendas`** (migration 020): uma linha por venda de plano pago (`NewSale`
+  com contrato acima de R$ 0), classificada na chegada em `src/services/vendas.js`:
+  comprador (`novo` · `ex_aluno` · `aluno_ativo`), canal (`whatsapp` · `balcao`),
+  vendedor (`idEmployeeSale` → nome), origem do EVO (`saleSource` 1 balcão,
+  7 integração). As regras puras estão em `vendas-regras.js`, com testes.
+  - Ex-aluno: sem contrato pago há `EVO_MESES_REATIVACAO` meses (3, o mesmo da Leia;
+    o responsável lembrava 6 e não respondeu — é só mudar a variável).
+  - WhatsApp: atendimento aberto na hora da venda, ou criado nos 60 dias antes.
+  - Custo: zero consulta para cliente novo (o `CreateMember` chega antes, com o
+    celular); 1–2 para quem já tinha cadastro de aluno; funcionários 1×/dia.
+- **O atendimento que a venda fecha** (`escolherLeadDoGanho`): o aberto de venda →
+  ganho; ganho sem valor → recebe o valor; para novo/ex-aluno, o mais recente
+  dos 60 dias (venda antes de relacionamento) → ganho, inclusive o que a régua
+  deu por perdido. Renovação não reabre nada. **Aluno ativo com atendimento de
+  venda aberto conta como ganho** — na reconstrução são 4 (512, 287, 919, 1127).
+- **`CreateMember`** liga o número de aluno ao atendimento aberto pelo celular.
+- **Automações do CRM 2.0** (ativadas pelo responsável em 26/10, ação Webhook):
+  "Aula experimental realizada" (oportunidade e cliente) e "Cadastro de
+  oportunidade". `processarAutomacaoDoCrm` (evo-sync.js): a primeira move o lead
+  para **Experimental realizada** e grava o evento `experimental_realizada`; a
+  segunda liga o prospect ao lead pelo celular. O nome da versão "cliente" não
+  estava na documentação — a regra casa pelo final (`trial_class_completed`).
+  ⚠️ Nenhum evento delas tinha chegado até o fim do dia 26/10; o primeiro confirma
+  o formato.
+- **A consulta à aula saiu** (pedido do responsável). A conversa pós-aula da Leia
+  sai na **manhã seguinte às 10h** (`horarioDoPosAula`) e lê o evento
+  `experimental_realizada`; sem aviso, usa o roteiro de presença desconhecida
+  (nunca afirma falta). `presencaNaAula` foi removida; `sessoesDaPessoa` manda um
+  número só.
+- **Painel**: seção "Desempenho do período" (este mês · mês passado · 90 dias):
+  vendas por canal, renovações à parte, parte do WhatsApp, cadastros no balcão,
+  funil do WhatsApp (coorte: atendimentos → experimental → foi à academia →
+  comprou) e tabela por vendedor. Os cartões "Ganhos" e "Conversão" (acumulados)
+  saíram do topo. Rota `GET /crm/api/funil/periodo?de=&ate=`.
+- **`metricasFunil` paginada** com `lerTodas` (src/lib/supabase.js).
+
+### Para pôr no ar — nesta ordem
+
+1. **Migration 020** no SQL Editor do Supabase (idempotente).
+2. **Deploy** da branch `crm-painel`. Nada novo no `.env`.
+3. **`npm run reconstruir-vendas -- --valendo`** (simule antes, sem a flag). Simulado
+   em 26/10: 168 vendas de plano (24/08–26/10); **ganhos 19 → 52**, conversão sobre
+   decididos 5,4% → 13,6%; 271, 768 e 843 viram perdido com explicação (cada um tem
+   um atendimento mais novo); 4 conversas pós-aula remarcadas. Reaproveita o cache
+   das respostas do EVO (`--cache <pasta>`).
 
 ## A condição 10x R$ 264 do Aqua Anual foi encerrada (25/10/2026)
 
