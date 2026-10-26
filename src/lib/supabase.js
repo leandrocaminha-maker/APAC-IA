@@ -68,3 +68,39 @@ export const supabase = createClient(
     },
   }
 );
+
+/** O máximo de linhas que o PostgREST deste projeto devolve por resposta. */
+const LINHAS_POR_RESPOSTA = 1000;
+
+/**
+ * Lê TODAS as linhas de uma consulta, de mil em mil.
+ *
+ * O PostgREST corta toda resposta em 1000 linhas, e corta calado: sem erro,
+ * com `content-range: 0-999/*`. Em 26/10/2026 `crm_leads` tinha 1.174
+ * linhas, e as métricas do painel contavam só 1.000 delas — 191 leads
+ * abertos em vez de 290. E as que sumiam não eram quaisquer: sem `order`, o
+ * Postgres devolve na ordem física, e linha atualizada vai para o fim.
+ * Sumiam justamente os leads mais mexidos.
+ *
+ * `montar` devolve a consulta já filtrada, e é chamada uma vez por página:
+ * o builder do supabase-js não se reaproveita depois de executado. A ordem
+ * por `id` é o que mantém as páginas estáveis entre uma chamada e outra.
+ *
+ * Use em toda consulta que conta ou soma uma tabela inteira.
+ *
+ * @param {() => object} montar  ex.: `() => supabase.from('crm_leads').select('stage')`
+ * @returns {Promise<{data: object[]|null, error: object|null}>}
+ */
+export async function lerTodas(montar, { teto = 100_000 } = {}) {
+  const linhas = [];
+  for (let de = 0; de < teto; de += LINHAS_POR_RESPOSTA) {
+    const { data, error } = await montar()
+      .order('id', { ascending: true })
+      .range(de, de + LINHAS_POR_RESPOSTA - 1);
+    if (error) return { data: null, error };
+    linhas.push(...(data || []));
+    if (!data || data.length < LINHAS_POR_RESPOSTA) return { data: linhas, error: null };
+  }
+  logger.warn(`[supabase] lerTodas parou no teto de ${teto} linhas — a contagem está incompleta`);
+  return { data: linhas, error: null };
+}

@@ -159,6 +159,25 @@
   .barra { height: 9px; background: var(--painel-2); border-radius: 5px; overflow: hidden; }
   .barra i { display: block; height: 100%; background: var(--acento); border-radius: 5px; }
   .funil-linha .qtd { text-align: right; font-variant-numeric: tabular-nums; color: var(--suave); }
+  .funil-linha.larga { grid-template-columns: 150px 1fr 96px; }
+
+  /* ── Desempenho do período ───────────────── */
+  .periodo { margin-bottom: 18px; }
+  .periodo-cabeca { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .periodo-cabeca h3 { margin: 0; font-size: 15px; }
+  .periodo-cabeca .chips { margin-bottom: 0; }
+  .periodo-datas { color: var(--suave); font-size: 13px; }
+  .periodo-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .periodo-grade > * { margin-bottom: 0; }
+  .periodo-grade h4 { margin: 0 0 10px; font-size: 12px; color: var(--suave);
+    text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+  .periodo-grade .tabela-caixa { padding: 14px 16px 6px; }
+  .periodo-grade table td, .periodo-grade table th { padding: 7px 8px; cursor: default; }
+  .periodo-grade tbody tr { cursor: default; }
+  .periodo-grade td.num, .periodo-grade th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .periodo-nota { color: var(--suave); font-size: 12px; margin-top: 8px; }
+  .periodo-nota.alerta { color: var(--alerta); }
+  @media (max-width: 860px) { .periodo-grade { grid-template-columns: 1fr; } }
 
   /* ── Filtros ─────────────────────────────── */
   .filtros { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
@@ -375,6 +394,30 @@
       <div class="metricas" id="metricas"></div>
       <div class="metricas" id="pendencias"></div>
       <div class="fila-pendencia" id="fila-pendencia" style="display:none"></div>
+
+      <!--
+        Desempenho do período: as vendas de cada caminho do funil (WhatsApp
+        e balcão) e até onde os atendimentos do WhatsApp chegaram. Os
+        cartões de cima são o momento; estes são o período escolhido.
+      -->
+      <section class="periodo" id="periodo">
+        <div class="periodo-cabeca">
+          <h3>Desempenho do período</h3>
+          <div class="chips" id="chips-periodo">
+            <button class="chip ativo" data-periodo="mes">Este mês</button>
+            <button class="chip" data-periodo="mes-passado">Mês passado</button>
+            <button class="chip" data-periodo="90d">Últimos 90 dias</button>
+          </div>
+          <span class="periodo-datas" id="periodo-datas"></span>
+        </div>
+        <div class="metricas" id="periodo-vendas"></div>
+        <div class="periodo-grade">
+          <div class="funil-barras" id="periodo-funil"></div>
+          <div class="tabela-caixa" id="periodo-vendedores"></div>
+        </div>
+        <div class="periodo-nota" id="periodo-nota"></div>
+      </section>
+
       <div class="funil-barras" id="funil-barras"></div>
 
       <!--
@@ -768,6 +811,7 @@ const estado = {
   usuarios: [],
   pendencias: null,
   filaAberta: null,
+  periodo: 'mes',
 };
 
 let temporizadorPendencias;
@@ -912,17 +956,9 @@ async function carregarMetricas() {
       <div class="rotulo">Follow-ups vencidos</div>
       <div class="valor">${m.followupsVencidos}</div>
       <div class="nota">passaram da data combinada</div>
-    </div>
-    <div class="cartao bom">
-      <div class="rotulo">Ganhos</div>
-      <div class="valor">${m.ganhos}</div>
-      <div class="nota">${dinheiro(m.receita)}</div>
-    </div>
-    <div class="cartao">
-      <div class="rotulo">Conversão</div>
-      <div class="valor">${m.conversao == null ? '—' : m.conversao + '%'}</div>
-      <div class="nota">sobre ${m.ganhos + m.perdidos} decididos</div>
     </div>`;
+  // Ganhos e conversão moraram aqui até 26/10/2026, somando tudo desde
+  // agosto. Hoje são do período, em "Desempenho do período" logo abaixo.
 
   // As barras acompanham a trilha que está na tela: mostrar as etapas de
   // venda enquanto a tabela lista relacionamento seria dizer uma coisa e
@@ -936,6 +972,115 @@ async function carregarMetricas() {
       <span class="qtd">${porEtapa[e] || 0}</span>
     </div>`).join('');
 }
+
+// ══════════════════════════════════════════════════════
+// Desempenho do período
+//
+// Vendas por canal e por vendedor, e o funil do WhatsApp. As datas são de
+// São Paulo, e o servidor trata os dois dias como inteiros.
+// ══════════════════════════════════════════════════════
+
+function periodoDe(chave) {
+  const hoje = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [ano, mes] = hoje.split('-').map(Number);
+  const dia = d => d.toISOString().slice(0, 10);
+  if (chave === 'mes-passado') {
+    return { de: dia(new Date(Date.UTC(ano, mes - 2, 1))), ate: dia(new Date(Date.UTC(ano, mes - 1, 0))) };
+  }
+  if (chave === '90d') {
+    return { de: dia(new Date(Date.parse(`${hoje}T00:00:00Z`) - 89 * 86400000)), ate: hoje };
+  }
+  return { de: `${hoje.slice(0, 8)}01`, ate: hoje };
+}
+
+const pct = (n, total) => total ? `${Math.round(n / total * 100)}%` : '—';
+
+function cartaoCanal(rotulo, c) {
+  return `<div class="cartao">
+      <div class="rotulo">${rotulo}</div>
+      <div class="valor">${c.total.vendas}</div>
+      <div class="nota">${dinheiro(c.total.valor)} · novos ${c.novo.vendas} · ex-alunos ${c.ex_aluno.vendas}</div>
+    </div>`;
+}
+
+async function carregarPeriodo() {
+  const { de, ate } = periodoDe(estado.periodo);
+  $('#periodo-datas').textContent = `${soData(`${de}T12:00:00`)} a ${soData(`${ate}T12:00:00`)}`;
+
+  let p;
+  try { p = await api(`/funil/periodo?de=${de}&ate=${ate}`); }
+  catch (err) {
+    $('#periodo-vendas').innerHTML = `<div class="cartao"><div class="nota">${esc(err.message)}</div></div>`;
+    return;
+  }
+
+  const w = p.canais.whatsapp, b = p.canais.balcao;
+  const doFunil = w.total.vendas + b.total.vendas;
+
+  $('#periodo-vendas').innerHTML =
+    cartaoCanal('Vendas pelo WhatsApp', w)
+    + cartaoCanal('Vendas no balcão', b)
+    + `<div class="cartao bom">
+        <div class="rotulo">Parte do WhatsApp</div>
+        <div class="valor">${pct(w.total.vendas, doFunil)}</div>
+        <div class="nota">das ${doFunil} vendas a novos e ex-alunos</div>
+      </div>
+      <div class="cartao">
+        <div class="rotulo">Renovação e troca de plano</div>
+        <div class="valor">${p.renovacoes.total.vendas}</div>
+        <div class="nota">${dinheiro(p.renovacoes.total.valor)} · alunos ativos, fora do funil</div>
+      </div>
+      <div class="cartao">
+        <div class="rotulo">Cadastros no balcão</div>
+        <div class="valor">${p.cadastrosDeOportunidade.semWhatsapp}</div>
+        <div class="nota">oportunidades sem conversa no WhatsApp</div>
+      </div>`;
+
+  // O funil do WhatsApp é uma coorte: os atendimentos que começaram no
+  // período, e até onde cada um chegou.
+  const f = p.funilWhatsapp;
+  const passos = [
+    ['Atendimentos de venda', f.leads],
+    ['Experimental agendada', f.experimentalAgendada],
+    ['Foi à academia', f.foiAAcademia],
+    ['Comprou', f.venda],
+  ];
+  $('#periodo-funil').innerHTML = '<h4>Funil do WhatsApp</h4>' + passos.map(([rotulo, n]) => `
+    <div class="funil-linha larga">
+      <span>${rotulo}</span>
+      <span class="barra"><i style="width:${f.leads ? n / f.leads * 100 : 0}%"></i></span>
+      <span class="qtd">${n} · ${pct(n, f.leads)}</span>
+    </div>`).join('');
+
+  $('#periodo-vendedores').innerHTML = `<h4>Por vendedor</h4>
+    <table>
+      <thead><tr><th>Vendedor</th><th class="num">Vendas</th><th class="num">Valor</th><th class="num">Renovações</th></tr></thead>
+      <tbody>${p.porVendedor.length ? p.porVendedor.map(v => `<tr>
+          <td>${esc(v.vendedor)}</td>
+          <td class="num">${v.funil.vendas}</td>
+          <td class="num">${dinheiro(v.funil.valor)}</td>
+          <td class="num">${v.renovacoes.vendas}</td>
+        </tr>`).join('') : '<tr><td colspan="4" class="vazio">Nenhuma venda de plano no período.</td></tr>'}</tbody>
+    </table>`;
+
+  const nota = $('#periodo-nota');
+  if (!p.registroDeVendas) {
+    nota.className = 'periodo-nota alerta';
+    nota.textContent = 'O registro de vendas ainda não está ativo no banco (migration 020). Os números de venda aparecem depois dela.';
+  } else {
+    nota.className = 'periodo-nota';
+    nota.textContent = 'Vendas: planos pagos, pela data da venda. WhatsApp: a pessoa conversou com a gente por lá antes de comprar; ' +
+      'o resto é balcão. Funil: atendimentos de venda do WhatsApp que começaram no período. ' +
+      '"Foi à academia" é aula experimental realizada (aviso do EVO, desde 27/10/2026) ou compra.';
+  }
+}
+
+$$('#chips-periodo .chip').forEach(c => c.addEventListener('click', () => {
+  if (estado.periodo === c.dataset.periodo) return;
+  estado.periodo = c.dataset.periodo;
+  $$('#chips-periodo .chip').forEach(x => x.classList.toggle('ativo', x === c));
+  carregarPeriodo();
+}));
 
 // ══════════════════════════════════════════════════════
 // Pendências de atendimento
@@ -1228,7 +1373,7 @@ $('#f-busca').addEventListener('input', () => {
 ['#f-dono', '#f-origem', '#f-fechados'].forEach(s =>
   $(s).addEventListener('change', carregarFunil));
 $('#btn-recarregar').addEventListener('click', () => {
-  carregarFunil(); carregarMetricas(); carregarPendencias();
+  carregarFunil(); carregarMetricas(); carregarPendencias(); carregarPeriodo();
 });
 
 $('#btn-novo-lead').addEventListener('click', async () => {
@@ -1516,6 +1661,7 @@ async function acao(fn, mensagemOk) {
     const id = estado.leadAberto?.lead?.id;
     await carregarFunil();
     await carregarMetricas();
+    carregarPeriodo();
     if (id) abrirFicha(id);
   } catch (err) {
     toast(err.message, 'erro');
@@ -2165,6 +2311,7 @@ async function iniciar() {
   montarChips();
   await carregarMetricas();
   await carregarPendencias();
+  carregarPeriodo();
   await carregarUsuarios();
 
   // O alarme só serve se ele mesmo se atualizar: um handoff aberto com o

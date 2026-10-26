@@ -265,6 +265,25 @@ export async function cancelar(leadId, tipos = [], motivo = 'cancelado') {
   return data?.length || 0;
 }
 
+/** Hora da conversa pós-aula: a manhã seguinte, depois do aviso do EVO. */
+const HORA_POS_AULA = 10;
+
+/**
+ * Quando sai a conversa de depois da aula experimental.
+ *
+ * Na manhã seguinte, às 10h, e não mais quatro horas depois. A presença
+ * vem da automação do CRM do EVO ("aula experimental realizada"), que roda
+ * de madrugada — as do CRM chegam todas por volta das 5h. Até 26/10/2026 o
+ * sistema perguntava ao EVO pela sessão até quatro vezes por aula; pedido
+ * do responsável, a consulta saiu.
+ *
+ * Dia sem contato (domingo) empurra para a próxima abertura.
+ */
+export function horarioDoPosAula(aula) {
+  const p = partesSP(aula);
+  return dentroDaJanela(deSP({ ano: p.ano, mes: p.mes, dia: p.dia + 1, hora: HORA_POS_AULA }));
+}
+
 /**
  * Chamado quando a aula experimental é agendada.
  *
@@ -273,9 +292,8 @@ export async function cancelar(leadId, tipos = [], motivo = 'cancelado') {
  *  - **24h antes**: confirmar presença e reforçar o valor de ir. É o
  *    momento em que a pessoa decide se vai mesmo, e um lembrete muda essa
  *    taxa mais do que qualquer argumento depois.
- *  - **4h depois**: consultar presença e conversar de acordo. Quatro horas
- *    dão tempo de a academia marcar a presença no sistema sem a conversa
- *    esfriar.
+ *  - **na manhã seguinte** (`horarioDoPosAula`): conversar de acordo com a
+ *    presença que o EVO avisou durante a madrugada.
  */
 export async function aoAgendarExperimental(lead, { dataHora, atividade }) {
   const aula = new Date(String(dataHora).replace(' ', 'T') + ':00-03:00');
@@ -297,7 +315,7 @@ export async function aoAgendarExperimental(lead, { dataHora, atividade }) {
     logger.info(`[followup] Lead ${lead.id}: aula perto demais (ou lembrete no passado), sem lembrete`);
   }
 
-  await agendar(lead.id, 'ae_pos_aula', new Date(aula.getTime() + 4 * 60 * 60 * 1000), contexto);
+  await agendar(lead.id, 'ae_pos_aula', horarioDoPosAula(aula), contexto);
 }
 
 /**
@@ -1065,7 +1083,7 @@ export async function registrarNoFunil(leadId, tipo, resumo, payload = {}) {
 }
 
 export const followup = {
-  JANELA, JANELAS, janelaDoDia, dentroDaJanela, horarioDoLembrete,
+  JANELA, JANELAS, janelaDoDia, dentroDaJanela, horarioDoLembrete, horarioDoPosAula,
   TIPOS_SILENCIO, TIPOS_REGUA,
   agendar, cancelar, aoAgendarExperimental, proximaSondagem, varrerSilenciosos,
   retomarHandoffsMudos,

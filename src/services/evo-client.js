@@ -509,93 +509,27 @@ export async function sessoesDoProspect(idProspect, { de, ate } = {}) {
 }
 
 /**
- * Sessões de uma pessoa — prospect OU aluno.
+ * Sessões de uma pessoa — prospect OU aluno, nunca os dois.
  *
- * Depois da aula, cada sessão traz `statusName`, `presenca`, `falta` e
- * `faltaJustificada`. É a única forma de saber se a pessoa apareceu, e é
- * o que separa "como foi a aula?" de uma mensagem para quem faltou.
+ * O EVO recusa os dois juntos: 400 "Use either IdMember or IdProspect, not
+ * both". Até 26/10/2026 isso era mudo — o 400 virava "nenhuma sessão" — e
+ * acertava justamente quem já tinha virado aluno, que tem os dois números.
+ * Vindo os dois, vale o de aluno: é o cadastro que a pessoa usa depois de
+ * converter.
+ *
+ * ⚠️ A MESMA aula pode estar nos dois cadastros com marcações diferentes
+ * ("Falta" no prospect e "Presente" no aluno, quando a pessoa foi convertida
+ * no balcão no dia). Quem precisar da presença pergunta pelos dois.
+ *
+ * A presença da aula experimental não é lida daqui: ela chega pela
+ * automação do CRM do EVO ("aula experimental realizada"), sem consulta.
  */
 export async function sessoesDaPessoa({ idProspect, idMember, de, ate } = {}) {
+  const pessoa = idMember ? { idMember } : { idProspect };
   const lista = await evoFetch(`/api/v2/activities/member/sessions${qs({
-    idProspect, idMember, dateStart: de, dateEnd: ate, take: 50,
+    ...pessoa, dateStart: de, dateEnd: ate, take: 50,
   })}`);
   return Array.isArray(lista) ? lista : [];
-}
-
-/**
- * A pessoa compareceu à aula daquele dia?
- *
- * ⚠️ **"Presente" é o valor PADRÃO no EVO, não uma afirmação.** Todo
- * participante nasce com `status: 0` (Attending). Ler isso como presença
- * confirmada faria a Leia dizer "como foi a aula?" para quem não apareceu
- * — e não há como desfazer essa mensagem.
- *
- * O que é evidência de verdade:
- *
- * - **Falta** é confiável sempre. Ninguém "cai" em falta: alguém marcou.
- * - **Presente** só vale se a sessão foi **finalizada por gente**.
- *
- * E como saber se foi gente? A API não expõe timestamp de finalização —
- * conferido no swagger e nos payloads: existe só `status: 6 / Finalized`.
- * Sessão não fechada à mão é fechada automaticamente perto da meia-noite.
- * Logo, a evidência é **o momento em que observamos**: ver "Finalized"
- * enquanto ainda são menos de 22h do dia da aula significa que alguém
- * fechou antes do processo automático.
- *
- * Isso também cobre a cautela com prospect: sem finalização humana, um
- * prospect "presente" volta como `desconhecida`, e a Leia pergunta em vez
- * de afirmar.
- *
- * @returns {Promise<{resultado: 'presente'|'falta'|'falta_justificada'|'nao_finalizada'|'desconhecida',
- *                    confiavel: boolean, finalizada: boolean, observadoEm: string, motivo: string}>}
- */
-export async function presencaNaAula({ idProspect, idMember, data }) {
-  const agora = new Date();
-  const dia = String(data).slice(0, 10);
-
-  const sessoes = await sessoesDaPessoa({ idProspect, idMember, de: dia, ate: dia }).catch(() => []);
-
-  const base = {
-    confiavel: false,
-    finalizada: false,
-    observadoEm: agora.toISOString(),
-  };
-
-  if (!sessoes.length) {
-    return { ...base, resultado: 'desconhecida', motivo: 'nenhuma sessão encontrada para o dia' };
-  }
-
-  const s = sessoes[0];
-  const finalizada = s.isFinalized === true;
-
-  // Falta exige ação de alguém — vale independentemente da finalização.
-  if (s.faltaJustificada === true) {
-    return { ...base, resultado: 'falta_justificada', confiavel: true, finalizada,
-      motivo: 'falta justificada marcada por alguém' };
-  }
-  if (s.falta === true || /falta/i.test(s.statusName || '')) {
-    return { ...base, resultado: 'falta', confiavel: true, finalizada,
-      motivo: 'falta marcada por alguém' };
-  }
-
-  // Daqui para baixo o EVO diz "presente" — que é o default.
-  // Limite de confiança: 22h do dia da aula, no horário de São Paulo.
-  const limite = new Date(`${dia}T22:00:00-03:00`);
-  const dentroDoPrazo = agora < limite;
-
-  if (!finalizada) {
-    return dentroDoPrazo
-      ? { ...base, resultado: 'nao_finalizada', finalizada: false,
-          motivo: 'sessão ainda aberta; vale reconsultar antes das 22h' }
-      : { ...base, resultado: 'desconhecida', finalizada: false,
-          motivo: 'sessão nunca foi finalizada e o prazo confiável passou' };
-  }
-
-  return dentroDoPrazo
-    ? { ...base, resultado: 'presente', confiavel: true, finalizada: true,
-        motivo: 'sessão finalizada antes das 22h — finalização humana' }
-    : { ...base, resultado: 'desconhecida', finalizada: true,
-        motivo: 'finalizada, mas só observada depois das 22h — pode ter sido automática' };
 }
 
 /**
@@ -843,6 +777,19 @@ export async function lancarFollowUpMembro(idMember, mensagem) {
 }
 
 // ──────────────────────────────────────────────
+// Funcionários
+// ──────────────────────────────────────────────
+
+/**
+ * Funcionários da filial — é de onde sai o nome do vendedor da venda
+ * (`idEmployeeSale`). O 1 é o SUPORTEEVO, o usuário da integração.
+ */
+export async function listarFuncionarios() {
+  const lista = await evoFetch(`/api/v2/employees${qs({ take: 100 })}`);
+  return Array.isArray(lista) ? lista : [];
+}
+
+// ──────────────────────────────────────────────
 // Webhooks
 // ──────────────────────────────────────────────
 
@@ -912,13 +859,13 @@ export const evoClient = {
   buscarMembroPorId,
   buscarContratosDoMembro,
   situacaoDoMembro,
+  listarFuncionarios,
   // experimental e grade
   agendarAulaExperimental,
   reservarEmSessao,
   ehJaAgendado,
   sessoesDoProspect,
   sessoesDaPessoa,
-  presencaNaAula,
   treinosDoAluno,
   listarAtividades,
   buscarGrade,

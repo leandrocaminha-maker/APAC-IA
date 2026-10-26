@@ -12,8 +12,9 @@
  *   1. **Reconferir o mundo.** O lead pode ter convertido, sido perdido ou
  *      respondido desde que o follow-up foi agendado. Mandar assim mesmo é
  *      o erro mais visível que um follow-up automático comete.
- *   2. **Consultar o EVO** quando o assunto depende de um fato de lá —
- *      hoje, se a pessoa compareceu à aula.
+ *   2. **Ler o fato que o EVO avisou** quando o assunto depende dele —
+ *      hoje, se a pessoa compareceu à aula. Sem consulta: o aviso chega
+ *      de madrugada pela automação do CRM e já está no razão do lead.
  *   3. **Gerar o texto na hora**, com esse contexto, em vez de disparar
  *      uma frase guardada.
  */
@@ -22,7 +23,6 @@ import { logger } from '../lib/logger.js';
 import { supabase } from '../lib/supabase.js';
 import { followup } from '../services/followup.js';
 import { controle } from '../services/controle.js';
-import { evoClient } from '../services/evo-client.js';
 import { aiAgent } from '../services/ai-agent.js';
 import { funil } from '../services/funil.js';
 import { saveMessage } from '../services/contacts.js';
@@ -36,13 +36,38 @@ let rodando = false;
 const ETAPAS_MORTAS = new Set(['ganho', 'perdido', 'finalizado']);
 
 /**
- * Quantas vezes o follow-up pós-aula espera o EVO fechar a sessão.
+ * A pessoa foi à aula? Responde pelo aviso que o EVO já mandou.
  *
- * Três adiamentos de 3h cobrem o dia inteiro de aula. Depois disso a
- * presença é dada como desconhecida e a mensagem sai assim mesmo — a
- * alternativa é não falar com quem fez aula experimental.
+ * A automação "aula experimental realizada" do CRM do EVO avisa de
+ * madrugada quem esteve presente, e o aviso vira um evento
+ * `experimental_realizada` no razão do lead (evo-sync.js). Aqui só se lê.
+ *
+ * Sem aviso, a resposta é `desconhecida`, nunca `falta`: os consultores
+ * fecham as aulas, então quase sempre a ausência do aviso é falta — mas
+ * "você não veio" para quem veio não tem conserto, e a mensagem de
+ * `desconhecida` funciona nos dois casos.
+ *
+ * A margem de 6h antes da aula cobre aviso de aula que começou mais cedo do
+ * que o horário anotado.
  */
-const TETO_ADIAMENTOS = 3;
+async function presencaAvisada(lead, aula) {
+  // Sem data da aula, só vale aviso dos últimos dois dias.
+  const inicio = Number.isFinite(new Date(aula).getTime())
+    ? new Date(aula).getTime() - 6 * 60 * 60 * 1000
+    : Date.now() - 2 * 24 * 60 * 60 * 1000;
+  const desde = new Date(inicio).toISOString();
+  const { data, error } = await supabase
+    .from('crm_lead_events')
+    .select('id, occurred_at')
+    .eq('lead_id', lead.id)
+    .eq('type', 'experimental_realizada')
+    .gte('occurred_at', desde)
+    .limit(1);
+  if (error) logger.warn(`[followup] Lead ${lead.id}: não deu para ler o aviso de presença: ${error.message}`);
+  return data?.length
+    ? { resultado: 'presente', motivo: `aviso do EVO em ${data[0].occurred_at}` }
+    : { resultado: 'desconhecida', motivo: 'o EVO não avisou presença' };
+}
 
 /**
  * Trilhas que recebem follow-up de venda. Só uma.
@@ -102,7 +127,7 @@ function instrucao(tipo, { lead, presenca, contexto }) {
       'Peça uma confirmação simples. Diga o que levar. Curto — duas ou três linhas.',
 
     ae_pos_aula_presente:
-      `Ela FOI à aula de ${atividade}. Pergunte como foi, de forma genuína e específica ` +
+      `Ela FOI à aula de ${atividade}${quando ? ` (${quando})` : ''}. Pergunte como foi, de forma genuína e específica ` +
       '— não "o que achou?" genérico. Puxe o que ela te contou antes sobre o objetivo dela ' +
       'e conecte com a experiência. Objetivo desta mensagem: colher a impressão, não fechar venda. ' +
       'Uma pergunta só.',
@@ -114,7 +139,7 @@ function instrucao(tipo, { lead, presenca, contexto }) {
       'Curto e leve.',
 
     ae_pos_aula_desconhecida:
-      `A aula de ${atividade} já passou, mas o sistema não registrou a presença — ` +
+      `A aula de ${atividade}${quando ? ` (${quando})` : ''} já passou, mas o sistema não registrou a presença — ` +
       'você NÃO sabe se ela foi. **Não afirme nem sugira que ela faltou.** ' +
       'Pergunte de forma aberta se ela conseguiu vir, de um jeito que funcione nas duas respostas.',
 
@@ -172,14 +197,11 @@ function instrucao(tipo, { lead, presenca, contexto }) {
  */
 async function sugerirAoConsultor(lead, { presenca, conversa }) {
   const dica = presenca === 'presente'
-    ? 'A pessoa compareceu (confirmado: a sessão foi fechada à mão antes das 22h) — ' +
+    ? 'A pessoa compareceu (o EVO avisou: aula experimental realizada) — ' +
       'é o melhor momento para entrar com proposta fechada.'
-    : presenca === 'falta' || presenca === 'falta_justificada'
-      ? 'A pessoa faltou, e alguém marcou isso na sessão. ' +
-        'Antes de vender, entender o motivo: horário, insegurança ou desistência.'
-      : '⚠️ Presença NÃO confirmada — o EVO traz "presente" por padrão, e esta sessão não foi ' +
-        'fechada à mão a tempo. Não dá para saber se ela veio: confirme com a recepção ou com o ' +
-        'professor antes de abordar.';
+    : 'O EVO não avisou presença até a manhã seguinte — provavelmente ela não veio. ' +
+      'Antes de vender, entender o motivo (horário, insegurança, desistência) e oferecer remarcar. ' +
+      'Se ela veio e a aula não foi fechada com presença no EVO, vale corrigir lá.';
 
   await funil.registrarEvento(lead.id, {
     type: 'sugestao_consultor',
@@ -260,48 +282,14 @@ async function enviarUm(item) {
     return;
   }
 
-  // 2. O fato que só o EVO sabe — e que ele conta mal.
+  // 2. O fato que só o EVO sabe — e que ele já avisou.
   let presenca = null;
   let leitura = null;
 
   if (item.tipo === 'ae_pos_aula') {
-    leitura = await evoClient.presencaNaAula({
-      idProspect: lead.evo_id_prospect,
-      idMember: lead.evo_id_member,
-      data: item.contexto?.aula || lead.experimental_at,
-    }).catch(() => ({ resultado: 'desconhecida', motivo: 'falha ao consultar o EVO' }));
-
+    leitura = await presencaAvisada(lead, item.contexto?.aula || lead.experimental_at);
     presenca = leitura.resultado;
     logger.info(`[followup] Lead ${lead.id}: presença "${presenca}" — ${leitura.motivo}`);
-
-    // Sessão ainda aberta: adiar vale a pena, porque a presença costuma
-    // ser fechada ao longo do dia. Mas só até as 22h — depois disso a
-    // finalização é automática e deixa de significar presença.
-    //
-    // O contador de adiamentos mora no `contexto`, e NÃO em `tentativas`.
-    // Adiar não é falhar: são duas contagens com consequências opostas —
-    // `tentativas` é o que faz a régua desistir do envio, adiamento é o
-    // que a faz tentar de novo mais tarde. Enquanto as duas eram a mesma
-    // coluna, o terceiro adiamento empurrava a linha para `tentativas = 3`
-    // e ela saía do filtro de `vencidos` sem nunca ter falhado: ficava
-    // `pendente` para sempre, e o lead ficava proibido de receber qualquer
-    // follow-up, porque `rodadaDeSilencio` para diante de um pendente.
-    const adiamentos = Number(item.contexto?.adiamentos || 0);
-    if (presenca === 'nao_finalizada' && adiamentos < TETO_ADIAMENTOS) {
-      const novaHora = followup.dentroDaJanela(new Date(Date.now() + 3 * 60 * 60 * 1000));
-      await supabase
-        .from('crm_followups')
-        .update({
-          scheduled_for: novaHora.toISOString(),
-          contexto: { ...(item.contexto || {}), adiamentos: adiamentos + 1 },
-        })
-        .eq('id', item.id);
-      logger.info(`[followup] Lead ${lead.id}: sessão ainda aberta, reconsultando às ${novaHora.toISOString()}`);
-      return;
-    }
-
-    // Esgotou o prazo sem finalização humana: não dá para afirmar nada.
-    if (presenca === 'nao_finalizada') presenca = 'desconhecida';
   }
 
   // 3. Gerar e enviar.

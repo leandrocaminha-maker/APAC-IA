@@ -13,7 +13,7 @@
  * está null em 100% dos 50 prospects mais recentes.
  */
 import { config } from '../config.js';
-import { supabase } from '../lib/supabase.js';
+import { supabase, lerTodas } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { normalizePhone } from './evolution.js';
 
@@ -204,6 +204,59 @@ export async function leadPorMembro(idMember) {
     .limit(1)
     .maybeSingle();
   return data || null;
+}
+
+/** O que `leadsDaPessoa` devolve de cada atendimento. */
+const CAMPOS_DA_PESSOA =
+  'id, contact_id, full_name, phone, stage, stage_since, trilha, tipo_contato, source, ' +
+  'created_at, last_activity_at, sale_value, sale_at, evo_id_sale, evo_id_member, evo_id_prospect, ' +
+  'experimental_at, experimental_status';
+
+/**
+ * Todos os atendimentos de uma pessoa: pelo número de aluno, pelo de
+ * prospect e pelo celular.
+ *
+ * Os três, e não o primeiro que achar, porque cada um conhece um pedaço. A
+ * venda do balcão chega com o número de ALUNO novo; o lead do WhatsApp só
+ * conhecia o de prospect; e o mesmo celular costuma ter vários atendimentos
+ * (o que foi perdido em setembro e o que está aberto agora). Quem decide
+ * qual deles importa é quem chama.
+ *
+ * Os celulares dos atendimentos achados entram numa segunda busca: achar
+ * a pessoa pelo número de aluno traz também as conversas dela que ainda
+ * não sabiam desse número.
+ */
+export async function leadsDaPessoa({ idMember = null, idProspect = null, telefones = [] } = {}) {
+  const porId = new Map();
+
+  async function buscar(filtros) {
+    if (!filtros.length) return;
+    const { data, error } = await supabase
+      .from('crm_leads')
+      .select(CAMPOS_DA_PESSOA)
+      .or(filtros.join(','))
+      .limit(200);
+    if (error) {
+      logger.error('[funil] Falha ao buscar os atendimentos da pessoa:', error.message);
+      return;
+    }
+    for (const l of data || []) porId.set(l.id, l);
+  }
+
+  // Só dígitos entram no filtro: é texto montado à mão para o PostgREST.
+  const soDigitos = (t) => /^\d{10,15}$/.test(String(t || ''));
+  const tels = [...new Set(telefones.filter(soDigitos))];
+
+  const filtros = [];
+  if (Number(idMember)) filtros.push(`evo_id_member.eq.${Number(idMember)}`);
+  if (Number(idProspect)) filtros.push(`evo_id_prospect.eq.${Number(idProspect)}`);
+  if (tels.length) filtros.push(`phone.in.(${tels.join(',')})`);
+  await buscar(filtros);
+
+  const outros = [...new Set([...porId.values()].map(l => l.phone).filter(t => soDigitos(t) && !tels.includes(t)))];
+  if (outros.length) await buscar([`phone.in.(${outros.join(',')})`]);
+
+  return [...porId.values()];
 }
 
 /**
@@ -745,12 +798,14 @@ export async function listarFunil(filtros = {}) {
  * este número absorve?").
  */
 export async function metricasFunil({ desde = null, diasParado = 2 } = {}) {
-  let q = supabase
-    .from('crm_leads')
-    .select('stage, stage_since, sale_value, sale_at, created_at, next_action_at, trilha, tipo_contato');
-  if (desde) q = q.gte('created_at', desde);
-
-  const { data, error } = await q;
+  // Paginado: uma consulta só voltava no máximo 1000 linhas (ver `lerTodas`).
+  const { data, error } = await lerTodas(() => {
+    let q = supabase
+      .from('crm_leads')
+      .select('stage, stage_since, sale_value, sale_at, created_at, next_action_at, trilha, tipo_contato');
+    if (desde) q = q.gte('created_at', desde);
+    return q;
+  });
   if (error) throw new Error(`falha ao calcular métricas: ${error.message}`);
 
   const agora = Date.now();
@@ -899,7 +954,7 @@ export const funil = {
   ETAPAS, ETAPAS_ROTULO, FILTRO_ETAPAS_FECHADAS,
   TRILHAS, TIPOS_CONTATO, ETAPAS_POR_TRILHA, trilhaDoTipo,
   registrarEvento,
-  leadAbertoPorContato, leadPorProspect, leadPorMembro,
+  leadAbertoPorContato, leadPorProspect, leadPorMembro, leadsDaPessoa,
   garantirLeadDoContato, criarLeadManual, definirTipoDeContato,
   mudarEtapa, tocarAtividade, encerrarRelacionamentosParados,
   aoReceberMensagem, aoAbrirHandoff, aoConsultorAssumir,

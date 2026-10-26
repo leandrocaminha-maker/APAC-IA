@@ -18,9 +18,12 @@ import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
 import { evoClient, EvoApiError } from './evo-client.js';
 import {
-  registrarEvento, mudarEtapa, leadPorProspect, leadPorMembro,
+  registrarEvento, mudarEtapa, leadPorProspect, leadPorMembro, leadsDaPessoa,
   FILTRO_ETAPAS_FECHADAS,
 } from './funil.js';
+import { planoDaVenda, telefonesDoMembro } from './vendas-regras.js';
+import { registrarVendaDoEvo, vincularVendaAoLead } from './vendas.js';
+import { normalizePhone } from './evolution.js';
 
 /** Autor de uma ação, no formato que crm_lead_events espera. */
 function autor(usuario) {
@@ -560,11 +563,19 @@ export async function guardarEventoWebhook(envelope) {
  * Interpreta um evento já guardado e move o funil.
  *
  * Cobertura honesta do que dá para saber por webhook:
- *   NewSale / RecurrentSale → alguém comprou. Fecha o lead como ganho.
- *   CreateMember            → prospect virou aluno. Vincula o idMember.
- *   CreateMembership        → contrato criado. Fecha como ganho.
+ *   NewSale                 → alguém comprou. Venda de plano pago entra no
+ *                             registro de vendas e fecha o atendimento
+ *                             (vendas.js); aula experimental move para
+ *                             experimental agendada; o resto não muda nada.
+ *   RecurrentSale           → mensalidade de quem já é aluno. Não fecha nada.
+ *   CreateMember            → aluno novo. Liga o número de aluno ao
+ *                             atendimento aberto, pelo celular.
+ *   CreateMembership        → plano criado no catálogo do EVO. Não fecha nada.
  *   ActivityEnroll          → matrícula em aula, que é como a experimental
  *                             agendada pelo consultor aparece.
+ *   crm.automation.*        → automações do CRM (`processarAutomacaoDoCrm`):
+ *                             aula experimental realizada e cadastro de
+ *                             oportunidade.
  *
  * ⚠️ O que NÃO dá: mudança de etapa/status do prospect. O EVO não emite
  * evento para isso — quem cobre é o poller em `sincronizarProspects`.
@@ -703,6 +714,108 @@ async function aoVerExperimentalNaVenda(detalhe, evento) {
   return atualizado || lead;
 }
 
+// ──────────────────────────────────────────────
+// Automações do CRM 2.0 do EVO
+//
+// São a outra porta de webhook do EVO, configurada na tela de automação
+// (ação "Webhook"). O payload já vem completo — `person` com nome, celular
+// e os números de aluno e prospect —, então nada aqui consulta o EVO.
+//
+// Ativadas em 26/10/2026, a pedido do responsável:
+//   *trial_class_completed   aula experimental realizada (oportunidade e cliente)
+//   *prospect_registration   cadastro de oportunidade
+// As que já existiam ("sem presenca 10", segmentações) seguem só guardadas.
+//
+// O nome da versão de cliente da aula realizada não estava na
+// documentação; por isso a regra casa pelo FINAL do nome.
+// ──────────────────────────────────────────────
+
+/** Os atendimentos de quem o aviso fala, do mais útil para o menos. */
+async function atendimentosDoAviso(person) {
+  const telefone = person?.phone ? normalizePhone(person.phone) : null;
+  const leads = await leadsDaPessoa({
+    idMember: person?.idMember,
+    idProspect: person?.idProspect,
+    telefones: telefone ? [telefone] : [],
+  });
+  const fechado = (l) => ['ganho', 'perdido', 'finalizado'].includes(l.stage);
+  const peso = (l) => (!fechado(l) && (l.trilha || 'lead') === 'lead' ? 0 : !fechado(l) ? 1 : 2);
+  return leads.sort((a, b) => peso(a) - peso(b) || new Date(b.created_at) - new Date(a.created_at));
+}
+
+/**
+ * Interpreta um aviso de automação do CRM.
+ *
+ * @returns {Promise<object|null>} o lead a que o aviso foi ligado
+ */
+export async function processarAutomacaoDoCrm(tipo, payload) {
+  const person = payload?.person || {};
+
+  // Aula experimental realizada: quem foi à academia.
+  //
+  // O consultor fecha a aula no EVO lançando presença ou falta, e a
+  // automação avisa de madrugada quem esteve presente. Vira a etapa
+  // "Experimental realizada" — que até aqui ninguém preenchia — e é o que a
+  // conversa pós-aula da Leia lê na manhã seguinte para saber o que dizer.
+  if (/trial_class_completed$/.test(tipo)) {
+    const [lead] = await atendimentosDoAviso(person);
+    if (!lead) {
+      logger.info(`[evo-sync] Aula experimental realizada de quem não está no funil (${person.fullName || 'sem nome'})`);
+      return null;
+    }
+
+    // `somenteAvanco`: lead encerrado não reabre e etapa não volta. Os
+    // campos são gravados mesmo assim (ver `mudarEtapa`) — o fato da
+    // presença vale para quem já fechou.
+    const atualizado = await mudarEtapa(lead, 'experimental_realizada', {
+      actor: 'evo-crm',
+      somenteAvanco: true,
+      motivo: 'O EVO avisou: aula experimental realizada',
+      campos: { experimental_status: 'realizada' },
+    });
+    await registrarEvento(lead.id, {
+      type: 'experimental_realizada',
+      actor: 'evo-crm',
+      summary: `Aula experimental realizada (aviso do EVO${payload?.eventLabel ? `: ${payload.eventLabel}` : ''})`,
+      payload: { eventDate: payload?.eventDate ?? null, eventContext: payload?.eventContext ?? null },
+    });
+    logger.info(`[evo-sync] Lead ${lead.id}: aula experimental realizada`);
+    return atualizado || lead;
+  }
+
+  // Cadastro de oportunidade: liga o prospect ao atendimento do WhatsApp.
+  //
+  // O consultor cadastra no balcão quem chegou depois de conversar com a
+  // Leia, e o lead não ficava sabendo do prospect — então a conversão dele
+  // nunca era reconhecida. Quem não tem atendimento nenhum é cadastro de
+  // balcão, e fica contado pelo próprio evento (lead_id vazio).
+  if (/prospect_registration$/.test(tipo)) {
+    const idProspect = Number(person.idProspect) || null;
+    if (!idProspect) return null;
+
+    const { data: jaLigado } = await supabase
+      .from('crm_leads').select('id').eq('evo_id_prospect', idProspect).limit(1);
+    if (jaLigado?.length) return jaLigado[0];
+
+    const lead = (await atendimentosDoAviso(person))
+      .find(l => !l.evo_id_prospect && !['ganho', 'perdido', 'finalizado'].includes(l.stage));
+    if (!lead) return null;
+
+    await supabase.from('crm_leads').update({ evo_id_prospect: idProspect }).eq('id', lead.id);
+    await registrarEvento(lead.id, {
+      type: 'evo_prospect_vinculado',
+      actor: 'evo-crm',
+      summary: `Cadastrado como oportunidade no EVO (prospect ${idProspect})`,
+      payload: { idProspect },
+    });
+    logger.info(`[evo-sync] Lead ${lead.id}: prospect ${idProspect} ligado pelo cadastro no EVO`);
+    return lead;
+  }
+
+  logger.debug(`[evo-sync] Automação ${tipo} guardada sem regra de funil`);
+  return null;
+}
+
 /**
  * Tipos que o `switch` abaixo sabe interpretar.
  *
@@ -765,23 +878,28 @@ export async function processarEventoWebhook(evento) {
           break;
         }
 
-        const idMember = detalhe?.idMember ?? detalhe?.IdMember ?? null;
-        lead = idMember ? await leadPorMembro(idMember) : null;
-        if (!lead && detalhe?.idProspect) lead = await leadPorProspect(detalhe.idProspect);
-        if (lead && lead.stage !== 'ganho') {
-          const valor = detalhe?.saleValue ?? detalhe?.value ?? null;
-          await mudarEtapa(lead, 'ganho', {
-            actor: 'evo-webhook',
-            motivo: `${tipo} recebido do EVO`,
-            campos: {
-              sale_at: new Date().toISOString(),
-              sale_value: valor,
-              evo_id_sale: evento.id_record,
-              evo_id_member: idMember || lead.evo_id_member,
-            },
-            payload: { tipo, detalhe },
-          });
+        // Só `NewSale` é venda nova.
+        //
+        // `RecurrentSale` é a mensalidade automática de quem já é aluno: as
+        // 589 guardadas até 26/10/2026 são todas renovação de contrato
+        // (`idMembershipRenewed`), nenhuma de prospect. `CreateMembership`
+        // é o cadastro de um PLANO no catálogo do EVO — o detalhe é o plano,
+        // sem pessoa nenhuma. Nenhum dos dois é alguém comprando.
+        if (tipo !== 'NewSale') break;
+
+        // Touca, maiô, avaliação física e cortesia passam no caixa do EVO
+        // como venda, mas não são o fechamento que o funil conta.
+        if (!planoDaVenda(detalhe)) {
+          const idMember = detalhe?.idMember ?? detalhe?.IdMember ?? null;
+          lead = idMember ? await leadPorMembro(idMember) : null;
+          if (!lead && detalhe?.idProspect) lead = await leadPorProspect(detalhe.idProspect);
+          logger.info(`[evo-sync] ${tipo} ${evento.id_record} não tem plano pago — é compra, não fechamento`);
+          break;
         }
+
+        // Venda de plano: entra no registro de vendas, classificada, e o
+        // atendimento do WhatsApp que ela fecha vira ganho (ver vendas.js).
+        lead = await registrarVendaDoEvo(detalhe, evento);
         break;
       }
 
@@ -790,6 +908,19 @@ export async function processarEventoWebhook(evento) {
         const doc = detalhe?.document || detalhe?.cellphone;
         lead = await leadPorMembro(idMember);
         if (!lead && detalhe?.idProspect) lead = await leadPorProspect(detalhe.idProspect);
+
+        // O cadastro de aluno novo não traz o prospect, mas traz o celular.
+        // Ligar AGORA o número de aluno ao atendimento aberto é o que faz a
+        // venda, que chega logo atrás com esse número, achar o lead sem
+        // perguntar nada ao EVO. Só atendimento aberto: o encerrado de
+        // meses atrás não é desta matrícula.
+        if (!lead) {
+          const abertos = (await leadsDaPessoa({ telefones: telefonesDoMembro(detalhe) }))
+            .filter(l => !['ganho', 'perdido', 'finalizado'].includes(l.stage) && !l.evo_id_member)
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          lead = abertos[0] || null;
+        }
+
         if (lead) {
           await supabase
             .from('crm_leads')
@@ -824,6 +955,10 @@ export async function processarEventoWebhook(evento) {
       }
 
       default:
+        if (String(tipo).startsWith('crm.automation.')) {
+          lead = await processarAutomacaoDoCrm(tipo, evento.payload);
+          break;
+        }
         logger.debug(`[evo-sync] Evento ${tipo} guardado sem regra de funil`);
     }
 
@@ -865,12 +1000,42 @@ let idServicoExperimental;
  * do erro. O nome fica como rede: se o catálogo não puder ser lido, é
  * melhor reconhecer o experimental por texto do que tratá-lo como venda.
  *
- * Item com `idMembership` é plano, e plano é venda de verdade sempre.
+ * Item com `idMembership` é plano, e plano nunca é só experimental.
  *
- * Venda SEM itens não conta como experimental: não dá para afirmar nada, e
- * o padrão seguro aí é seguir o fluxo normal de venda.
+ * Venda SEM itens não conta como experimental: não dá para afirmar nada.
+ * Ela segue para o fluxo de venda, e lá também não fecha nada, porque não
+ * tem plano (ver `planoDaVenda`).
  */
 export { ehSomenteExperimental as _ehSomenteExperimental };
+
+/**
+ * A venda de plano mais recente deste aluno, entre os webhooks guardados.
+ *
+ * É como o poller descobre o valor. A venda costuma chegar ANTES dele, mas
+ * sem achar o lead: o detalhe traz o `idMember` novo e `idProspect` nulo, e
+ * o lead ainda só conhece o prospect. Foi o caso de 12 dos 19 ganhos até
+ * 26/10/2026 — todos com a venda guardada, nenhum com o valor no lead.
+ */
+async function vendaGuardadaDoMembro(idMember) {
+  const { data, error } = await supabase
+    .from('crm_evo_webhook_events')
+    .select('id_record, detail')
+    .eq('event_type', 'NewSale')
+    .eq('detail->>idMember', String(idMember))
+    .order('id', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    logger.warn(`[evo-sync] Não deu para procurar a venda do membro ${idMember}: ${error.message}`);
+    return null;
+  }
+
+  for (const evento of data || []) {
+    const plano = planoDaVenda(evento.detail);
+    if (plano) return { ...plano, idSale: evento.id_record };
+  }
+  return null;
+}
 
 async function ehSomenteExperimental(detalhe) {
   const itens = detalhe?.saleItens ?? detalhe?.saleItems ?? [];
@@ -1074,16 +1239,26 @@ export async function sincronizarProspects({ dias = 30 } = {}) {
         const p = porProspect.get(String(lead.evo_id_prospect));
         if (!p?.idMember || lead.evo_id_member) continue;
 
+        // A conversão não diz o valor. Se a venda já chegou pelo webhook,
+        // ele está guardado lá; se ainda não chegou, a venda completa o
+        // valor quando chegar (vendas.js, ação `completar`).
+        const venda = await vendaGuardadaDoMembro(p.idMember);
+
         await mudarEtapa(lead, 'ganho', {
           actor: 'evo-poll',
-          motivo: 'Oportunidade convertida em aluno dentro do EVO',
+          motivo: 'Oportunidade convertida em aluno dentro do EVO' +
+            (venda ? `: ${venda.planos.join(', ')}` : ''),
           campos: {
             evo_id_member: p.idMember,
             evo_sync: 'sincronizado',
             sale_at: p.conversionDate || new Date().toISOString(),
+            ...(venda && { sale_value: venda.valor, evo_id_sale: venda.idSale }),
           },
-          payload: { idMember: p.idMember, conversionDate: p.conversionDate },
+          payload: { idMember: p.idMember, conversionDate: p.conversionDate, idSale: venda?.idSale ?? null },
         });
+        // A venda ficou registrada sem atendimento quando chegou — o webhook
+        // não sabia de quem era. Agora sabe.
+        if (venda) await vincularVendaAoLead(venda.idSale, lead);
         resumo.convertidos++;
       } catch (err) {
         resumo.erros++;

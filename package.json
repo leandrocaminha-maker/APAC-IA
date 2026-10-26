@@ -14,7 +14,8 @@
     "consultor": "node scripts/criar-consultor.js",
     "classificar": "node scripts/classificar-retroativo.js",
     "campanha": "node scripts/campanha.js",
-    "regularizar": "node scripts/regularizar-parados.js"
+    "regularizar": "node scripts/regularizar-parados.js",
+    "reconstruir-vendas": "node scripts/reconstruir-vendas.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

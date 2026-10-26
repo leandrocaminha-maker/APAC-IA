@@ -23,6 +23,7 @@ import {
   login, gravarCookie, limparCookie, exigirLogin, exigirAdmin, hashSenha, conferirSenha,
 } from '../services/crm-auth.js';
 import { funil } from '../services/funil.js';
+import { vendas } from '../services/vendas.js';
 import { followup } from '../services/followup.js';
 import { atendimento } from '../services/atendimento.js';
 import { conexaoWhatsapp } from '../services/whatsapp-monitor.js';
@@ -237,6 +238,26 @@ router.get('/api/funil/metricas', rota(async (req, res) => {
   res.json(await funil.metricasFunil({
     desde: req.query.desde || null,
     diasParado: parseInt(req.query.diasParado || '2', 10),
+  }));
+}));
+
+/**
+ * O desempenho do período: vendas por canal e por vendedor, e o funil do
+ * WhatsApp.
+ *
+ * `de` e `ate` são datas de São Paulo (AAAA-MM-DD), os dois dias inteiros.
+ * Sem eles, o mês corrente até hoje — é o que o painel abre mostrando.
+ */
+router.get('/api/funil/periodo', rota(async (req, res) => {
+  const dia = /^\d{4}-\d{2}-\d{2}$/;
+  const hojeSP = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const de = dia.test(req.query.de || '') ? req.query.de : `${hojeSP.slice(0, 8)}01`;
+  const ate = dia.test(req.query.ate || '') ? req.query.ate : hojeSP;
+  if (de > ate) return res.status(400).json({ erro: 'O início do período vem depois do fim.' });
+
+  res.json(await vendas.metricasDoPeriodo({
+    de: new Date(`${de}T00:00:00-03:00`).toISOString(),
+    ate: new Date(`${ate}T23:59:59.999-03:00`).toISOString(),
   }));
 }));
 
