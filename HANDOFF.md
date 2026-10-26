@@ -1,6 +1,6 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 26/10/2026, com o registro de vendas por canal pronto e ainda não no ar.**
+> **Snapshot de 26/10/2026, com o registro de vendas por canal no ar.**
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
@@ -13,8 +13,16 @@ quem chegou pelo **WhatsApp** das de quem foi atendido no **balcão** (recepçã
 telefone, e-mail — tudo o que não é WhatsApp), e saber quantos atendidos pelo
 WhatsApp foram à academia.
 
-**Estado: código pronto, testado e simulado. Falta aplicar a migration 020, o
-deploy e a reconstrução `--valendo`** (ver "Para pôr no ar").
+**Estado em 26/10/2026, 17h36: no ar.** Migration 020 aplicada pelo responsável,
+deploy de `a576775`, reconstrução `--valendo` rodada sem erro. Conferido no
+banco: 168 vendas em `crm_vendas`; ganhos 19 → 52; receita dos ganhos
+R$ 91.561,74; conversão sobre decididos 13,6%; 271, 768 e 843 perdidos com a
+nota de correção; 4 conversas pós-aula na manhã seguinte às 10h.
+
+⚠️ **Próximo a conferir:** o primeiro aviso das automações novas do CRM (chegam
+de madrugada, ~5h). Ver em `crm_evo_webhook_events` o `event_type` da versão
+"cliente" da aula realizada e se `person` traz `idProspect`/`idMember`/`phone`
+como a regra espera.
 
 ### O que a análise achou
 
@@ -65,7 +73,7 @@ deploy e a reconstrução `--valendo`** (ver "Para pôr no ar").
   saíram do topo. Rota `GET /crm/api/funil/periodo?de=&ate=`.
 - **`metricasFunil` paginada** com `lerTodas` (src/lib/supabase.js).
 
-### Para pôr no ar — nesta ordem
+### Como foi ao ar — nesta ordem (feito em 26/10)
 
 1. **Migration 020** no SQL Editor do Supabase (idempotente).
 2. **Deploy** da branch `crm-painel`. Nada novo no `.env`.
