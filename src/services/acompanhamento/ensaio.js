@@ -182,10 +182,14 @@ async function inscricoesDosAlunos(hoje) {
   return porCliente;
 }
 
+const SEM_RESPOSTA_VAZIO = { semResposta: 0, ultimaResposta: null };
+
 /**
  * Quantas mensagens da régua seguidas saíram depois da última resposta do
- * aluno e da última presença dele — o freio das três sem resposta (§5.4).
- * Só no envio: no ensaio nada saiu de verdade.
+ * aluno e da última presença dele — o freio das três sem resposta (§5.4) —
+ * e o dia da última resposta, para a rotina esperar 48 h (M1). Só no envio:
+ * no ensaio nada saiu de verdade.
+ * @returns {Promise<{ semResposta: number, ultimaResposta: string|null }>}
  */
 async function semRespostaDe(ficha, inscricao) {
   let contactId = inscricao.contact_id;
@@ -193,7 +197,7 @@ async function semRespostaDe(ficha, inscricao) {
     const { data } = await supabase.from('wa_contacts').select('id').eq('phone', inscricao.phone).maybeSingle();
     contactId = data?.id;
   }
-  if (!contactId) return 0;
+  if (!contactId) return SEM_RESPOSTA_VAZIO;
   const { data } = await supabase.from('wa_messages').select('direction, sent_by, created_at')
     .eq('contact_id', contactId).order('created_at', { ascending: false }).limit(80);
   const linhas = data ?? [];
@@ -203,7 +207,10 @@ async function semRespostaDe(ficha, inscricao) {
     ultimaResposta ? Date.parse(ultimaResposta) : 0,
     presenca ? Date.parse(`${presenca}T23:59:59-03:00`) : 0,
   );
-  return linhas.filter(m => m.direction === 'outbound' && m.sent_by === SENT_BY_REGUA && Date.parse(m.created_at) > corte).length;
+  return {
+    semResposta: linhas.filter(m => m.direction === 'outbound' && m.sent_by === SENT_BY_REGUA && Date.parse(m.created_at) > corte).length,
+    ultimaResposta: ultimaResposta ? hojeSP(new Date(ultimaResposta)) : null,
+  };
 }
 
 /** As mensagens que contam para a cadência: no ensaio, as simuladas; no envio, as que saíram — antes de hoje. */
@@ -245,7 +252,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
   if (modo === 'envio') {
     for (const f of fichas) {
       const i = inscricoes.get(f.cliente_id);
-      if (i?.status === 'ativa') semResposta.set(f.cliente_id, await semRespostaDe(f, i).catch(() => 0));
+      if (i?.status === 'ativa') semResposta.set(f.cliente_id, await semRespostaDe(f, i).catch(() => SEM_RESPOSTA_VAZIO));
     }
   }
   const avisos = await avisosSemPresenca();
@@ -258,7 +265,8 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
       sinais: avisos.get(Number(ficha.aluno?.evo_id)) ?? [],
       treinos: treinos.get(ficha.cliente_id) ?? [],
       inscricao: inscricoes.get(ficha.cliente_id) ?? null,
-      semResposta: semResposta.get(ficha.cliente_id) ?? 0,
+      semResposta: semResposta.get(ficha.cliente_id)?.semResposta ?? 0,
+      ultimaResposta: semResposta.get(ficha.cliente_id)?.ultimaResposta ?? null,
     });
     const sai = d.status === 'simulado' || d.status === 'pendente';
     // No envio, a hora é a maior entre a prevista e a da rodada: rodado às

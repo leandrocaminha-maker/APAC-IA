@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { diasEntre, preencher, valoresDaFicha } from './render.js';
 import {
-  avisosDaEquipe, candidatosDe, cicloDoTreino, decidir, diaPorExtenso, emLista, emRodizio, horaPrevista, resumirTreinos, treinoVigente, leituraDaAgenda, limiteAusencia, modalidadesNaAgenda, situacaoDoDia,
+  PRIORIDADE, avisosDaEquipe, candidatosDe, cicloDoTreino, decidir, diaPorExtenso, emLista, emRodizio, fasesDaFicha, horaPrevista, resumirTreinos, treinoVigente, leituraDaAgenda, limiteAusencia, modalidadesNaAgenda, situacaoDoDia,
 } from './regua.js';
 
 const ficha = (mudar = {}) => ({
@@ -257,8 +257,10 @@ const modelosAgenda = [
 const h0 = [{ dia: '2026-10-05', situacao: 'rotina', modelo_id: 'x', valores: {} }];
 const decidirAgenda = (f, hoje, historico = h0, sinais = []) => decidir({ ficha: f, modelos: modelosAgenda, historico, sinais, hoje, modo: 'ensaio' });
 
-test('limite de ausência pela frequência: o maior entre 5 e 14 ÷ frequência', () => {
-  assert.deepEqual([1, 2, 3, 5, null].map(limiteAusencia), [14, 7, 5, 5, 14]);
+test('limite de ausência: o prazo da ficha; sem ele, 10 dias para todos (M0)', () => {
+  assert.equal(limiteAusencia(ficha()), 10);
+  assert.equal(limiteAusencia(ficha({ frequencia: { dias_semana: 1, fonte: 'prescricao' } })), 10);
+  assert.equal(limiteAusencia(ficha({ comportamento: { ausencia: { prazos: { aviso: 12 } } } })), 12);
 });
 
 test('a agenda se lê no dia da carga, e presença só vale em aula finalizada', () => {
@@ -273,26 +275,30 @@ test('modalidades que se conferem pela agenda: casadas e prescritas', () => {
 });
 
 const avisoEVO = (dia, dias) => [{ dia, dias }];
-const semPresenca = comAgenda([sessao('2026-10-03', 18), sessao('2026-10-03', 22)]);
+// A última presença 10 dias antes do aviso de 12/10: a agenda não o contradiz.
+const semPresenca = comAgenda([sessao('2026-10-02', 18), sessao('2026-10-02', 22)]);
 
-test('ausência pelo aviso do EVO, acima do limite, com {dias}', () => {
-  const d = decidirAgenda(semPresenca, '2026-10-12', h0, avisoEVO('2026-10-12', 8));
-  assert.deepEqual([d.situacao, d.texto], ['ausencia', 'Claudia, 8 dias sem treino.']);
-  assert.match(d.motivo, /Aviso "Sem presença" do EVO em 12\/10: 8 dias; limite de 5 para 3× por semana/);
+test('ausência pelo aviso do EVO, no limite, com {dias}', () => {
+  const d = decidirAgenda(semPresenca, '2026-10-12', h0, avisoEVO('2026-10-12', 10));
+  assert.deepEqual([d.situacao, d.texto], ['ausencia', 'Claudia, 10 dias sem treino.']);
+  assert.match(d.motivo, /Aviso "Sem presença" do EVO em 12\/10: 10 dias; limite de 10 dias/);
 });
 
 test('sem aviso do EVO não há ausência — a agenda semanal sozinha não decide', () => {
   assert.notEqual(decidirAgenda(semPresenca, '2026-10-12').situacao, 'ausencia');
 });
 
-test('aviso abaixo do limite da frequência não conta', () => {
+test('aviso abaixo do limite não conta, seja qual for a frequência', () => {
   const duas = comAgenda([], { frequencia: { dias_semana: 2, fonte: 'prescricao' } });
-  assert.notEqual(decidirAgenda(duas, '2026-10-12', h0, avisoEVO('2026-10-12', 5)).situacao, 'ausencia');
-  assert.equal(decidirAgenda(duas, '2026-10-12', h0, avisoEVO('2026-10-12', 7)).situacao, 'ausencia');
+  const cinco = comAgenda([], { frequencia: { dias_semana: 5, fonte: 'prescricao' } });
+  assert.notEqual(decidirAgenda(duas, '2026-10-12', h0, avisoEVO('2026-10-12', 9)).situacao, 'ausencia');
+  assert.notEqual(decidirAgenda(cinco, '2026-10-12', h0, avisoEVO('2026-10-12', 9)).situacao, 'ausencia');
+  assert.equal(decidirAgenda(duas, '2026-10-12', h0, avisoEVO('2026-10-12', 10)).situacao, 'ausencia');
+  assert.equal(decidirAgenda(cinco, '2026-10-12', h0, avisoEVO('2026-10-12', 10)).situacao, 'ausencia');
 });
 
 test('aviso de mais de 2 dias não vira mensagem', () => {
-  assert.notEqual(decidirAgenda(semPresenca, '2026-10-12', h0, avisoEVO('2026-10-09', 8)).situacao, 'ausencia');
+  assert.notEqual(decidirAgenda(semPresenca, '2026-10-12', h0, avisoEVO('2026-10-09', 10)).situacao, 'ausencia');
 });
 
 test('aviso sem o número de dias vale; o modelo com {dias} não sai, e o sem {dias} sai', () => {
@@ -305,24 +311,24 @@ test('aviso sem o número de dias vale; o modelo com {dias} não sai, e o sem {d
 test('aviso contradito pela agenda não sai, e o motivo diz por quê', () => {
   // musculação e pilates na agenda: nada mais devido no dia, e o motivo é o da contradição
   const f = comAgenda([sessao('2026-10-09', 18), sessao('2026-10-09', 22)]);
-  const d = decidirAgenda(f, '2026-10-12', h0, avisoEVO('2026-10-12', 8));
+  const d = decidirAgenda(f, '2026-10-12', h0, avisoEVO('2026-10-12', 10));
   assert.equal(d.status, 'nada');
   assert.match(d.motivo, /Aviso "Sem presença" do EVO de 12\/10 contradito pela agenda \(presença em 09\/10\): não sai/);
 });
 
 test('aula ainda não finalizada não contradiz o aviso', () => {
   const f = comAgenda([sessao('2026-10-09', 18, { finalizada: false })]);
-  assert.equal(decidirAgenda(f, '2026-10-12', h0, avisoEVO('2026-10-12', 8)).situacao, 'ausencia');
+  assert.equal(decidirAgenda(f, '2026-10-12', h0, avisoEVO('2026-10-12', 10)).situacao, 'ausencia');
 });
 
 test('uma mensagem por aviso', () => {
-  const h = [...h0, { dia: '2026-10-12', situacao: 'ausencia', modelo_id: 'ausencia:desafiador:a', valores: { dias: '8' } }];
-  assert.notEqual(decidirAgenda(semPresenca, '2026-10-13', h, avisoEVO('2026-10-12', 8)).situacao, 'ausencia');
+  const h = [...h0, { dia: '2026-10-12', situacao: 'ausencia', modelo_id: 'ausencia:desafiador:a', valores: { dias: '10' } }];
+  assert.notEqual(decidirAgenda(semPresenca, '2026-10-13', h, avisoEVO('2026-10-12', 10)).situacao, 'ausencia');
 });
 
 test('na adesão, o motivo lembra que o professor recebe o aviso junto (D6)', () => {
   const f = comAgenda([], { trilha: { ...ficha().trilha, principal: 'adesao' } });
-  assert.match(decidirAgenda(f, '2026-10-12', h0, avisoEVO('2026-10-12', 8)).motivo, /professor recebe o aviso junto \(D6/);
+  assert.match(decidirAgenda(f, '2026-10-12', h0, avisoEVO('2026-10-12', 10)).motivo, /professor recebe o aviso junto \(D6/);
 });
 
 test('o dia da volta por extenso, com a preposição certa', () => {
@@ -375,8 +381,8 @@ test('sem agendamento não olha programa com menos de 3 semanas, nem modalidade 
 });
 
 test('ausência passa na frente da reavaliação e da rotina', () => {
-  const f = comAgenda([sessao('2026-10-03', 18), sessao('2026-10-03', 22)], { proxima_avaliacao: '2026-10-15' });
-  assert.equal(decidirAgenda(f, '2026-10-12', h0, avisoEVO('2026-10-12', 8)).situacao, 'ausencia');
+  const f = comAgenda([sessao('2026-10-02', 18), sessao('2026-10-02', 22)], { proxima_avaliacao: '2026-10-15' });
+  assert.equal(decidirAgenda(f, '2026-10-12', h0, avisoEVO('2026-10-12', 10)).situacao, 'ausencia');
 });
 
 
@@ -512,5 +518,125 @@ test('D6: ausência na adesão também avisa o professor', () => {
   assert.deepEqual(d.avisos_equipe.map(a => [a.codigo, a.referencia]), [['ausencia_adesao', '2026-10-12']]);
   assert.match(d.avisos_equipe[0].texto, /10 dias sem vir/);
   // fora da adesão, a ausência não vai à equipe
-  assert.deepEqual(decidirAgenda(semPresenca, '2026-10-12', h0, avisoEVO('2026-10-12', 8)).avisos_equipe, []);
+  assert.deepEqual(decidirAgenda(semPresenca, '2026-10-12', h0, avisoEVO('2026-10-12', 10)).avisos_equipe, []);
+});
+
+// ---- as fases da ficha (v4, M1 do PLANO_MODELOS) ----
+
+/** O comportamento como o Prescrev o publica: início 14/09, semana 6, N1, em dia. Dados até 19/10. */
+const comportamento = (mudar = {}) => ({
+  versao: 1, ate: '2026-10-19', desde: '2026-09-08', inicio: '2026-09-14', semana: 6, semanas: [3, 3, 3, 3, 3],
+  presencas: { d7: 3, d14: 6, d28: 12, semanas_ativas_4: 4, ultima: '2026-10-17', primeira_apos_entrega: '2026-09-14' },
+  razao_cumprida: 1, dias_sem_vir: 2, sessoes_na_agenda: 12, periodo_habitual: 'manhã', regular: false,
+  fase: { valor: 'inicio', pelo_tempo: 'inicio', teto_mensagens: 2, teto_dias: 7, cadencia_dias: 3, lembrete_agendamento: false,
+    ativacao_dias: null, retornou_em: null, motivo: 'Semana 6 desde 2026-09-14 (a primeira presença).' },
+  degrau: { valor: 1, teto: 2, trajetoria: [0, 0, 0, 1, 1], numero_em: null, motivo: '…' },
+  ausencia: { etapa: 'presente', responsavel: 'leia', desde: '2026-10-17', prazos: { aviso: 10, professor: 14, silencio: 21, consultor: 30, porta_aberta: 30 } },
+  ...mudar,
+});
+const comFases = (mudar = {}, fichaMudar = {}) => ficha({ versao: 4, comportamento: comportamento(mudar), ...fichaMudar });
+
+test('fases da ficha: nada sem comportamento; com ele, fase, degrau, cadência, teto e ausência', () => {
+  assert.equal(fasesDaFicha(ficha()), null);
+  assert.deepEqual(fasesDaFicha(comFases()),
+    { fase: 'inicio', degrau: 1, cadencia: 3, teto: { mensagens: 2, dias: 7 }, ausencia: 'presente', ausenciaDesde: '2026-10-17', ate: '2026-10-19' });
+});
+
+test('a cadência é a da fase, e a decisão leva fase e degrau', () => {
+  const h = [{ dia: '2026-10-17', situacao: 'rotina', modelo_id: 'rotina:desafiador:a' }];
+  const d = decidirEm('2026-10-20', h, comFases());   // trilha 14, fase 3
+  assert.deepEqual([d.situacao, d.fase, d.degrau], ['rotina', 'inicio', 1]);
+  assert.match(d.motivo, /cadência de 3 \(fase inicio, degrau N1\)/);
+  assert.equal(decidirEm('2026-10-19', h, comFases()).status, 'nada');
+  // sem comportamento, a da trilha, e a decisão não tem fase
+  assert.deepEqual([decidirEm('2026-10-20', h).status, decidirEm('2026-10-20', h).fase], ['nada', null]);
+});
+
+test('na ativação não há rotina, e o motivo diz por quê', () => {
+  const h = [{ dia: '2026-10-01', situacao: 'boas_vindas', modelo_id: 'x' }];
+  const ativacao = comFases({ fase: { ...comportamento().fase, valor: 'ativacao', pelo_tempo: 'ativacao', cadencia_dias: null,
+    motivo: 'Relatório entregue em 2026-10-01, sem presença depois.' } });
+  const d = decidirEm('2026-10-20', h, ativacao);
+  assert.equal(d.status, 'nada');
+  assert.match(d.motivo, /Sem rotina na fase ativacao: Relatório entregue em 2026-10-01/);
+});
+
+test('teto da fase: alcançado, a rotina devida não sai; passada a janela, sai', () => {
+  const consolidacao = comFases({ fase: { ...comportamento().fase, valor: 'consolidacao', teto_mensagens: 1, teto_dias: 7, cadencia_dias: 5 } });
+  const h = [{ dia: '2026-10-14', situacao: 'rotina', modelo_id: 'rotina:desafiador:a' }];
+  const d = decidirEm('2026-10-20', h, consolidacao);   // 6 dias: devida (5), mas 1 em 7 dias
+  assert.equal(d.status, 'nada');
+  assert.match(d.motivo, /Rotina devida \(6 dia\(s\), cadência de 5 \(fase consolidacao, degrau N1\)\) e não sai: teto da fase consolidacao alcançado \(1 em 7 dias\)/);
+  assert.equal(decidirEm('2026-10-21', h, consolidacao).situacao, 'rotina');
+});
+
+test('uma situação na semana segura a rotina; passada a semana, sai', () => {
+  const h = [{ dia: '2026-10-01', situacao: 'rotina', modelo_id: 'x' }, { dia: '2026-10-16', situacao: 'reavaliacao', modelo_id: 'y' }];
+  const d = decidirEm('2026-10-20', h, comFases());
+  assert.equal(d.status, 'nada');
+  assert.match(d.motivo, /já saiu reavaliacao em 16\/10, e uma situação na semana segura a rotina/);
+  assert.equal(decidirEm('2026-10-23', h, comFases()).situacao, 'rotina');
+});
+
+test('o aluno respondeu hoje ou ontem: a rotina espera 48 h', () => {
+  const h = [{ dia: '2026-10-10', situacao: 'rotina', modelo_id: 'x' }];
+  const ontem = decidir({ ficha: comFases(), modelos, historico: h, hoje: '2026-10-20', modo: 'ensaio', ultimaResposta: '2026-10-19' });
+  assert.equal(ontem.status, 'nada');
+  assert.match(ontem.motivo, /o aluno respondeu em 19\/10, e a rotina espera 48 h/);
+  assert.equal(decidir({ ficha: comFases(), modelos, historico: h, hoje: '2026-10-20', modo: 'ensaio', ultimaResposta: '2026-10-18' }).situacao, 'rotina');
+});
+
+test('em silêncio nada vai ao aluno: nem rotina, nem reavaliação', () => {
+  const h = [{ dia: '2026-10-01', situacao: 'rotina', modelo_id: 'x' }];
+  const silencio = comFases(
+    { dias_sem_vir: 24, ausencia: { ...comportamento().ausencia, etapa: 'silencio', responsavel: 'professor', desde: '2026-09-25' } },
+    { proxima_avaliacao: '2026-10-25' });
+  const d = decidirEm('2026-10-20', h, silencio);
+  assert.equal(d.status, 'nada');
+  assert.match(d.motivo, /não sai: ausência em silêncio \(dados de 19\/10\), nada ao aluno até a próxima presença/);
+});
+
+const modelosPorta = [...modelos,
+  { id: 'porta_aberta:todas:a', situacao: 'porta_aberta', trilha: 'todas', texto: '{nome}, sua vaga continua aqui.', envio: 'sozinha' }];
+
+test('porta aberta: uma vez por ausência, com modelo; depois, silêncio até a próxima presença', () => {
+  const h = [{ dia: '2026-10-01', situacao: 'rotina', modelo_id: 'x' }];
+  const porta = comFases({ dias_sem_vir: 31, ausencia: { ...comportamento().ausencia, etapa: 'porta_aberta', responsavel: 'consultor', desde: '2026-09-18' } });
+  const d = decidir({ ficha: porta, modelos: modelosPorta, historico: h, hoje: '2026-10-20', modo: 'ensaio' });
+  assert.deepEqual([d.situacao, d.texto], ['porta_aberta', 'Claudia, sua vaga continua aqui.']);
+  assert.match(d.motivo, /Porta aberta: sem vir desde 18\/09 \(dados de 19\/10\)/);
+  const depois = [...h, { dia: '2026-10-20', situacao: 'porta_aberta', modelo_id: 'porta_aberta:todas:a' }];
+  const calada = decidir({ ficha: porta, modelos: modelosPorta, historico: depois, hoje: '2026-10-25', modo: 'ensaio' });
+  assert.equal(calada.status, 'nada');
+  assert.match(calada.motivo, /ausência em porta aberta \(dados de 19\/10\), nada ao aluno/);
+  // sem o modelo (até a M2), a situação é pulada e a rotina continua calada
+  const semModelo = decidir({ ficha: porta, modelos, historico: h, hoje: '2026-10-20', modo: 'ensaio' });
+  assert.equal(semModelo.status, 'nada');
+  assert.match(semModelo.motivo, /porta aberta/);
+});
+
+test('o retorno passa mesmo em silêncio: a agenda diz que a pessoa voltou', () => {
+  const h = [...h0, { dia: '2026-10-12', situacao: 'ausencia', modelo_id: 'x', valores: {} }];
+  const agenda = { sincronizada_em: '2026-10-18T05:10:00Z', sessoes: [sessao('2026-10-03', 18), sessao('2026-10-16', 22)] };
+  const f = comAgenda([], { agenda, comportamento: comportamento({ ausencia: { ...comportamento().ausencia, etapa: 'silencio' } }) });
+  assert.equal(decidirAgenda(f, '2026-10-19', h).situacao, 'retorno');
+});
+
+test('a rotina escolhe o modelo do degrau quando há, e os genéricos quando não há', () => {
+  const porDegrau = [...modelos,
+    { id: 'rotina:desafiador:n1', situacao: 'rotina', trilha: 'desafiador', degrau: 1, texto: '{nome}, a semana apertou?', envio: 'sozinha' },
+    { id: 'rotina:desafiador:n2-inicio', situacao: 'rotina', trilha: 'desafiador', degrau: 2, fase: 'inicio', texto: '{nome}, {frequencia} no ritmo.', envio: 'sozinha' },
+  ];
+  const genericos = ['rotina:desafiador:a', 'rotina:desafiador:b', 'rotina:desafiador:c'];
+  assert.deepEqual(candidatosDe(porDegrau, 'rotina', 'desafiador', { fase: 'inicio', degrau: 1 }).map(m => m.id), ['rotina:desafiador:n1']);
+  assert.deepEqual(candidatosDe(porDegrau, 'rotina', 'desafiador', { fase: 'inicio', degrau: 2 }).map(m => m.id), ['rotina:desafiador:n2-inicio']);
+  // N2 na consolidação: o modelo é só do início, e não serve; ficam os genéricos
+  assert.deepEqual(candidatosDe(porDegrau, 'rotina', 'desafiador', { fase: 'consolidacao', degrau: 2 }).map(m => m.id), genericos);
+  assert.deepEqual(candidatosDe(porDegrau, 'rotina', 'desafiador').map(m => m.id), genericos);
+  const h = [{ dia: '2026-10-10', situacao: 'rotina', modelo_id: 'x' }];
+  assert.equal(decidir({ ficha: comFases(), modelos: porDegrau, historico: h, hoje: '2026-10-20', modo: 'ensaio' }).texto, 'Claudia, a semana apertou?');
+});
+
+test('a prioridade conhece a porta aberta, entre o retorno e o ciclo em risco', () => {
+  assert.ok(PRIORIDADE.retorno < PRIORIDADE.porta_aberta && PRIORIDADE.porta_aberta < PRIORIDADE.ciclo_em_risco);
 });

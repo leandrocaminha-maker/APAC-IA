@@ -6,6 +6,24 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## A régua do acompanhamento lê as fases da ficha v4 (27/10/2026)
+
+M1 do `PLANO_MODELOS.md` do Prescrev. A ficha passou à **versão 4** e traz
+`comportamento` — fase, degrau, cadência e teto da fase, ausência por tempo —
+calculado lá (`fases.ts`), das sessões do AQUAP até o dia da carga. Aqui,
+`regua.js` só lê (`fasesDaFicha`) e aplica: cadência da fase no lugar da da
+trilha (nula na ativação: sem rotina); teto da fase; a rotina não sai se já
+saiu situação na semana, se o aluno respondeu hoje ou ontem (`ultimaResposta`,
+que `ensaio.js` passa) ou se a ausência está em silêncio ou porta aberta;
+situação nova `porta_aberta` (uma por ausência; o modelo vem na M2 — sem ele,
+é pulada e a rotina continua calada); `limiteAusencia` é o prazo da ficha, 10
+dias para todos (era 14 ÷ frequência). `candidatosDe` escolhe a rotina pelo
+degrau quando os modelos trouxerem `degrau`/`fase` (M2) e cai nos genéricos.
+`FICHA_VERSAO_LIDA` = 4: **o deploy daqui precisa ir junto com o do
+Prescrev**, ou a busca das fichas recusa a versão nova. Testes em
+`regua.test.js`. Código no branch, **sem commit nem deploy** até o
+responsável dizer. Continua em ensaio (`ACOMPANHAMENTO_DRY_RUN=true`).
+
 ## O funil passa a contar as vendas por canal (26/10/2026)
 
 Pedido do responsável, depois de uma análise do funil: separar as vendas de
