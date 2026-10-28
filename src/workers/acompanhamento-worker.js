@@ -29,6 +29,7 @@ import { modoAtual, rodarEnsaio, ultimaRodada } from '../services/acompanhamento
 import { enviarDisparos } from '../services/acompanhamento/envio.js';
 import { processarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
 import { processarPontes } from '../services/acompanhamento/ponte.js';
+import { conferirSessoesDaSemana } from '../services/acompanhamento/aviso-sessoes.js';
 
 let rodando = false;
 
@@ -43,6 +44,10 @@ async function ciclo() {
   rodando = true;
   try {
     if (horaSP() < config.acompanhamento.hora) return;
+    // A rodada de sessões da semana (M5): a falha da automática de domingo
+    // vai ao responsável por WhatsApp, também em ensaio. Uma consulta leve
+    // ao Prescrev por ciclo, só até a semana se resolver; nunca lança.
+    await conferirSessoesDaSemana();
     const marca = await ultimaRodada();
     // O dia já rodou neste modo. Ligar o envio no meio do dia faz rodar de
     // novo, agora como envio.

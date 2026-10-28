@@ -351,6 +351,13 @@ export const config = {
     // Curto de propósito: o prazo de "hoje" é de 2 horas de trabalho.
     encaminhamentosMinutos: parseInt(env('ACOMPANHAMENTO_ENCAMINHAMENTOS_MINUTOS', '5'), 10),
 
+    // O aviso ao responsável quando a rodada de sessões de domingo do AQUAP
+    // falha (decisão 20 de 28/10/2026, PLANO_MODELOS.md do Prescrev §2.11):
+    // mensagem de operação, sai também em ensaio. Vazio desliga.
+    avisoSessoes: {
+      telefone: env('ACOMPANHAMENTO_AVISO_SESSOES_TELEFONE', '5511982592538'),
+    },
+
     prescrev: {
       url: env('PRESCREV_URL', 'https://prescrev.apacademia.com.br'),
       // O mesmo valor do ACOMPANHAMENTO_SECRET no .env do Prescrev.

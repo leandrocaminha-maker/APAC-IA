@@ -6,6 +6,36 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## A catraca todo dia, as sessões no domingo (M5 do plano dos modelos, 28/10/2026)
+
+O AQUAP passou a rodar as sessões da Evo UMA vez por semana (a automática de
+domingo, 02:00; a manual só recupera a que falhou) e a gravar a catraca todo
+dia (`public.evo_entries`). O Prescrev lê a presença da catraca
+(`comportamento.fonte: 'catraca'`, `ate` = véspera da carga) e publica a
+rodada de sessões: `ficha.agenda.rodada` e, no topo de `/fichas`, `sessoes`
+(ciclo, `semana_ok`, rodada, `ultima_tentativa`). A régua:
+
+- **Atividade combinada** (modalidade sem agendamento, ciclo em risco, mínimo
+  cumprido, não marca no app): só com `verificaAtividade` (`decidir`), que o
+  ensaio liga uma vez por rodada — a do ciclo de hoje, ainda não verificada
+  neste modo (marcador `acomp:atividade`). O domingo não tem janela: a da
+  automática verifica na segunda. Os treinos do app (`treinosDoAluno`, uma
+  chamada ao EVO por aluno) só se buscam nesse dia; nos outros, vale a última
+  leitura (`acomp_treinos`), sem chamada.
+- **Lembrete de agendamento pela catraca**: na QUARTA (a terça só se conhece
+  na quarta, pela carga de 01:00), para quem nas 3 primeiras semanas não
+  entrou na segunda nem na terça; período seguinte ao habitual.
+- **Retorno pela catraca**: a volta é `fase.retornou_em` ou a última entrada
+  depois do aviso; sai o modelo sem `{atividade_retorno}`. A **ausência** do
+  aviso do EVO é contradita também pela última entrada na catraca.
+- **Aviso de falha** (`aviso-sessoes.js`, decisão 20): a cada ciclo do worker,
+  a partir de domingo 07:00, `?so=sessoes` no Prescrev até a semana se
+  resolver; sem rodada bem-sucedida, uma mensagem ao responsável
+  (`ACOMPANHAMENTO_AVISO_SESSOES_TELEFONE`, padrão 5511982592538) com o motivo,
+  e outra quando a manual recupera. É de operação: sai também em ensaio.
+
+Testes: `regua.test.js` e `aviso-sessoes.test.js` (219 no total).
+
 ## As condutas ao professor (M3 do plano dos modelos, 28/10/2026)
 
 O Prescrev publica, junto dos modelos, o catálogo das condutas

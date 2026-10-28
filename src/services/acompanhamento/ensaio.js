@@ -8,9 +8,11 @@
  * 1. Busca as fichas e os modelos no Prescrev. Se ele não responder, roda
  *    sobre a última cópia (`acomp_fichas`, e os modelos em `crm_controle`)
  *    e diz isso no resumo.
- * 2. Lê o treino de musculação de cada aluno no EVO — uma chamada por aluno
- *    por dia; rodar de novo no mesmo dia reaproveita a leitura
- *    (`acomp_treinos`), e se o EVO falhar vale a última.
+ * 2. No dia de verificar a atividade (o primeiro ensaio depois da rodada de
+ *    sessões da semana, M5), lê o treino de musculação de cada aluno no EVO
+ *    — uma chamada por aluno; nos outros dias, vale a última leitura
+ *    (`acomp_treinos`), sem chamada. Rodar de novo no mesmo dia reaproveita a
+ *    leitura, e se o EVO falhar vale a última.
  * 3. Para cada aluno, a régua (`regua.js`, pura) decide a situação do dia,
  *    o modelo e o texto — ou por que nada sai — e o que iria à equipe.
  * 4. Põe hora em cada mensagem: perto do começo do período preferido,
@@ -43,12 +45,17 @@ import { hojeSP } from '../campanhas.js';
 import { evoClient } from '../evo-client.js';
 import { buscarEquipe, buscarFichas, buscarModelos } from './prescrev.js';
 import { equipeAtivada, registrarDaRegua } from './encaminhamentos.js';
-import { PRIORIDADE, decidir, horaPrevista, leituraDaAgenda, resumirTreinos } from './regua.js';
+import { PRIORIDADE, cicloDe, decidir, horaPrevista, leituraDaAgenda, resumirTreinos } from './regua.js';
 import { SENT_BY_REGUA } from './conversa.js';
 
 /** Ensaio enquanto ACOMPANHAMENTO_DRY_RUN não for false. */
 export const modoAtual = () => (config.acompanhamento.dryRun ? 'ensaio' : 'envio');
 const MARCA_ENSAIO = 'acomp:ensaio';
+/**
+ * A rodada de sessões cuja atividade já se verificou, por modo (M5): a
+ * verificação é uma por rodada, no primeiro ensaio depois dela.
+ */
+const MARCA_ATIVIDADE = 'acomp:atividade';
 const MARCA_MODELOS = 'acomp:modelos';
 
 /** Quantos dias as linhas "nada" ficam — elas explicam o dia, e não contam para nada. */
@@ -56,7 +63,7 @@ const NADA_DURA_DIAS = 14;
 
 async function carregarFichas() {
   try {
-    const { fichas, sem_ficha } = await buscarFichas();
+    const { fichas, sem_ficha, sessoes } = await buscarFichas();
     const agora = new Date().toISOString();
     if (fichas.length) {
       const { error } = await supabase.from('acomp_fichas').upsert(
@@ -71,13 +78,14 @@ async function carregarFichas() {
       ? await fora.not('cliente_id', 'in', `(${fichas.map(f => f.cliente_id).join(',')})`)
       : await fora.gte('recebida_em', '1970-01-01');
     if (errFora) logger.warn('[acompanhamento] Não deu para limpar fichas antigas:', errFora.message);
-    return { fichas, fonte: 'prescrev', semFicha: sem_ficha };
+    return { fichas, fonte: 'prescrev', semFicha: sem_ficha, sessoes };
   } catch (err) {
     logger.warn('[acompanhamento] Prescrev não respondeu às fichas — rodando sobre a cópia:', err.message);
     const { data, error } = await supabase.from('acomp_fichas').select('ficha, recebida_em');
     if (error) throw new Error(`acomp_fichas: ${error.message}`);
     const quando = (data ?? []).map(x => x.recebida_em).sort().at(-1);
-    return { fichas: (data ?? []).map(x => x.ficha), fonte: `cópia de ${quando ?? '—'} (${err.message})`, semFicha: null };
+    // Sem o Prescrev, sem a rodada da semana: a atividade espera.
+    return { fichas: (data ?? []).map(x => x.ficha), fonte: `cópia de ${quando ?? '—'} (${err.message})`, semFicha: null, sessoes: null };
   }
 }
 
@@ -125,11 +133,17 @@ async function avisosSemPresenca() {
  * `acomp_treinos` é reaproveitada, e se o EVO falhar vale a última que houver.
  * Sem a migration 012, segue sem treino e diz isso no resumo.
  */
-async function treinosDosAlunos(fichas, hoje) {
+async function treinosDosAlunos(fichas, hoje, { buscar = true } = {}) {
   const porCliente = new Map();
   const { data: guardados, error } = await supabase.from('acomp_treinos').select('cliente_id, treinos, lido_em');
   if (error) return { porCliente, nota: `acomp_treinos indisponível (${error.message})` };
   const guardado = new Map((guardados ?? []).map(g => [g.cliente_id, g]));
+  // Fora do dia da verificação, a última leitura e nenhuma chamada (M5): o
+  // treino do app só decide a atividade, e ela se verifica uma vez por semana.
+  if (!buscar) {
+    for (const ficha of fichas) { const g = guardado.get(ficha.cliente_id); if (g) porCliente.set(ficha.cliente_id, g.treinos); }
+    return { porCliente, nota: 'última leitura, sem chamada ao EVO (a atividade se verifica depois da rodada de sessões)' };
+  }
   let lidos = 0, falhas = 0;
   for (const ficha of fichas) {
     const idMembro = Number(ficha.aluno?.evo_id);
@@ -244,7 +258,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
     return resumo;
   }
 
-  const { fichas, fonte, semFicha } = await carregarFichas();
+  const { fichas, fonte, semFicha, sessoes } = await carregarFichas();
   const { modelos, condutas, fonte: fonteModelos } = await carregarModelos();
   const historico = await historicoDe(fichas.map(f => f.cliente_id), hoje, modo);
   const inscricoes = await inscricoesDosAlunos(hoje);
@@ -256,7 +270,8 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
     }
   }
   const avisos = await avisosSemPresenca();
-  const { porCliente: treinos, nota: notaTreinos } = await treinosDosAlunos(fichas, hoje);
+  const atividade = await verificacaoDaAtividade(sessoes, hoje, modo);
+  const { porCliente: treinos, nota: notaTreinos } = await treinosDosAlunos(fichas, hoje, { buscar: atividade.verifica });
 
   const decisoes = fichas.map(ficha => {
     const d = decidir({
@@ -267,6 +282,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
       inscricao: inscricoes.get(ficha.cliente_id) ?? null,
       semResposta: semResposta.get(ficha.cliente_id)?.semResposta ?? 0,
       ultimaResposta: semResposta.get(ficha.cliente_id)?.ultimaResposta ?? null,
+      verificaAtividade: atividade.verifica,
     });
     const sai = d.status === 'simulado' || d.status === 'pendente';
     // No envio, a hora é a maior entre a prevista e a da rodada: rodado às
@@ -361,12 +377,32 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
     fichas: fichas.length, sem_ficha: semFicha, fonte_fichas: fonte, fonte_modelos: fonteModelos, contagem,
     avisos_sem_presenca: [...avisos.values()].reduce((n, l) => n + l.length, 0),
     treinos: notaTreinos,
+    atividade: atividade.nota,
     avisos_equipe: linhas.reduce((n, l) => n + l.avisos_equipe.length, 0),
     encaminhamentos: notaEncaminhamentos ?? null,
   });
+  if (atividade.verifica) await carimbarMarcador(MARCA_ATIVIDADE, { ...(atividade.marca ?? {}), [modo]: sessoes.rodada.id, dia: hoje });
   await carimbarMarcador(MARCA_ENSAIO, resumo);
   logger.info(`[acompanhamento] ${modo === 'ensaio' ? 'Ensaio' : 'Rodada de envio'} de ${hoje}: ${fichas.length} ficha(s) — ${JSON.stringify(contagem)}`);
   return resumo;
+}
+
+/**
+ * Se hoje é dia de verificar a atividade combinada (M5, decisão 18): a
+ * rodada de sessões bem-sucedida do ciclo de hoje, e ainda não verificada
+ * neste modo. É o primeiro ensaio com janela depois da rodada — na rodada
+ * automática de domingo, a segunda (o domingo não tem janela); na manual que
+ * recuperou, o ensaio seguinte a ela.
+ */
+export async function verificacaoDaAtividade(sessoes, hoje, modo) {
+  const rodada = sessoes?.rodada ?? null;
+  if (!rodada) return { verifica: false, nota: 'sem rodada de sessões bem-sucedida: a atividade espera' };
+  if (rodada.ciclo !== cicloDe(hoje)) {
+    return { verifica: false, nota: `a última rodada de sessões é do ciclo de ${rodada.ciclo}: a atividade espera a desta semana` };
+  }
+  const marca = (await lerMarcador(MARCA_ATIVIDADE))?.valor ?? null;
+  if (marca?.[modo] === rodada.id) return { verifica: false, marca, nota: `atividade já verificada nesta rodada (${marca.dia ?? '—'})` };
+  return { verifica: true, marca, nota: `verificada: rodada ${rodada.origem === 'cron' ? 'automática' : 'manual'} de ${rodada.terminou_em ?? '—'}` };
 }
 
 /** A última rodada, para o worker saber se o dia já rodou e o painel mostrar. */

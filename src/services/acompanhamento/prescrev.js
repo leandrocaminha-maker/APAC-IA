@@ -36,14 +36,24 @@ async function buscar(caminho) {
   return corpo;
 }
 
-/** As fichas completas da unidade. @returns {Promise<{fichas: object[], sem_ficha: number}>} */
+/**
+ * As fichas completas da unidade, e a rodada de sessões da semana (M5:
+ * `sessoes`, da unidade — o ciclo, se ele teve rodada bem-sucedida, a última
+ * tentativa). @returns {Promise<{fichas: object[], sem_ficha: number, sessoes: object|null}>}
+ */
 export async function buscarFichas() {
   const r = await buscar('/api/acompanhamento/fichas');
   const nova = (r.fichas ?? []).find(f => f.versao > FICHA_VERSAO_LIDA);
   if (nova) {
     throw new Error(`Ficha na versão ${nova.versao}, e este código lê até a ${FICHA_VERSAO_LIDA}: atualize o APAC.`);
   }
-  return { fichas: r.fichas ?? [], sem_ficha: r.sem_ficha ?? 0 };
+  return { fichas: r.fichas ?? [], sem_ficha: r.sem_ficha ?? 0, sessoes: r.sessoes ?? null };
+}
+
+/** Só a rodada de sessões da semana, sem as fichas: o aviso de falha confere a cada ciclo do worker. */
+export async function buscarSituacaoDasSessoes() {
+  const r = await buscar('/api/acompanhamento/fichas?so=sessoes');
+  return r.sessoes ?? null;
 }
 
 /** Os modelos publicados. @returns {Promise<{versao: number, marcadores: object[], modelos: object[]}>} */

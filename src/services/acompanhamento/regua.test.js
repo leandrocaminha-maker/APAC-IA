@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { diasEntre, horaPorExtenso, preencher, valoresDaFicha } from './render.js';
 import {
-  PRIORIDADE, avisosDaEquipe, camadasDe, candidatosDe, cicloDoTreino, decidir, diaPorExtenso, emLista, emRodizio, fasesDaFicha, horaPrevista, resumirTreinos, treinoVigente, leituraDaAgenda, limiteAusencia, modalidadesNaAgenda, situacaoDoDia,
+  PRIORIDADE, avisosDaEquipe, camadasDe, cicloDe, candidatosDe, cicloDoTreino, decidir, diaPorExtenso, emLista, emRodizio, fasesDaFicha, horaPrevista, resumirTreinos, treinoVigente, leituraDaAgenda, limiteAusencia, modalidadesNaAgenda, situacaoDoDia,
 } from './regua.js';
 
 const ficha = (mudar = {}) => ({
@@ -870,4 +870,65 @@ test('a conduta de gatilho da régua vai junto do aviso que já existia (ciclo e
   const ciclo = a.find(x => x.codigo === 'ciclo_em_risco');
   assert.equal(ciclo.conduta, 'Pergunta a Claudia o que está atrapalhando.');
   assert.match(ciclo.texto, /^Metade do ciclo de musculação com 3 de 10 treinos/);
+});
+
+
+// ---- M5 do PLANO_MODELOS (28/10/2026): a catraca todo dia, as sessões no domingo ----
+
+test('o ciclo da rodada de sessões vai de domingo a sábado', () => {
+  assert.deepEqual(['2026-10-25', '2026-10-28', '2026-10-31', '2026-11-01'].map(cicloDe),
+    ['2026-10-25', '2026-10-25', '2026-10-25', '2026-11-01']);
+});
+
+test('a atividade combinada só se verifica quando o ensaio diz (uma vez por rodada de sessões)', () => {
+  const f = comAgenda([sessao('2026-10-08', 18), sessao('2026-10-10', 18)]);
+  assert.equal(decidirAgenda(f, '2026-10-13').situacao, 'sem_agendamento');
+  const fora = decidir({ ficha: f, modelos: modelosAgenda, historico: h0, hoje: '2026-10-13', modo: 'ensaio', verificaAtividade: false });
+  assert.notEqual(fora.situacao, 'sem_agendamento');
+});
+
+/** O comportamento pela catraca: dados até a véspera da carga. */
+const pelaCatraca = (mudar = {}, fichaMudar = {}) => comFases({ fonte: 'catraca', ...mudar }, fichaMudar);
+
+test('lembrete de agendamento pela catraca: na quarta, sem entrada na segunda nem na terça', () => {
+  const f = pelaCatraca({ semana: 2, ate: '2026-10-20', presencas: { ...comportamento().presencas, ultima: '2026-10-17' },
+    fase: { ...comportamento().fase, lembrete_agendamento: true } });
+  const d = lembrar(f, '2026-10-21');
+  assert.deepEqual([d.situacao, d.periodo_envio], ['lembrete_agendamento', 'tarde']);
+  assert.match(d.motivo, /sem entrada na catraca na segunda \(19\/10\) nem na terça \(20\/10\)\. Treina de manhã: o lembrete sai hoje, de tarde/);
+  // na terça, a terça ainda não se conhece: não é o dia
+  assert.notEqual(lembrar(f, '2026-10-20').situacao, 'lembrete_agendamento');
+  // veio na terça: não sai
+  const veio = pelaCatraca({ semana: 2, ate: '2026-10-20', presencas: { ...comportamento().presencas, ultima: '2026-10-20' },
+    fase: { ...comportamento().fase, lembrete_agendamento: true } });
+  assert.notEqual(lembrar(veio, '2026-10-21').situacao, 'lembrete_agendamento');
+  // catraca sem a terça: espera
+  const velha = pelaCatraca({ semana: 2, ate: '2026-10-19', fase: { ...comportamento().fase, lembrete_agendamento: true, cadencia_dias: 30 } });
+  const e = lembrar(velha, '2026-10-21');
+  assert.notEqual(e.situacao, 'lembrete_agendamento');
+  assert.match(e.motivo, /a catraca é de 19\/10: espera a terça completa/);
+  // quem treina à noite recebe de manhã, também na quarta
+  const noite = pelaCatraca({ semana: 2, ate: '2026-10-20', periodo_habitual: 'noite', fase: { ...comportamento().fase, lembrete_agendamento: true },
+    presencas: { ...comportamento().presencas, ultima: '2026-10-16' } });
+  assert.equal(lembrar(noite, '2026-10-21').periodo_envio, 'manhã');
+});
+
+const modelosRetorno = [...modelosAgenda,
+  { id: 'retorno:todas:b', situacao: 'retorno', trilha: 'todas', texto: '{nome}, vi que você voltou aos treinos {dia_retorno}.', envio: 'sozinha' }];
+
+test('retorno pela catraca: a volta é a da régua das fases, sem a atividade', () => {
+  const h = [...h0, { dia: '2026-10-12', situacao: 'ausencia', modelo_id: 'x', valores: {} }];
+  const f = pelaCatraca({ ate: '2026-10-18', presencas: { ...comportamento().presencas, ultima: '2026-10-16' },
+    fase: { ...comportamento().fase, retornou_em: '2026-10-16' } }, { agenda: null });
+  const d = decidir({ ficha: f, modelos: modelosRetorno, historico: h, hoje: '2026-10-19', modo: 'ensaio' });
+  assert.deepEqual([d.situacao, d.texto], ['retorno', 'Claudia, vi que você voltou aos treinos na sexta, 16/10.']);
+  assert.match(d.motivo, /Entrada na catraca em 16\/10, depois do aviso de ausência de 12\/10/);
+});
+
+test('ausência: a catraca contradiz o aviso do EVO', () => {
+  const f = pelaCatraca({ presencas: { ...comportamento().presencas, ultima: '2026-10-15' }, fase: { ...comportamento().fase, cadencia_dias: 30 } });
+  const d = decidir({ ficha: f, modelos: modelosAgenda, historico: h0, hoje: '2026-10-19', modo: 'ensaio',
+    sinais: [{ dia: '2026-10-19', dias: 10 }] });
+  assert.notEqual(d.situacao, 'ausencia');
+  assert.match(d.motivo, /contradito pela catraca \(entrada em 15\/10\)/);
 });
