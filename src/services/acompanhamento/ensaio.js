@@ -271,7 +271,8 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
     const sai = d.status === 'simulado' || d.status === 'pendente';
     // No envio, a hora é a maior entre a prevista e a da rodada: rodado às
     // 11h, uma mensagem prevista para as 9h36 sai agora, e não ontem.
-    let previsto = sai ? horaPrevista(ficha, hoje, janela) : null;
+    // O lembrete de agendamento traz o período em que sai (o seguinte ao habitual).
+    let previsto = sai ? horaPrevista(ficha, hoje, janela, d.periodo_envio ?? null) : null;
     if (previsto && modo === 'envio' && previsto < agora) previsto = agora;
     return { ficha, d, previsto };
   });

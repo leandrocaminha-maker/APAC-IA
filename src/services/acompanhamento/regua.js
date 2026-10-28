@@ -64,7 +64,8 @@
  *
  * Fora da mensagem ao aluno, `avisos_equipe`: treino vencendo (7 dias antes
  * da validade: prescrever o ciclo seguinte), treino vencido sem treino novo
- * (até 14 dias depois) e, na adesão, ciclo em risco. Quem
+ * (até 14 dias depois), na adesão, ciclo em risco e, em todas as trilhas,
+ * a modalidade sem agendamento (para avisar o professor dela). Quem
  * os manda é o briefing (A4); aviso não ocupa a mensagem do dia.
  *
  * {professor}, quando o card do Prescrev não escolheu ninguém, é quem
@@ -90,26 +91,52 @@
  *               uma vez por ausência e depois cala até a próxima presença
  *   ausência    o limite é o prazo da ficha — 10 dias para todos (M0), que é
  *               o dia do aviso do EVO —, e não mais 14 ÷ frequência
- *   degrau      vai na decisão e escolhe a rotina quando os modelos trouxerem
- *               `degrau` (M2); sem modelo do degrau, os genéricos
+ *   rotina      `camadasDe` escolhe pelo mais específico que casa: a semana
+ *               do início (o que esperar dela, em todas as trilhas), a fase
+ *               (a adesão depois do início; o N1 do retorno), o degrau (as
+ *               outras trilhas depois do início); só sem nenhum, os
+ *               genéricos. O rodízio é dentro de cada camada
  *
  * "Não mandar" é decisão (Nahum-Shani), e o motivo a escreve como tal. Com o
  * sync semanal o comportamento atrasa até 7 dias (a M5 o faz diário); a
  * ausência ao aluno continua vindo do aviso do EVO, que é do dia. Ficha sem
  * `comportamento` (sem carga do AQUAP) segue como antes da v4.
  *
+ * ## As situações da M2 (27/10/2026)
+ *
+ *   primeira_ida          ativação, 3º dia aberto sem ida (a ficha diz
+ *                         `fase.ativacao_etapa` 'lembrete'). Uma por entrega.
+ *   lembrete_agendamento  nas 3 primeiras semanas do início (a ficha diz
+ *                         `fase.lembrete_agendamento`), nada agendado na
+ *                         semana: na terça, para quem treina de manhã ou à
+ *                         tarde; na quarta, para quem treina à noite (decisão
+ *                         2). A hora é a do período SEGUINTE ao habitual
+ *                         (`periodo_envio`). Pede a agenda do dia: com a carga
+ *                         de outro dia, quem agendou em cima da hora receberia
+ *                         o lembrete — e o motivo diz que esperou.
+ *   resultado_reavaliacao o relatório da reavaliação foi gerado
+ *                         (`reavaliacao_pronta_em`), até 7 dias depois. Sem
+ *                         número (decisão 9).
+ *
+ * As duas primeiras são EMPURRÕES: não saem no dia seguinte a outra mensagem
+ * nem passam do teto da fase (`freioDoEmpurrao`). As que dependem de "não
+ * veio" ou "não agendou" querem a carga de hoje ou de ontem; com a carga
+ * mais velha, esperam, e o motivo diz. Aos 7 dias sem ida, o professor
+ * recebe o aviso `nunca_veio` (M2; a conduta escrita é a M3).
+ *
  * ## O que ainda não está aqui
  *
  * A troca da adesão pela secundária quando a presença estabiliza (§5.3). A
  * trilha é a principal. Os briefings da ausência por tempo (professor aos
- * 14 ou 15 dias, consultor aos 30) e as condutas são a M3; o lembrete de
- * agendamento, a ativação (3º e 7º dia) e o modelo da porta aberta, a M2.
+ * 14 ou 15 dias, consultor aos 30) e as condutas são a M3.
  */
-import { diasEntre, preencher, primeiroNome, valoresDaFicha } from './render.js';
+import { diaPorExtenso, diaSP, diasEntre, preencher, primeiroNome, valoresDaFicha } from './render.js';
+
+export { diaPorExtenso };
 
 export const PRIORIDADE = {
-  boas_vindas: 0, ausencia: 1, retorno: 2, porta_aberta: 3, ciclo_em_risco: 4, reavaliacao: 5, minimo_cumprido: 6,
-  sem_agendamento: 7, nao_marca_app: 8, rotina: 9,
+  boas_vindas: 0, ausencia: 1, retorno: 2, porta_aberta: 3, ciclo_em_risco: 4, resultado_reavaliacao: 5, reavaliacao: 6,
+  minimo_cumprido: 7, primeira_ida: 8, lembrete_agendamento: 9, sem_agendamento: 10, nao_marca_app: 11, rotina: 12,
 };
 
 /** Quantos dias antes da próxima avaliação sai o aviso. Convenção desta casa (§5.2). */
@@ -127,12 +154,9 @@ export const NAO_MARCA_DIAS = 14;
 export const NAO_MARCA_REPETE_DIAS = 30;
 
 const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const SEMANA = ['no domingo', 'na segunda', 'na terça', 'na quarta', 'na quinta', 'na sexta', 'no sábado'];
-/** {dia_retorno}: "na sexta, 02/10" — com a preposição, que muda com o dia. */
-export const diaPorExtenso = (dia) =>
-  `${SEMANA[new Date(Date.UTC(+dia.slice(0, 4), +dia.slice(5, 7) - 1, +dia.slice(8, 10))).getUTCDay()]}, ${ddmm(dia)}`;
-const diaSP = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(iso));
 const maior = (a, b) => (a > b ? a : b);
+/** 0 = domingo … 6 = sábado. */
+const diaDaSemana = (dia) => new Date(Date.UTC(+dia.slice(0, 4), +dia.slice(5, 7) - 1, +dia.slice(8, 10))).getUTCDay();
 const somar = (dia, n) => new Date(Date.UTC(+dia.slice(0, 4), +dia.slice(5, 7) - 1, +dia.slice(8, 10)) + n * 86_400_000)
   .toISOString().slice(0, 10);
 
@@ -142,6 +166,14 @@ export const AUSENCIA_AVISO_DIAS = 10;
 export const RESPOSTA_RECENTE_DIAS = 2;
 /** Janela em que uma mensagem de situação segura a rotina. */
 export const SITUACAO_SEGURA_DIAS = 7;
+/** Até quantos dias depois do relatório da reavaliação sai a mensagem do resultado. */
+export const RESULTADO_VALE_DIAS = 7;
+/**
+ * O que decide pela falta ("não veio", "nada agendado") quer a carga de hoje
+ * ou de ontem: mais velha, quem veio ou agendou depois dela receberia o
+ * lembrete do que já fez.
+ */
+export const AGENDA_DO_DIA_DIAS = 1;
 
 /**
  * O limite de ausência: o prazo da ficha (v4), senão 10 dias. Até 27/10/2026
@@ -168,8 +200,18 @@ export function fasesDaFicha(ficha) {
     ausencia: c.ausencia?.etapa ?? 'presente',
     ausenciaDesde: c.ausencia?.desde ?? null,
     ate: c.ate,
+    // M2: o que a ativação pede, o lembrete de agendamento e o período habitual.
+    ativacao: c.fase.ativacao_etapa ?? null,
+    ativacaoDias: c.fase.ativacao_dias ?? null,
+    lembreteAgendamento: !!c.fase.lembrete_agendamento,
+    periodo: c.periodo_habitual ?? null,
+    // A semana do programa: no início, é ela que escolhe a rotina (o que esperar dela).
+    semana: c.semana ?? null,
   };
 }
+
+/** Os dados da carga servem para decidir pela falta hoje? */
+const doDia = (ate, hoje) => !!ate && ate <= hoje && diasEntre(ate, hoje) <= AGENDA_DO_DIA_DIAS;
 
 /**
  * O que a agenda diz, no dia da carga. null sem agenda carregada.
@@ -252,22 +294,44 @@ export function cicloDoTreino(ficha, treinos, agenda, hoje) {
 }
 
 /**
- * Os modelos candidatos de uma situação para uma trilha. Rotina é sempre
- * da trilha; nas outras, o modelo da trilha vem antes do de 'todas'.
+ * Os modelos candidatos de uma situação para uma trilha, em CAMADAS: a
+ * primeira que tiver um modelo que se preencha decide, e o rodízio é dentro
+ * de cada camada. Rotina é sempre da trilha; nas outras, o modelo da trilha
+ * vem antes do de 'todas'.
  *
- * Na rotina, com o degrau da ficha, o modelo do degrau (e da fase, quando o
- * modelo a diz) vem antes; sem modelo para o degrau, os genéricos — os de
- * hoje, sem `degrau` nem `fase`. É o que deixa a M2 publicar os modelos por
- * fase × degrau × trilha sem calar a rotina de quem ainda não os tem.
+ * Na rotina, com o comportamento da ficha, um modelo diz onde vale por três
+ * campos, cada um opcional: `semanas` (as semanas do início, de–até),
+ * `fase` e `degrau`. Vale o que casa em todos os que diz, e o mais
+ * específico vem antes — semana, depois fase, depois degrau: no início, o
+ * que esperar da semana; depois, na adesão, o da fase, e nas outras trilhas
+ * o do degrau; no retorno, o N1 da fase. Sem nenhum que case, os genéricos
+ * — os de `degrau`, `fase` e `semanas` nulos, os da tela Modelos. O genérico
+ * não entra atrás dos outros: o assunto de um não é o do outro.
  */
-export function candidatosDe(modelos, situacao, trilha, { fase = null, degrau = null } = {}) {
+export function camadasDe(modelos, situacao, trilha, { fase = null, degrau = null, semana = null } = {}) {
   const da = modelos.filter(m => m.situacao === situacao && m.trilha === trilha);
   if (situacao === 'rotina') {
-    const doDegrau = degrau === null ? [] : da.filter(m => m.degrau === degrau && (m.fase == null || m.fase === fase));
-    return doDegrau.length ? doDegrau : da.filter(m => m.degrau == null && m.fase == null);
+    const generico = (m) => m.degrau == null && m.fase == null && m.semanas == null;
+    if (degrau !== null) {
+      const vale = (m) => !generico(m)
+        && (m.degrau == null || m.degrau === degrau)
+        && (m.fase == null || m.fase === fase)
+        && (m.semanas == null || (semana !== null && semana >= m.semanas[0] && semana <= m.semanas[1]));
+      const peso = (m) => (m.semanas ? 4 : 0) + (m.fase ? 2 : 0) + (m.degrau != null ? 1 : 0);
+      const porPeso = new Map();
+      for (const m of da.filter(vale)) porPeso.set(peso(m), [...(porPeso.get(peso(m)) ?? []), m]);
+      const camadas = [...porPeso.entries()].sort((a, b) => b[0] - a[0]).map(([, c]) => c);
+      if (camadas.length) return camadas;
+    }
+    return [da.filter(generico)];
   }
-  if (da.length) return da;
-  return modelos.filter(m => m.situacao === situacao && m.trilha === 'todas');
+  if (da.length) return [da];
+  return [modelos.filter(m => m.situacao === situacao && m.trilha === 'todas')];
+}
+
+/** Os candidatos em uma lista só, na ordem das camadas. */
+export function candidatosDe(modelos, situacao, trilha, onde = {}) {
+  return camadasDe(modelos, situacao, trilha, onde).flat();
 }
 
 /**
@@ -331,6 +395,14 @@ function portaAberta({ fases, anteriores }) {
   };
 }
 
+/** O teto da fase alcançado na janela dela — o motivo, ou null. */
+function tetoAlcancado({ fases, anteriores, hoje }) {
+  if (!fases) return null;
+  const janela = somar(hoje, -(fases.teto.dias - 1));
+  const n = anteriores.filter(h => h.dia >= janela).length;
+  return n >= fases.teto.mensagens ? `teto da fase ${fases.fase} alcançado (${n} em ${fases.teto.dias} dias).` : null;
+}
+
 /** Por que a rotina devida não sai hoje — ou null, se sai. */
 function freioDaRotina({ fases, anteriores, hoje, ultimaResposta }) {
   if (fases && (fases.ausencia === 'silencio' || fases.ausencia === 'porta_aberta')) {
@@ -342,12 +414,91 @@ function freioDaRotina({ fases, anteriores, hoje, ultimaResposta }) {
   const semana = somar(hoje, -(SITUACAO_SEGURA_DIAS - 1));
   const situacao = anteriores.find(h => h.situacao !== 'rotina' && h.dia >= semana);
   if (situacao) return `já saiu ${situacao.situacao} em ${ddmm(situacao.dia)}, e uma situação na semana segura a rotina.`;
-  if (fases) {
-    const janela = somar(hoje, -(fases.teto.dias - 1));
-    const n = anteriores.filter(h => h.dia >= janela).length;
-    if (n >= fases.teto.mensagens) return `teto da fase ${fases.fase} alcançado (${n} em ${fases.teto.dias} dias).`;
+  return tetoAlcancado({ fases, anteriores, hoje });
+}
+
+/**
+ * Por que um empurrão (primeira ida, lembrete de agendamento) não sai hoje.
+ * Não é evento: não sai no dia seguinte a outra mensagem, e conta no teto
+ * da fase como a rotina. A situação de evento passa na frente; o empurrão,
+ * não.
+ */
+function freioDoEmpurrao({ fases, anteriores, hoje }) {
+  const ontem = somar(hoje, -1);
+  const recente = [...anteriores].reverse().find(h => h.dia >= ontem);
+  if (recente) return `já saiu ${recente.situacao} em ${ddmm(recente.dia)}, e o lembrete não sai no dia seguinte a outra mensagem.`;
+  return tetoAlcancado({ fases, anteriores, hoje });
+}
+
+/**
+ * A primeira ida (§2.2, M2): na ativação, a ficha diz 'lembrete' do 3º ao
+ * 6º dia aberto sem ida. Uma por entrega do relatório. Com a carga velha,
+ * espera: quem veio depois dela receberia o lembrete do primeiro treino.
+ */
+function primeiraIda({ ficha, fases, anteriores, hoje }) {
+  if (fases?.fase !== 'ativacao' || fases.ativacao !== 'lembrete') return null;
+  const entrega = ficha.relatorio_aluno?.entregue_em ? diaSP(ficha.relatorio_aluno.entregue_em) : '';
+  if (anteriores.some(h => h.situacao === 'primeira_ida' && h.dia >= entrega)) return null;
+  if (!doDia(fases.ate, hoje)) {
+    return { situacao: null, motivo: `Lembrete da primeira ida devido, e os dados são de ${ddmm(fases.ate)}: espera a carga do dia.` };
   }
-  return null;
+  return {
+    situacao: 'primeira_ida', valores: {}, empurrao: true,
+    motivo: `${fases.ativacaoDias} dia(s) desde a entrega do relatório sem presença na agenda (dados de ${ddmm(fases.ate)}): o lembrete da primeira ida.`,
+  };
+}
+
+/** O período seguinte ao habitual: é nele que o lembrete sai. */
+const DEPOIS_DO_PERIODO = { 'manhã': 'tarde', tarde: 'noite', noite: 'manhã' };
+
+/**
+ * O lembrete de agendamento (decisão 2): nas 3 primeiras semanas do início,
+ * com nada agendado na semana, na terça depois do período em que a pessoa
+ * mais treina — e na quarta de manhã para quem treina à noite. O período é
+ * o habitual das presenças; sem ele, o declarado; sem nenhum, manhã.
+ *
+ * "Nada agendado" é a semana inteira, de segunda a domingo, e não só a
+ * segunda e a terça: quem já tem a quinta marcada leria "já agendou os
+ * treinos desta semana?" como quem não olhou a agenda.
+ *
+ * Quer a agenda carregada HOJE. As pessoas agendam em cima da hora: com a
+ * carga de ontem, a terça de quem agendou na segunda à noite não aparece. O
+ * que sobra — quem agenda no próprio dia, depois da carga — é o que a M6
+ * mede no ensaio.
+ */
+function lembreteAgendamento({ ficha, fases, anteriores, hoje }) {
+  if (!fases?.lembreteAgendamento) return null;
+  const periodo = fases.periodo ?? ficha.marcadores?.periodo ?? 'manhã';
+  const dia = periodo === 'noite' ? 3 : 2;
+  if (diaDaSemana(hoje) !== dia) return null;
+  const segunda = somar(hoje, -(dia - 1));
+  if (anteriores.some(h => h.situacao === 'lembrete_agendamento' && h.dia >= segunda)) return null;
+  const carga = ficha.agenda?.sincronizada_em ? diaSP(ficha.agenda.sincronizada_em) : null;
+  if (!carga || carga < hoje) {
+    return {
+      situacao: null,
+      motivo: `Lembrete de agendamento devido, e a agenda é de ${carga ? ddmm(carga) : '—'}: espera a agenda do dia (sync diário, M5).`,
+    };
+  }
+  const domingo = somar(segunda, 6);
+  if ((ficha.agenda.sessoes ?? []).some(s => s.dia >= segunda && s.dia <= domingo)) return null;
+  const envio = DEPOIS_DO_PERIODO[periodo] ?? 'tarde';
+  return {
+    situacao: 'lembrete_agendamento', valores: {}, empurrao: true, periodo_envio: envio,
+    motivo: `Semana ${ficha.comportamento?.semana ?? '?'} do início, nada agendado de ${ddmm(segunda)} a ${ddmm(domingo)} ` +
+      `(agenda de ${ddmm(carga)}). Treina de ${periodo}: o lembrete sai ${dia === 3 ? 'na quarta' : 'na terça'}, de ${envio}.`,
+  };
+}
+
+/** O resultado da reavaliação (decisão 9): o relatório gerado, até 7 dias depois; uma vez por reavaliação. */
+function resultadoReavaliacao({ ficha, anteriores, hoje }) {
+  const pronta = ficha.reavaliacao_pronta_em;
+  if (!pronta || pronta > hoje || diasEntre(pronta, hoje) > RESULTADO_VALE_DIAS) return null;
+  if (anteriores.some(h => h.situacao === 'resultado_reavaliacao' && h.dia >= pronta)) return null;
+  return {
+    situacao: 'resultado_reavaliacao', valores: {},
+    motivo: `Relatório da reavaliação gerado em ${ddmm(pronta)}: o convite para ver o resultado com o professor, sem número (decisão 9).`,
+  };
 }
 
 function retorno({ ficha, anteriores, agenda }) {
@@ -379,7 +530,8 @@ function semAgendamento({ ficha, anteriores, agenda, hoje }) {
   if (!faltam.length) return null;
   return {
     situacao: 'sem_agendamento',
-    valores: { modalidade: emLista(faltam.map(m => m.nome)) },
+    // `modalidades_sem_agenda` não é marcador: é a conta do aviso ao professor.
+    valores: { modalidade: emLista(faltam.map(m => m.nome)), modalidades_sem_agenda: faltam.length },
     motivo: `Nenhum agendamento na agenda do EVO de ${ddmm(de)} a ${ddmm(agenda.carga)}: ${faltam.map(m => m.nome).join(', ')}.`,
   };
 }
@@ -437,39 +589,73 @@ function naoMarcaApp({ ficha, treinos, anteriores, agenda, hoje }) {
  *
  * @returns {{ codigo: string, motivo: string, texto: string, urgencia: 'hoje'|'proximos_dias', referencia: string }[]}
  */
-export function avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores = {} }) {
+export function avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores = {}, fases = null }) {
+  // A voz ao professor (revisão do responsável, 27/10/2026): assertiva e
+  // sempre positiva — o fato em uma frase, e o que fazer, conjugado ("monta",
+  // "chama"), com o porquê de ganho. Número e data aqui valem: é a equipe.
   const avisos = [];
+  // M2 (§2.2): na ativação, 7 dias abertos sem ida — o contato agora é do
+  // professor. Um por entrega (a referência), com a carga de hoje ou de
+  // ontem: com a velha, quem veio depois dela seria cobrado à toa. A conduta
+  // com fonte entra na M3.
+  if (fases?.fase === 'ativacao' && fases.ativacao === 'nunca_veio' && doDia(fases.ate, hoje) && ficha.relatorio_aluno?.entregue_em) {
+    const entrega = diaSP(ficha.relatorio_aluno.entregue_em);
+    avisos.push({
+      codigo: 'nunca_veio', motivo: 'ainda não veio depois da entrega do relatório', urgencia: 'proximos_dias', referencia: entrega,
+      texto: `${fases.ativacaoDias} dias desde a entrega do relatório (${ddmm(entrega)}) sem presença na agenda (dados de ` +
+        `${ddmm(fases.ate)}). Chama pra combinar o primeiro treino, com dia e hora: quem vem logo no começo tem muito mais chance de ficar.`,
+    });
+  }
   const vig = treinoVigente(treinos, hoje);
   if (vig?.validade) {
     const faltam = diasEntre(hoje, vig.validade);
     if (faltam >= 0 && faltam <= TREINO_VENCENDO_DIAS) {
       avisos.push({
         codigo: 'treino_vencendo', motivo: 'treino de musculação vencendo', urgencia: 'proximos_dias', referencia: String(vig.id),
-        texto: `Treino de musculação vence em ${faltam} dia(s), em ${ddmm(vig.validade)}: prescrever o ciclo seguinte.`,
+        texto: `O treino de musculação vence em ${faltam} dia(s), em ${ddmm(vig.validade)}. Já monta o próximo ciclo: treino novo na hora certa mantém o embalo.`,
       });
     } else if (faltam < 0 && -faltam <= TREINO_VENCIDO_AVISA_DIAS) {
       // O último treino que começou já venceu: ninguém criou o seguinte.
       avisos.push({
         codigo: 'treino_vencido', motivo: 'treino de musculação vencido', urgencia: 'proximos_dias', referencia: String(vig.id),
-        texto: `Treino de musculação vencido desde ${ddmm(vig.validade)}, sem treino novo no EVO.`,
+        texto: `O treino de musculação venceu em ${ddmm(vig.validade)} e o próximo ainda não está no EVO. Monta o novo ciclo e apresenta no próximo treino: novidade puxa a vontade de vir.`,
       });
     }
   }
   if (situacao === 'ciclo_em_risco' && ficha.trilha.principal === 'adesao' && ciclo?.treino) {
     avisos.push({
       codigo: 'ciclo_em_risco', motivo: 'ciclo de musculação em risco', urgencia: 'proximos_dias', referencia: String(ciclo.treino.id),
-      texto: `Ciclo em risco na trilha de adesão: ${ciclo.presencas} de ${ciclo.ciclo.minimo_treinos} treinos na metade do prazo.`,
+      texto: `Metade do ciclo de musculação com ${ciclo.presencas} de ${ciclo.ciclo.minimo_treinos} treinos. Puxa uma conversa rápida no próximo treino e combina com ele o que ajustar: o próximo treino na agenda fecha o ciclo.`,
     });
   }
   // D6: na adesão, a ausência sai ao aluno e ao professor ao mesmo tempo.
   if (situacao === 'ausencia' && ficha.trilha.principal === 'adesao') {
     avisos.push({
       codigo: 'ausencia_adesao', motivo: 'ausência na trilha de adesão', urgencia: 'proximos_dias', referencia: hoje,
-      texto: `Aviso "Sem presença" do EVO${valores.dias ? `: ${valores.dias} dias sem vir` : ''}. O aluno recebeu uma mensagem leve; o contato do professor é o que a trilha de adesão promete.`,
+      texto: `Aviso "Sem presença" do EVO${valores.dias ? `: ${valores.dias} dias sem vir` : ''}. A Leia mandou uma mensagem leve; agora vale o seu contato, com convite pra um dia certo. É o contato do professor que mais traz de volta.`,
+    });
+  }
+  // Modalidade do programa sem agendamento (pedido do responsável,
+  // 28/10/2026), em todas as trilhas: o aluno recebe a oferta de ajuda, e o
+  // professor dele, o pedido de avisar quem dá a aula. O responsável pela
+  // modalidade não está em dado nenhum — o `instructor` das sessões é de
+  // quem tem aula marcada, e aqui não há —, por isso o aviso vai a quem já
+  // recebe os encaminhamentos do aluno, e ele repassa.
+  if (situacao === 'sem_agendamento' && valores.modalidade) {
+    const varias = (valores.modalidades_sem_agenda ?? 1) > 1;
+    avisos.push({
+      codigo: 'sem_agendamento', motivo: varias ? 'modalidades do programa sem agendamento' : 'modalidade do programa sem agendamento',
+      urgencia: 'proximos_dias', referencia: hoje,
+      texto: `${valores.modalidade} ${varias ? 'estão' : 'está'} no programa e sem nenhum agendamento na agenda do EVO nas últimas ` +
+        `${SEM_AGENDAMENTO_DIAS / 7} semanas. A Leia já ofereceu ajuda pra achar um horário. Avisa ` +
+        `${varias ? 'os professores responsáveis pelas modalidades' : 'o professor responsável pela modalidade'}: ` +
+        'o convite de quem dá a aula deixa a primeira ida bem mais fácil.',
     });
   }
   return avisos;
 }
+
+const NOME_DO_EMPURRAO = { primeira_ida: 'Lembrete da primeira ida', lembrete_agendamento: 'Lembrete de agendamento' };
 
 /** A situação devida hoje, ou o motivo de nada estar devido. */
 export function situacaoDoDia({ ficha, anteriores, sinais = [], treinos = [], hoje, modo, modelos = null, ativadoEm = null, ultimaResposta = null }) {
@@ -493,21 +679,36 @@ export function situacaoDoDia({ ficha, anteriores, sinais = [], treinos = [], ho
   // Em silêncio ou porta aberta nada vai ao aluno — fora o retorno (ele
   // voltou, e a agenda o diz) e a própria porta aberta.
   const calada = !!fases && (fases.ausencia === 'silencio' || fases.ausencia === 'porta_aberta');
-  const evento = [
-    falta?.situacao ? falta : null,
+  const lidos = [
+    falta,
     agenda && retorno({ ficha, anteriores, agenda }),
     portaAberta({ fases, anteriores }),
     ciclo?.treino && cicloEmRisco({ ciclo, anteriores, hoje }),
+    resultadoReavaliacao({ ficha, anteriores, hoje }),
     reavaliacao({ ficha, anteriores, hoje }),
     ciclo?.treino && minimoCumprido({ ciclo, anteriores }),
+    primeiraIda({ ficha, fases, anteriores, hoje }),
+    lembreteAgendamento({ ficha, fases, anteriores, hoje }),
     agenda && semAgendamento({ ficha, anteriores, agenda, hoje }),
     agenda && naoMarcaApp({ ficha, treinos, anteriores, agenda, hoje }),
-  ].filter(Boolean).filter(e => !calada || e.situacao === 'retorno' || e.situacao === 'porta_aberta').find(temModelo);
+  ].filter(Boolean);
+  // O que estava devido e esperou (aviso contradito, carga velha) vira nota
+  // no motivo do dia: "não mandar" também se explica.
+  const notas = lidos.filter(e => !e.situacao && e.motivo).map(e => e.motivo);
+  const evento = lidos
+    .filter(e => e.situacao && (!calada || e.situacao === 'retorno' || e.situacao === 'porta_aberta'))
+    .filter(e => {
+      if (!e.empurrao) return true;
+      const freio = freioDoEmpurrao({ fases, anteriores, hoje });
+      if (freio) notas.push(`${NOME_DO_EMPURRAO[e.situacao]} devido, e não sai: ${freio}`);
+      return !freio;
+    })
+    .find(temModelo);
   if (evento) return { ...evento, ciclo, fases };
 
   const ultimo = anteriores[anteriores.length - 1];
   const desde = diasEntre(ultimo.dia, hoje);
-  const nota = (falta && !falta.situacao ? ` ${falta.motivo}` : '') + (!agenda ? ' Agenda do EVO ainda não carregada.' : '')
+  const nota = notas.map(n => ` ${n}`).join('') + (!agenda ? ' Agenda do EVO ainda não carregada.' : '')
     + (ciclo?.nota ? ` ${ciclo.nota}` : '');
   // A cadência é a da fase (v4); sem comportamento na ficha, a da trilha.
   const cadencia = fases ? fases.cadencia : ficha.trilha.cadencia_dias;
@@ -596,13 +797,13 @@ export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], 
   // Só o que veio antes de hoje: rodar o ensaio duas vezes no mesmo dia
   // não pode fazer o relógio andar duas vezes.
   const anteriores = historico.filter(h => h.dia < hoje).sort((a, b) => a.dia.localeCompare(b.dia));
-  const { situacao, motivo: motivoDoDia, valores: doDia, ciclo, fases } = situacaoDoDia({
+  const { situacao, motivo: motivoDoDia, valores: valoresDoDia, ciclo, fases, periodo_envio: periodoEnvio = null } = situacaoDoDia({
     ficha, anteriores, sinais, treinos, hoje, modo, modelos, ativadoEm: inscricao?.ativadoEm ?? null, ultimaResposta,
   });
   const motivo = modo === 'ensaio' && inscricao === null && situacao
     ? `${motivoDoDia} No envio real não sairia: o aluno ainda não ativou o WhatsApp.`
     : motivoDoDia;
-  base.avisos_equipe = avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores: doDia ?? {} });
+  base.avisos_equipe = avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores: valoresDoDia ?? {}, fases: fases ?? fasesLidas });
   if (!situacao) return { ...base, status: 'nada', motivo };
 
   // Freio (§5.4): três mensagens seguidas sem resposta e sem presença — a
@@ -618,18 +819,21 @@ export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], 
       avisos_equipe: naAdesao
         ? [...base.avisos_equipe, {
           codigo: 'tres_sem_resposta', motivo: 'mensagens sem resposta', urgencia: 'proximos_dias', referencia: ultimo,
-          texto: `${semResposta} mensagens do acompanhamento seguidas sem resposta e sem presença: a régua parou a rotina.`,
+          texto: `${semResposta} mensagens seguidas sem resposta nem presença, e a Leia pausou a rotina. Agora é com você: um contato pessoal e leve costuma destravar.`,
         }]
         : base.avisos_equipe,
     };
   }
 
-  const valores = { ...valoresDaFicha(ficha, hoje), ...doDia };
+  const valores = { ...valoresDaFicha(ficha, hoje), ...valoresDoDia };
   // D3: sem professor escolhido no card, quem prescreveu o treino vigente no EVO.
   const vig = treinoVigente(treinos, hoje);
   if (ficha.professor?.origem !== 'card' && vig?.professor) valores.professor = primeiroNome(vig.professor) || valores.professor;
   const ultimoId = [...anteriores].reverse().find(h => h.situacao === situacao)?.modelo_id ?? null;
-  const candidatos = emRodizio(candidatosDe(modelos, situacao, trilha, { fase: fases?.fase ?? null, degrau: fases?.degrau ?? null }), ultimoId);
+  // O rodízio é dentro de cada camada: a do degrau não começa pelo genérico.
+  const candidatos = camadasDe(modelos, situacao, trilha,
+    { fase: fases?.fase ?? null, degrau: fases?.degrau ?? null, semana: fases?.semana ?? null })
+    .flatMap(c => emRodizio(c, ultimoId));
 
   const faltam = new Set();
   for (const m of candidatos) {
@@ -640,6 +844,8 @@ export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], 
       return {
         ...base, situacao, modelo_id: m.id, texto: r.texto, valores,
         status: modo === 'ensaio' ? 'simulado' : 'pendente', motivo,
+        // O lembrete de agendamento sai no período seguinte ao habitual (decisão 2).
+        ...(periodoEnvio ? { periodo_envio: periodoEnvio } : {}),
       };
     }
     r.faltam.forEach(f => faltam.add(f));
@@ -661,10 +867,12 @@ const INICIO_DO_PERIODO = { 'manhã': 9 * 60, tarde: 14 * 60, noite: 18 * 60 };
 /**
  * A hora prevista de uma mensagem: o começo do período preferido, presa à
  * janela do dia, mais um deslocamento fixo por aluno (0 a 40 min) para as
- * mensagens não saírem todas no mesmo minuto.
+ * mensagens não saírem todas no mesmo minuto. `periodo` passa por cima do
+ * preferido: o lembrete de agendamento sai DEPOIS do período em que a
+ * pessoa treina (decisão 2).
  */
-export function horaPrevista(ficha, hoje, janela) {
-  const base = INICIO_DO_PERIODO[ficha.marcadores?.periodo] ?? 10 * 60;
+export function horaPrevista(ficha, hoje, janela, periodo = null) {
+  const base = INICIO_DO_PERIODO[periodo ?? ficha.marcadores?.periodo] ?? 10 * 60;
   let h = 0;
   for (const c of ficha.cliente_id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   const minuto = Math.min(Math.max(base, janela.inicioMin) + (h % 41), janela.fimMin - 15);

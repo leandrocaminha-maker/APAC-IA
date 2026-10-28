@@ -6,6 +6,58 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## A régua dispara as mensagens da M2: degrau, ativação, lembrete, resultado (27/10/2026)
+
+**28/10/2026:** depois da revisão do responsável, a modalidade sem
+agendamento ganhou um aviso à equipe (`sem_agendamento`, em
+`avisosDaEquipe`, em todas as trilhas): vai a quem já recebe os
+encaminhamentos do aluno (`destinoDoAluno`) e pede que ele avise o professor
+responsável pela modalidade — ninguém guarda esse responsável, e o
+`instructor` das sessões do AQUAP é de quem tem aula marcada, que aqui não
+há. A situação passa `modalidades_sem_agenda` (a conta, não é marcador) nos
+valores, para o plural. O prompt da Leia ganhou as regras da revisão
+(frase com verbo, sem supor o motivo, "tão" não, qualquer modalidade,
+contexto primeiro); o guia completo é o `prompts/comunicacao.md` do Prescrev.
+
+M2 do `PLANO_MODELOS.md` do Prescrev. Os modelos passaram à **versão 2**
+(`MODELOS_VERSAO_LIDA` = 2): cada rotina diz onde vale por `semanas`, `fase`
+e `degrau`, e há situações novas. `camadasDe` (em `regua.js`) usa o mais
+específico que casa — a semana do início (`fasesDaFicha` lê
+`comportamento.semana`), a fase, o degrau —, e o genérico só quando nada
+casa; o rodízio é dentro de cada camada.
+
+Na revisão do responsável (27/10/2026) a linguagem mudou: com o aluno,
+frases conjugadas, informal, estilo influente; a trilha de adesão sem número
+— e o prompt da Leia (`src/prompts/acompanhamento.md`, "O tom da trilha")
+diz o mesmo para a conversa. Com o professor, assertiva e positiva: os
+textos dos avisos em `avisosDaEquipe` (e o das três sem resposta) foram
+reescritos assim. As situações novas, todas lendo a ficha:
+
+- `primeira_ida`: na ativação, a ficha diz `fase.ativacao_etapa`
+  'lembrete' (3º dia aberto sem ida). Uma por entrega. Aos 7 dias
+  ('nunca_veio'), nada ao aluno e o aviso `nunca_veio` à equipe, um por entrega.
+- `lembrete_agendamento`: nas 3 primeiras semanas (a ficha diz
+  `fase.lembrete_agendamento`), nada agendado na semana inteira; na terça
+  (manhã/tarde) ou quarta (noite). A decisão leva `periodo_envio` — o
+  período seguinte ao habitual — e `ensaio.js` o passa a `horaPrevista`.
+  **Exige a agenda carregada hoje**: com o sync semanal, não sai, e o motivo
+  diz (é a M5 do AQUAP).
+- `resultado_reavaliacao`: `ficha.reavaliacao_pronta_em` (o relatório da
+  reavaliação gerado), até 7 dias depois, uma vez. Sem número (decisão 9).
+
+`primeira_ida` e `lembrete_agendamento` são empurrões (`freioDoEmpurrao`):
+não saem no dia seguinte a outra mensagem nem passam do teto da fase. O que
+decide pela falta quer a carga de hoje ou de ontem (`AGENDA_DO_DIA_DIAS`).
+
+`render.js`: `{presencas_quinzena}`, `{presencas_mes}`, `{semanas_ativas}`
+(do comportamento) e `{dia}`, `{hora_combinada}` (a próxima sessão da agenda)
+só com a carga de até 2 dias e as contagens de 2 para cima; `preencher` agora
+recusa texto que ainda tenha chaves depois de preenchido (`{Nome}`,
+`{presencas_14}`). Rótulos novos no `crm.html`. 78 testes em `regua.test.js`.
+**O deploy daqui vai junto com o do Prescrev** (modelos v2): um sem o outro,
+o APAC recusa os modelos e roda sobre a cópia. Sem commit nem deploy até o
+responsável revisar a semente. Continua em ensaio.
+
 ## A régua do acompanhamento lê as fases da ficha v4 (27/10/2026)
 
 M1 do `PLANO_MODELOS.md` do Prescrev. A ficha passou à **versão 4** e traz

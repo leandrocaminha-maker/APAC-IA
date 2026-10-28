@@ -8,9 +8,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { diasEntre, preencher, valoresDaFicha } from './render.js';
+import { diasEntre, horaPorExtenso, preencher, valoresDaFicha } from './render.js';
 import {
-  PRIORIDADE, avisosDaEquipe, candidatosDe, cicloDoTreino, decidir, diaPorExtenso, emLista, emRodizio, fasesDaFicha, horaPrevista, resumirTreinos, treinoVigente, leituraDaAgenda, limiteAusencia, modalidadesNaAgenda, situacaoDoDia,
+  PRIORIDADE, avisosDaEquipe, camadasDe, candidatosDe, cicloDoTreino, decidir, diaPorExtenso, emLista, emRodizio, fasesDaFicha, horaPrevista, resumirTreinos, treinoVigente, leituraDaAgenda, limiteAusencia, modalidadesNaAgenda, situacaoDoDia,
 } from './regua.js';
 
 const ficha = (mudar = {}) => ({
@@ -368,6 +368,23 @@ test('modalidade sem agendamento em 3 semanas: todas numa mensagem, e não repet
   assert.equal(duas.valores.modalidade, 'Musculação e Mat Pilates');
 });
 
+test('modalidade sem agendamento: o professor do aluno recebe o pedido de avisar o responsável pela modalidade', () => {
+  const d = decidirAgenda(comAgenda([sessao('2026-10-08', 18), sessao('2026-10-10', 18)]), '2026-10-13');
+  const aviso = d.avisos_equipe.find(a => a.codigo === 'sem_agendamento');
+  assert.deepEqual([aviso.referencia, aviso.urgencia], ['2026-10-13', 'proximos_dias']);
+  assert.equal(aviso.texto, 'Mat Pilates está no programa e sem nenhum agendamento na agenda do EVO nas últimas 3 semanas. ' +
+    'A Leia já ofereceu ajuda pra achar um horário. Avisa o professor responsável pela modalidade: o convite de quem dá a ' +
+    'aula deixa a primeira ida bem mais fácil.');
+  // duas modalidades: plural no texto e no motivo
+  const duas = decidirAgenda(comAgenda([]), '2026-10-13').avisos_equipe.find(a => a.codigo === 'sem_agendamento');
+  assert.match(duas.texto, /^Musculação e Mat Pilates estão no programa .* Avisa os professores responsáveis pelas modalidades:/);
+  assert.equal(duas.motivo, 'modalidades do programa sem agendamento');
+  // sem a situação no dia, não há aviso
+  const h = [...h0, { dia: '2026-10-13', situacao: 'sem_agendamento', modelo_id: 'x', valores: { modalidade: 'Mat Pilates' } }];
+  const depois = decidirAgenda(comAgenda([sessao('2026-10-08', 18), sessao('2026-10-10', 18)]), '2026-10-14', h);
+  assert.equal(depois.avisos_equipe.some(a => a.codigo === 'sem_agendamento'), false);
+});
+
 test('a lista por extenso', () => {
   assert.deepEqual([[], ['A'], ['A', 'B'], ['A', 'B', 'C']].map(emLista), ['', 'A', 'A e B', 'A, B e C']);
 });
@@ -444,7 +461,7 @@ test('na adesão, o ciclo em risco também vai à equipe', () => {
   const f = comAgenda(treinou('2026-09-05', '2026-09-20', '2026-10-08'), { trilha: { ...ficha().trilha, principal: 'adesao' } });
   const d = decidirTreino(f, '2026-10-12', [treino('2026-09-02', '2026-10-28')]);
   assert.equal(d.situacao, 'ciclo_em_risco');
-  assert.match(d.avisos_equipe.map(a => a.texto).join(' '), /Ciclo em risco na trilha de adesão: 3 de 10/);
+  assert.match(d.avisos_equipe.map(a => a.texto).join(' '), /Metade do ciclo de musculação com 3 de 10 treinos/);
 });
 
 test('mínimo cumprido: só na trilha que tem modelo; nas outras, a situação é pulada', () => {
@@ -481,7 +498,7 @@ test('treino vencendo vai à equipe, sem ocupar a mensagem do dia', () => {
   const f = comAgenda(treinou('2026-10-08'));
   const ts = [treino('2026-08-09', '2026-10-18', { ultima_concluida: '2026-10-08' })];
   const d = decidirTreino(f, '2026-10-12', ts);
-  assert.deepEqual(d.avisos_equipe.map(a => a.texto), ['Treino de musculação vence em 6 dia(s), em 18/10: prescrever o ciclo seguinte.']);
+  assert.deepEqual(d.avisos_equipe.map(a => a.texto), ['O treino de musculação vence em 6 dia(s), em 18/10. Já monta o próximo ciclo: treino novo na hora certa mantém o embalo.']);
   assert.equal(d.status, 'nada');
   assert.deepEqual(avisosDaEquipe({ ficha: f, treinos: ts, ciclo: null, hoje: '2026-10-05', situacao: null }), []);
 });
@@ -497,8 +514,8 @@ test('D3: sem professor escolhido no card, {professor} é quem prescreveu o trei
 test('treino vencido sem treino novo segue avisando a equipe por 14 dias', () => {
   const f = comAgenda(treinou('2026-10-08'));
   const ts = [treino('2026-08-09', '2026-10-18', { ultima_concluida: '2026-10-08' })];
-  assert.deepEqual(decidirTreino(f, '2026-10-19', ts).avisos_equipe.map(a => a.texto), ['Treino de musculação vencido desde 18/10, sem treino novo no EVO.']);
-  assert.deepEqual(decidirTreino(f, '2026-11-01', ts).avisos_equipe.map(a => a.texto), ['Treino de musculação vencido desde 18/10, sem treino novo no EVO.']);
+  assert.deepEqual(decidirTreino(f, '2026-10-19', ts).avisos_equipe.map(a => a.texto), ['O treino de musculação venceu em 18/10 e o próximo ainda não está no EVO. Monta o novo ciclo e apresenta no próximo treino: novidade puxa a vontade de vir.']);
+  assert.deepEqual(decidirTreino(f, '2026-11-01', ts).avisos_equipe.map(a => a.texto), ['O treino de musculação venceu em 18/10 e o próximo ainda não está no EVO. Monta o novo ciclo e apresenta no próximo treino: novidade puxa a vontade de vir.']);
   assert.deepEqual(decidirTreino(f, '2026-11-02', ts).avisos_equipe.map(a => a.texto), []);   // 15 dias depois
   // com o treino novo criado, o aviso some
   assert.deepEqual(decidirTreino(f, '2026-10-20', [...ts, treino('2026-10-20', '2026-12-15', { id: 2 })]).avisos_equipe, []);
@@ -539,7 +556,8 @@ const comFases = (mudar = {}, fichaMudar = {}) => ficha({ versao: 4, comportamen
 test('fases da ficha: nada sem comportamento; com ele, fase, degrau, cadência, teto e ausência', () => {
   assert.equal(fasesDaFicha(ficha()), null);
   assert.deepEqual(fasesDaFicha(comFases()),
-    { fase: 'inicio', degrau: 1, cadencia: 3, teto: { mensagens: 2, dias: 7 }, ausencia: 'presente', ausenciaDesde: '2026-10-17', ate: '2026-10-19' });
+    { fase: 'inicio', degrau: 1, cadencia: 3, teto: { mensagens: 2, dias: 7 }, ausencia: 'presente', ausenciaDesde: '2026-10-17', ate: '2026-10-19',
+      ativacao: null, ativacaoDias: null, lembreteAgendamento: false, periodo: 'manhã', semana: 6 });
 });
 
 test('a cadência é a da fase, e a decisão leva fase e degrau', () => {
@@ -639,4 +657,170 @@ test('a rotina escolhe o modelo do degrau quando há, e os genéricos quando nã
 
 test('a prioridade conhece a porta aberta, entre o retorno e o ciclo em risco', () => {
   assert.ok(PRIORIDADE.retorno < PRIORIDADE.porta_aberta && PRIORIDADE.porta_aberta < PRIORIDADE.ciclo_em_risco);
+});
+
+// ---- a M2 do PLANO_MODELOS: situações novas, marcadores das sessões, camadas ----
+// 19/10/2026 é segunda; 20/10, terça; 21/10, quarta. O comportamento é de 19/10.
+
+test('a prioridade conhece as situações da M2: o resultado antes da reavaliação; os empurrões antes da rotina', () => {
+  assert.ok(PRIORIDADE.resultado_reavaliacao < PRIORIDADE.reavaliacao);
+  assert.ok(PRIORIDADE.minimo_cumprido < PRIORIDADE.primeira_ida && PRIORIDADE.primeira_ida < PRIORIDADE.lembrete_agendamento);
+  assert.ok(PRIORIDADE.lembrete_agendamento < PRIORIDADE.sem_agendamento && PRIORIDADE.nao_marca_app < PRIORIDADE.rotina);
+});
+
+test('preencher: o que parece marcador e não é (dígito, maiúscula) não sai cru', () => {
+  assert.deepEqual(preencher('{nome}, {presencas_14} treinos.', { nome: 'Ana' }), { texto: null, faltam: ['presencas_14'] });
+  assert.deepEqual(preencher('{Nome}, oi.', { nome: 'Ana' }), { texto: null, faltam: ['Nome'] });
+  assert.equal(horaPorExtenso('07:00'), 'às 7h');
+  assert.equal(horaPorExtenso('18:30:00'), 'às 18h30');
+  assert.equal(horaPorExtenso(null), null);
+});
+
+test('marcadores das sessões: só com a carga de até 2 dias, e as contagens de 2 para cima', () => {
+  const f = comFases({ presencas: { ...comportamento().presencas, d14: 6, d28: 1, semanas_ativas_4: 4 } }, {
+    agenda: { sincronizada_em: '2026-10-19T08:10:00Z', sessoes: [
+      sessao('2026-10-19', 18), { ...sessao('2026-10-21', 22, { finalizada: false }), hora: '18:30:00' },
+    ] },
+  });
+  const v = valoresDaFicha(f, '2026-10-20');
+  assert.deepEqual([v.presencas_quinzena, v.presencas_mes, v.semanas_ativas, v.dia, v.hora_combinada], ['6', null, '4', 'amanhã', 'às 18h30']);
+  // depois de amanhã: o dia por extenso, com a preposição
+  assert.equal(valoresDaFicha(f, '2026-10-19').dia, 'na quarta, 21/10');
+  // carga de 3 dias: nada das sessões
+  const velho = valoresDaFicha(f, '2026-10-22');
+  assert.deepEqual([velho.presencas_quinzena, velho.semanas_ativas, velho.dia, velho.hora_combinada], [null, null, null, null]);
+  // sem comportamento nem agenda: nada, e o resto da ficha continua
+  assert.deepEqual([valoresDaFicha(ficha(), '2026-10-20').presencas_quinzena, valoresDaFicha(ficha(), '2026-10-20').nome], [null, 'Claudia']);
+});
+
+test('camadas da rotina: a da fase e do degrau, depois a do degrau; o rodízio é dentro da camada', () => {
+  const porFase = [...modelos,
+    { id: 'n1', situacao: 'rotina', trilha: 'desafiador', degrau: 1, fase: null, texto: '{nome}, N1.', envio: 'sozinha' },
+    { id: 'n1-ret-a', situacao: 'rotina', trilha: 'desafiador', degrau: 1, fase: 'retorno', texto: '{nome}, volta {marca}.', envio: 'nao' },
+    { id: 'n1-ret-b', situacao: 'rotina', trilha: 'desafiador', degrau: 1, fase: 'retorno', texto: '{nome}, volta {hora_combinada}.', envio: 'evo' },
+  ];
+  assert.deepEqual(camadasDe(porFase, 'rotina', 'desafiador', { fase: 'retorno', degrau: 1 }).map(c => c.map(m => m.id)),
+    [['n1-ret-a', 'n1-ret-b'], ['n1']]);
+  assert.deepEqual(candidatosDe(porFase, 'rotina', 'desafiador', { fase: 'inicio', degrau: 1 }).map(m => m.id), ['n1']);
+  // no retorno, os dois da fase sem valor ({marca} sem fonte; {hora_combinada} sem agenda): cai no do degrau
+  const retorno = comFases({ fase: { ...comportamento().fase, valor: 'retorno', cadencia_dias: 7 } });
+  const h = [{ dia: '2026-10-10', situacao: 'rotina', modelo_id: 'x' }];
+  assert.equal(decidir({ ficha: retorno, modelos: porFase, historico: h, hoje: '2026-10-20', modo: 'ensaio' }).texto, 'Claudia, N1.');
+});
+
+/** Uma ficha na ativação: relatório entregue em 16/10, sem ida, 3 dias abertos na carga de 19/10. */
+const ativacao = (mudar = {}) => comFases({
+  inicio: null, semana: null, semanas: [], dias_sem_vir: 3,
+  fase: { ...comportamento().fase, valor: 'ativacao', pelo_tempo: 'ativacao', cadencia_dias: null, ativacao_dias: 3,
+    ativacao_etapa: 'lembrete', motivo: 'Relatório entregue em 2026-10-16, sem presença depois.' },
+  degrau: { valor: 0, teto: 0, trajetoria: [], numero_em: null, motivo: 'Na ativação, N0.' },
+  ...mudar,
+}, { relatorio_aluno: { entregue_em: '2026-10-16T15:00:00Z' } });
+const modelosAtivacao = [...modelos,
+  { id: 'primeira_ida:desafiador:a', situacao: 'primeira_ida', trilha: 'desafiador', texto: '{nome}, qual dia fica bom pro primeiro treino?', envio: 'sozinha' }];
+const hBoasVindas = [{ dia: '2026-10-17', situacao: 'boas_vindas', modelo_id: 'b' }];
+const naAtivacao = (f, hoje, historico = hBoasVindas) => decidir({ ficha: f, modelos: modelosAtivacao, historico, hoje, modo: 'ensaio' });
+
+test('primeira ida: no 3º dia sem ida, uma vez por entrega', () => {
+  const d = naAtivacao(ativacao(), '2026-10-20');
+  assert.deepEqual([d.situacao, d.texto], ['primeira_ida', 'Claudia, qual dia fica bom pro primeiro treino?']);
+  assert.match(d.motivo, /3 dia\(s\) desde a entrega do relatório sem presença na agenda \(dados de 19\/10\)/);
+  const depois = [...hBoasVindas, { dia: '2026-10-20', situacao: 'primeira_ida', modelo_id: 'primeira_ida:desafiador:a' }];
+  assert.equal(naAtivacao(ativacao(), '2026-10-21', depois).status, 'nada');
+  // ainda no prazo: nada
+  assert.equal(naAtivacao(ativacao({ fase: { ...ativacao().comportamento.fase, ativacao_dias: 2, ativacao_etapa: 'aguardando' } }), '2026-10-20').status, 'nada');
+});
+
+test('primeira ida: espera a carga do dia, e não sai no dia seguinte a outra mensagem', () => {
+  const velha = naAtivacao(ativacao(), '2026-10-22');
+  assert.equal(velha.status, 'nada');
+  assert.match(velha.motivo, /Lembrete da primeira ida devido, e os dados são de 19\/10: espera a carga do dia/);
+  const ontem = naAtivacao(ativacao(), '2026-10-20', [{ dia: '2026-10-19', situacao: 'boas_vindas', modelo_id: 'b' }]);
+  assert.equal(ontem.status, 'nada');
+  assert.match(ontem.motivo, /Lembrete da primeira ida devido, e não sai: já saiu boas_vindas em 19\/10/);
+});
+
+test('nunca veio: no 7º dia sem ida, nada ao aluno e o aviso ao professor, um por entrega', () => {
+  const nunca = ativacao({ fase: { ...ativacao().comportamento.fase, ativacao_dias: 7, ativacao_etapa: 'nunca_veio' } });
+  const d = naAtivacao(nunca, '2026-10-20');
+  assert.equal(d.status, 'nada');
+  assert.deepEqual(d.avisos_equipe.map(a => [a.codigo, a.referencia, a.urgencia]), [['nunca_veio', '2026-10-16', 'proximos_dias']]);
+  assert.match(d.avisos_equipe[0].texto, /7 dias desde a entrega do relatório \(16\/10\) sem presença na agenda \(dados de 19\/10\)/);
+  // com a carga velha, não avisa: quem veio depois dela seria cobrado à toa
+  assert.deepEqual(naAtivacao(nunca, '2026-10-23').avisos_equipe, []);
+});
+
+const modelosLembrete = [...modelos,
+  { id: 'lembrete_agendamento:desafiador:a', situacao: 'lembrete_agendamento', trilha: 'desafiador', texto: '{nome}, já agendou os treinos desta semana?', envio: 'sozinha' }];
+/** Semana 2 do início, com o lembrete de agendamento; a agenda carregada na terça 20/10, sem nada na semana. */
+const noInicio = (mudar = {}, fichaMudar = {}) => comFases(
+  { semana: 2, fase: { ...comportamento().fase, lembrete_agendamento: true }, ...mudar },
+  { agenda: { sincronizada_em: '2026-10-20T08:10:00Z', sessoes: [sessao('2026-10-16', 18)] }, ...fichaMudar });
+const hLembrete = [{ dia: '2026-10-18', situacao: 'rotina', modelo_id: 'x' }];
+const lembrar = (f, hoje) => decidir({ ficha: f, modelos: modelosLembrete, historico: hLembrete, hoje, modo: 'ensaio' });
+
+test('lembrete de agendamento: na terça, nada na semana, sai de tarde para quem treina de manhã', () => {
+  const d = lembrar(noInicio(), '2026-10-20');
+  assert.deepEqual([d.situacao, d.periodo_envio, d.texto], ['lembrete_agendamento', 'tarde', 'Claudia, já agendou os treinos desta semana?']);
+  assert.match(d.motivo, /nada agendado de 19\/10 a 25\/10 \(agenda de 20\/10\)\. Treina de manhã: o lembrete sai na terça, de tarde/);
+  // na segunda não é o dia
+  assert.notEqual(lembrar(noInicio(), '2026-10-19').situacao, 'lembrete_agendamento');
+  // fora das 3 primeiras semanas a ficha não pede
+  assert.notEqual(lembrar(comFases({}, { agenda: noInicio().agenda }), '2026-10-20').situacao, 'lembrete_agendamento');
+});
+
+test('lembrete de agendamento: quem treina à noite recebe na quarta, de manhã', () => {
+  const noite = noInicio({ periodo_habitual: 'noite' }, { agenda: { sincronizada_em: '2026-10-21T08:10:00Z', sessoes: [] } });
+  assert.notEqual(lembrar(noite, '2026-10-20').situacao, 'lembrete_agendamento');
+  const d = lembrar(noite, '2026-10-21');
+  assert.deepEqual([d.situacao, d.periodo_envio], ['lembrete_agendamento', 'manhã']);
+  assert.match(d.motivo, /sai na quarta, de manhã/);
+  // sem período habitual, vale o declarado
+  const declarado = noInicio({ periodo_habitual: null }, { marcadores: { ...ficha().marcadores, periodo: 'tarde' } });
+  assert.equal(lembrar(declarado, '2026-10-20').periodo_envio, 'noite');
+});
+
+test('lembrete de agendamento: com treino agendado na semana, ou a agenda de ontem, não sai', () => {
+  const agendado = noInicio({}, { agenda: { sincronizada_em: '2026-10-20T08:10:00Z', sessoes: [sessao('2026-10-24', 18, { finalizada: false })] } });
+  assert.notEqual(lembrar(agendado, '2026-10-20').situacao, 'lembrete_agendamento');
+  const ontem = lembrar(noInicio({}, { agenda: { sincronizada_em: '2026-10-19T08:10:00Z', sessoes: [] } }), '2026-10-20');
+  assert.notEqual(ontem.situacao, 'lembrete_agendamento');
+  assert.match(ontem.motivo, /Lembrete de agendamento devido, e a agenda é de 19\/10: espera a agenda do dia/);
+});
+
+test('hora prevista: o período de envio passa por cima do preferido', () => {
+  const tarde = horaPrevista(ficha(), '2026-10-08', SEMANA, 'tarde');
+  assert.ok(minutoSP(tarde) >= 14 * 60 && minutoSP(tarde) <= 14 * 60 + 40, minutoSP(tarde));
+});
+
+test('resultado da reavaliação: até 7 dias depois do relatório, uma vez', () => {
+  const comResultado = [...modelos,
+    { id: 'resultado_reavaliacao:todas:a', situacao: 'resultado_reavaliacao', trilha: 'todas', texto: '{nome}, o resultado está pronto.', envio: 'sozinha' }];
+  const f = comFases({}, { reavaliacao_pronta_em: '2026-10-18' });
+  const h = [{ dia: '2026-10-10', situacao: 'rotina', modelo_id: 'x' }];
+  const em = (hoje, historico = h) => decidir({ ficha: f, modelos: comResultado, historico, hoje, modo: 'ensaio' });
+  const d = em('2026-10-20');
+  assert.deepEqual([d.situacao, d.texto], ['resultado_reavaliacao', 'Claudia, o resultado está pronto.']);
+  assert.match(d.motivo, /Relatório da reavaliação gerado em 18\/10/);
+  assert.notEqual(em('2026-10-26').situacao, 'resultado_reavaliacao');
+  assert.notEqual(em('2026-10-21', [...h, { dia: '2026-10-20', situacao: 'resultado_reavaliacao', modelo_id: 'x' }]).situacao, 'resultado_reavaliacao');
+});
+
+test('camadas da rotina: no início, a semana passa na frente da fase e do degrau; fora da janela, não vale', () => {
+  const porSemana = [...modelos,
+    { id: 's12', situacao: 'rotina', trilha: 'desafiador', degrau: null, fase: 'inicio', semanas: [1, 2], texto: '{nome}, semanas 1 e 2.', envio: 'sozinha' },
+    { id: 's56', situacao: 'rotina', trilha: 'desafiador', degrau: null, fase: 'inicio', semanas: [5, 6], texto: '{nome}, semanas 5 e 6.', envio: 'sozinha' },
+    { id: 'n1', situacao: 'rotina', trilha: 'desafiador', degrau: 1, fase: null, semanas: null, texto: '{nome}, N1.', envio: 'sozinha' },
+    { id: 'cons', situacao: 'rotina', trilha: 'desafiador', degrau: null, fase: 'consolidacao', semanas: null, texto: '{nome}, consolidação.', envio: 'sozinha' },
+  ];
+  const ids = (onde) => camadasDe(porSemana, 'rotina', 'desafiador', onde).map(c => c.map(m => m.id));
+  assert.deepEqual(ids({ fase: 'inicio', degrau: 1, semana: 6 }), [['s56'], ['n1']]);
+  assert.deepEqual(ids({ fase: 'inicio', degrau: 1, semana: 2 }), [['s12'], ['n1']]);
+  // semana 3: nenhuma janela casa; vale o degrau
+  assert.deepEqual(ids({ fase: 'inicio', degrau: 1, semana: 3 }), [['n1']]);
+  // a fase sem degrau vale em qualquer degrau, e passa na frente do degrau
+  assert.deepEqual(ids({ fase: 'consolidacao', degrau: 1, semana: 8 }), [['cons'], ['n1']]);
+  // e a régua passa a semana da ficha: semana 6 do início
+  const h = [{ dia: '2026-10-10', situacao: 'rotina', modelo_id: 'x' }];
+  assert.equal(decidir({ ficha: comFases(), modelos: porSemana, historico: h, hoje: '2026-10-20', modo: 'ensaio' }).texto, 'Claudia, semanas 5 e 6.');
 });
