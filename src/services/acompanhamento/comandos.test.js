@@ -75,6 +75,17 @@ test('o briefing: modelo fixo, com o mínimo de dado de saúde', () => {
     /^🧪 \*TESTE — não é de um aluno de verdade\*\n.*\n.*\n\*Motivo:\* x — \*responder hoje\*/);
 });
 
+test('o briefing leva a conduta (M3) na linha dela, depois do resumo', () => {
+  const t = textoDoBriefing({
+    aluno: 'Claudia', motivo: 'ciclo de musculação em risco', urgencia: 'proximos_dias',
+    resumo: 'Metade do ciclo com 3 de 10 treinos.', conduta: 'Pergunta a Claudia o que está atrapalhando.',
+  });
+  assert.match(t, /\*Resumo:\* Metade do ciclo com 3 de 10 treinos\.\n\*Conduta:\* Pergunta a Claudia o que está atrapalhando\./);
+  const so = textoDoBriefing({ aluno: 'Claudia', motivo: 'primeira semana do programa', urgencia: 'proximos_dias', conduta: 'Combina o mínimo.' });
+  assert.doesNotMatch(so, /Resumo/);
+  assert.match(so, /\*Conduta:\* Combina o mínimo\./);
+});
+
 test('o briefing não leva o número do aluno: com a ponte, as opções do responsável (A5d)', () => {
   const t = textoDoBriefing({
     aluno: 'Claudia', motivo: 'dor ou lesão', urgencia: 'hoje', resumo: 'dor no joelho.', ponte: true, linkFicha: 'https://prescrev/x',

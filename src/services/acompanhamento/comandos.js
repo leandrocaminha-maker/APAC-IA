@@ -157,7 +157,7 @@ export const OPCOES_DO_BRIEFING = {
 };
 
 export function textoDoBriefing({
-  teste = false, repasse = null, aluno, idade = null, motivo, urgencia, resumo = null,
+  teste = false, repasse = null, aluno, idade = null, motivo, urgencia, resumo = null, conduta = null,
   combinado = null, acompanhamento = null, ponte = false, linkFicha = null,
 }) {
   return [
@@ -167,6 +167,8 @@ export function textoDoBriefing({
     `*Aluno(a):* ${aluno}${idade ? `, ${idade} anos` : ''}`,
     `*Motivo:* ${motivo} — *${urgencia === 'hoje' ? 'responder hoje' : 'nos próximos dias'}*`,
     resumo ? `*Resumo:* ${resumo}` : null,
+    // M3: o que fazer, com fonte no Prescrev (aqui só o texto).
+    conduta ? `*Conduta:* ${conduta}` : null,
     combinado ? `*Combinado:* ${combinado}` : null,
     acompanhamento ? `*Acompanhamento:* ${acompanhamento}` : null,
     linkFicha ? `Ficha: ${linkFicha}` : null,

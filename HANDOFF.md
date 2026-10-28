@@ -6,6 +6,22 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## As condutas ao professor (M3 do plano dos modelos, 28/10/2026)
+
+O Prescrev publica, junto dos modelos, o catálogo das condutas
+(`condutas`: código, sinal, destino, gatilho, texto, `carga_do_dia`), e a
+ficha diz quais valem hoje (`ficha.condutas`: código e referência). A régua
+só lê: `avisosDaEquipe` recebe o catálogo (`decidir({ condutas })`, de
+`carregarModelos` no ensaio) e abre um aviso por conduta de gatilho `ficha`
+— a de ausência só com a carga de hoje ou de ontem —, e põe a de gatilho
+`regua` (o ciclo em risco) junto do aviso que já existia. O aviso leva
+`conduta` (a linha "*Conduta:*" do briefing, `textoDoBriefing`) e `destino`;
+o de destino `consultor` vai à coordenação até a M5 trazer o consultor
+responsável do EVO, e o histórico diz por quê. A chave do encaminhamento
+continua `regua:cliente:codigo:referencia`: uma vez por referência. Sem o
+catálogo (Prescrev de antes da M3), nada muda. Testes: `regua.test.js` e
+`comandos.test.js`.
+
 ## A régua dispara as mensagens da M2: degrau, ativação, lembrete, resultado (27/10/2026)
 
 **28/10/2026:** depois da revisão do responsável, a modalidade sem

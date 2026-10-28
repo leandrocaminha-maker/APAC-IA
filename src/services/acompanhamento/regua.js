@@ -587,9 +587,14 @@ function naoMarcaApp({ ficha, treinos, anteriores, agenda, hoje }) {
  * semana, e é um encaminhamento só. `motivo` vai na linha "Motivo" do
  * briefing; `texto`, no resumo e na prévia.
  *
- * @returns {{ codigo: string, motivo: string, texto: string, urgencia: 'hoje'|'proximos_dias', referencia: string }[]}
+ * `conduta` (M3) é o que fazer, com fonte no Prescrev: vai na linha "Conduta"
+ * do briefing. `destino` 'consultor' vai ao consultor responsável — até a M5
+ * trazer quem ele é, à coordenação.
+ *
+ * @returns {{ codigo: string, motivo: string, texto: string, urgencia: 'hoje'|'proximos_dias', referencia: string,
+ *   conduta?: string, destino?: 'professor'|'consultor' }[]}
  */
-export function avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores = {}, fases = null }) {
+export function avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores = {}, fases = null, condutas = [] }) {
   // A voz ao professor (revisão do responsável, 27/10/2026): assertiva e
   // sempre positiva — o fato em uma frase, e o que fazer, conjugado ("monta",
   // "chama"), com o porquê de ganho. Número e data aqui valem: é a equipe.
@@ -651,6 +656,37 @@ export function avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores 
         `${varias ? 'os professores responsáveis pelas modalidades' : 'o professor responsável pela modalidade'}: ` +
         'o convite de quem dá a aula deixa a primeira ida bem mais fácil.',
     });
+  }
+  // M3 (§2.8): as condutas ao professor. O Prescrev diz na ficha quais valem
+  // hoje (`ficha.condutas`, código e referência) e publica o texto com os
+  // modelos (`condutas`); aqui só se lê. Um encaminhamento por (código,
+  // referência): a ficha traz a de semana 1 a semana inteira, e ela sai uma
+  // vez. A de ausência quer a carga de hoje ou de ontem (`carga_do_dia`):
+  // falta velha não é fato. Sem o catálogo (Prescrev de antes da M3), nada.
+  const porCodigo = new Map((condutas ?? []).map(c => [c.codigo, c]));
+  const comConduta = (cat) => {
+    if (!cat) return null;
+    const nome = ficha.marcadores?.nome ?? ficha.aluno?.primeiro_nome ?? null;
+    return preencher(cat.texto, { nome, dias: ficha.comportamento?.dias_sem_vir ?? null }).texto;
+  };
+  for (const ativa of ficha.condutas ?? []) {
+    const cat = porCodigo.get(ativa.codigo);
+    if (!cat || cat.gatilho !== 'ficha') continue;
+    if (cat.carga_do_dia && !doDia(ficha.comportamento?.ate, hoje)) continue;
+    const texto = comConduta(cat);
+    if (!texto) continue;
+    avisos.push({
+      codigo: cat.codigo, motivo: cat.sinal, urgencia: 'proximos_dias', referencia: ativa.referencia,
+      texto, conduta: texto, destino: cat.destino,
+    });
+  }
+  // A conduta que vai junto de um aviso que a régua já dava (gatilho 'regua').
+  for (const aviso of avisos) {
+    const cat = porCodigo.get(aviso.codigo);
+    if (cat?.gatilho === 'regua' && !aviso.conduta) {
+      const texto = comConduta(cat);
+      if (texto) aviso.conduta = texto;
+    }
   }
   return avisos;
 }
@@ -773,7 +809,7 @@ export const FREIO_SEM_RESPOSTA = 3;
  * @param {string|null} [p.ultimaResposta]  o dia ('AAAA-MM-DD', em São Paulo) da última
  *   mensagem do aluno; hoje ou ontem, a rotina espera
  */
-export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], hoje, modo, inscricao, semResposta = 0, ultimaResposta = null }) {
+export function decidir({ ficha, modelos, condutas = [], historico, sinais = [], treinos = [], hoje, modo, inscricao, semResposta = 0, ultimaResposta = null }) {
   const trilha = ficha.trilha.principal;
   const fasesLidas = fasesDaFicha(ficha);
   const base = {
@@ -803,7 +839,7 @@ export function decidir({ ficha, modelos, historico, sinais = [], treinos = [], 
   const motivo = modo === 'ensaio' && inscricao === null && situacao
     ? `${motivoDoDia} No envio real não sairia: o aluno ainda não ativou o WhatsApp.`
     : motivoDoDia;
-  base.avisos_equipe = avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores: valoresDoDia ?? {}, fases: fases ?? fasesLidas });
+  base.avisos_equipe = avisosDaEquipe({ ficha, treinos, ciclo, hoje, situacao, valores: valoresDoDia ?? {}, fases: fases ?? fasesLidas, condutas });
   if (!situacao) return { ...base, status: 'nada', motivo };
 
   // Freio (§5.4): três mensagens seguidas sem resposta e sem presença — a

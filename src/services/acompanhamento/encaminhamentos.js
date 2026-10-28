@@ -180,16 +180,26 @@ export async function registrarDaRegua({ ficha, avisos, treinos, hoje, equipe, a
     const { data: ja } = await supabase.from('acomp_encaminhamentos').select('id').eq('chave', chave).maybeSingle();
     if (ja) continue;
 
-    const professor = destinoDoAluno({ ficha, treinos, hoje, equipe });
+    // M3 (decisão 13): o aviso de destino 'consultor' vai ao consultor
+    // responsável. Quem ele é vem do EVO (idEmployeeConsultant) na M5; até
+    // lá, vai à coordenação, e o histórico diz por quê.
+    const aoConsultor = aviso.destino === 'consultor';
+    const professor = aoConsultor ? null : destinoDoAluno({ ficha, treinos, hoje, equipe });
     const rota = rotear({
       urgencia: aviso.urgencia, origem: 'regua', professorId: professor?.profile_id ?? null, ativos, horarios, agora: agora(),
     });
+    if (aoConsultor) {
+      rota.notas = rota.notas.map(n => (n === 'aluno sem professor'
+        ? 'para o consultor responsável, que chega do EVO na M5: até lá, a coordenação' : n));
+    }
     const texto = textoDoBriefing({
       aluno: ficha.aluno?.primeiro_nome ?? 'Aluno',
       idade: ficha.aluno?.idade ?? null,
       motivo: aviso.motivo,
       urgencia: aviso.urgencia,
-      resumo: aviso.texto,
+      // A conduta pura (M3) não repete o texto como resumo.
+      resumo: aviso.conduta && aviso.conduta === aviso.texto ? null : aviso.texto,
+      conduta: aviso.conduta ?? null,
       combinado: combinadoDaFicha(ficha),
       acompanhamento: acompanhamentoDaFicha(ficha),
       ponte: !!alunoPhone,

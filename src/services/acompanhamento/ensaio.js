@@ -85,12 +85,12 @@ async function carregarModelos() {
   try {
     const modelos = await buscarModelos();
     await carimbarMarcador(MARCA_MODELOS, modelos);
-    return { modelos: modelos.modelos, fonte: 'prescrev' };
+    return { modelos: modelos.modelos, condutas: modelos.condutas ?? [], fonte: 'prescrev' };
   } catch (err) {
     logger.warn('[acompanhamento] Prescrev não respondeu aos modelos — usando a cópia:', err.message);
     const marca = await lerMarcador(MARCA_MODELOS);
     if (!marca?.valor?.modelos) throw new Error(`Sem modelos: o Prescrev não respondeu e não há cópia (${err.message})`);
-    return { modelos: marca.valor.modelos, fonte: `cópia de ${marca.quando.toISOString()} (${err.message})` };
+    return { modelos: marca.valor.modelos, condutas: marca.valor.condutas ?? [], fonte: `cópia de ${marca.quando.toISOString()} (${err.message})` };
   }
 }
 
@@ -245,7 +245,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
   }
 
   const { fichas, fonte, semFicha } = await carregarFichas();
-  const { modelos, fonte: fonteModelos } = await carregarModelos();
+  const { modelos, condutas, fonte: fonteModelos } = await carregarModelos();
   const historico = await historicoDe(fichas.map(f => f.cliente_id), hoje, modo);
   const inscricoes = await inscricoesDosAlunos(hoje);
   const semResposta = new Map();
@@ -260,7 +260,7 @@ export async function rodarEnsaio({ agora = new Date(), origem = 'worker' } = {}
 
   const decisoes = fichas.map(ficha => {
     const d = decidir({
-      ficha, modelos, hoje, modo,
+      ficha, modelos, condutas, hoje, modo,
       historico: historico.filter(h => h.cliente_id === ficha.cliente_id),
       sinais: avisos.get(Number(ficha.aluno?.evo_id)) ?? [],
       treinos: treinos.get(ficha.cliente_id) ?? [],

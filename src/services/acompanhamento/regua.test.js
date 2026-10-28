@@ -824,3 +824,50 @@ test('camadas da rotina: no início, a semana passa na frente da fase e do degra
   const h = [{ dia: '2026-10-10', situacao: 'rotina', modelo_id: 'x' }];
   assert.equal(decidir({ ficha: comFases(), modelos: porSemana, historico: h, hoje: '2026-10-20', modo: 'ensaio' }).texto, 'Claudia, semanas 5 e 6.');
 });
+
+// ---- M3: as condutas ao professor -------------------------------------
+const CATALOGO = [
+  { codigo: 'semana_1', sinal: 'primeira semana do programa', destino: 'professor', gatilho: 'ficha', carga_do_dia: false,
+    texto: 'Combina com {nome} o treino mínimo.' },
+  { codigo: 'ausencia_professor', sinal: 'ausência', destino: 'professor', gatilho: 'ficha', carga_do_dia: true,
+    texto: '{nome} está há {dias} dias sem vir.' },
+  { codigo: 'ausencia_consultor', sinal: 'ausência longa', destino: 'consultor', gatilho: 'ficha', carga_do_dia: true,
+    texto: '{nome} está há {dias} dias sem vir, e o caso passa a você.' },
+  { codigo: 'barreira_horario', sinal: 'barreira', destino: 'professor', gatilho: 'professor', carga_do_dia: false,
+    texto: 'Oferece outro dia a {nome}.' },
+  { codigo: 'ciclo_em_risco', sinal: 'ciclo em risco', destino: 'professor', gatilho: 'regua', carga_do_dia: false,
+    texto: 'Pergunta a {nome} o que está atrapalhando.' },
+];
+const avisosCom = (fichaMudar, hoje = '2026-10-20', extra = {}) =>
+  avisosDaEquipe({ ficha: comFases({}, fichaMudar), treinos: [], ciclo: null, hoje, situacao: null, condutas: CATALOGO, ...extra });
+
+test('conduta da ficha vira aviso com o texto do catálogo, uma vez por referência', () => {
+  const a = avisosCom({ condutas: [{ codigo: 'semana_1', referencia: '2026-10-14' }] });
+  assert.deepEqual(a.map(x => [x.codigo, x.referencia, x.motivo, x.conduta, x.destino]),
+    [['semana_1', '2026-10-14', 'primeira semana do programa', 'Combina com Claudia o treino mínimo.', 'professor']]);
+  assert.equal(a[0].texto, a[0].conduta);
+});
+
+test('conduta de ausência só com a carga de hoje ou de ontem, e com os dias preenchidos', () => {
+  const c = [{ codigo: 'ausencia_professor', referencia: '2026-10-05' }];
+  const fresca = avisosCom({ condutas: c, comportamento: comportamento({ ate: '2026-10-19', dias_sem_vir: 14 }) });
+  assert.deepEqual(fresca.map(x => x.texto), ['Claudia está há 14 dias sem vir.']);
+  const velha = avisosCom({ condutas: c, comportamento: comportamento({ ate: '2026-10-15', dias_sem_vir: 14 }) });
+  assert.deepEqual(velha, []);
+});
+
+test('conduta ao consultor leva o destino; a do professor sem gatilho de ficha não sai; sem catálogo, nada', () => {
+  const a = avisosCom({ condutas: [{ codigo: 'ausencia_consultor', referencia: '2026-09-15' }, { codigo: 'barreira_horario', referencia: 'x' }],
+    comportamento: comportamento({ dias_sem_vir: 30 }) });
+  assert.deepEqual(a.map(x => [x.codigo, x.destino]), [['ausencia_consultor', 'consultor']]);
+  assert.deepEqual(avisosCom({ condutas: [{ codigo: 'semana_1', referencia: 'r' }] }, '2026-10-20', { condutas: [] }), []);
+});
+
+test('a conduta de gatilho da régua vai junto do aviso que já existia (ciclo em risco)', () => {
+  const f = comFases({}, { trilha: { ...ficha().trilha, principal: 'adesao' } });
+  const a = avisosDaEquipe({ ficha: f, treinos: [], hoje: '2026-10-20', situacao: 'ciclo_em_risco', condutas: CATALOGO,
+    ciclo: { treino: { id: 1 }, presencas: 3, ciclo: { minimo_treinos: 10 } } });
+  const ciclo = a.find(x => x.codigo === 'ciclo_em_risco');
+  assert.equal(ciclo.conduta, 'Pergunta a Claudia o que está atrapalhando.');
+  assert.match(ciclo.texto, /^Metade do ciclo de musculação com 3 de 10 treinos/);
+});
