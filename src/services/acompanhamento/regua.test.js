@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { diasEntre, horaPorExtenso, preencher, valoresDaFicha } from './render.js';
 import {
-  PRIORIDADE, avisosDaEquipe, camadasDe, cicloDe, candidatosDe, cicloDoTreino, decidir, diaPorExtenso, emLista, emRodizio, fasesDaFicha, horaPrevista, resumirTreinos, treinoVigente, leituraDaAgenda, limiteAusencia, modalidadesNaAgenda, situacaoDoDia,
+  PRIORIDADE, avisosDaEquipe, camadasDe, cicloDe, candidatosDe, cicloDoTreino, decidir, diaPorExtenso, emLista, emRodizio, fasesDaFicha, horaPrevista, resumirTreinos, treinoVigente, leituraDaAgenda, limiteAusencia, modalidadesNaAgenda, semanaDosDiasFixos, situacaoDoDia,
 } from './regua.js';
 
 const ficha = (mudar = {}) => ({
@@ -557,7 +557,97 @@ test('fases da ficha: nada sem comportamento; com ele, fase, degrau, cadência, 
   assert.equal(fasesDaFicha(ficha()), null);
   assert.deepEqual(fasesDaFicha(comFases()),
     { fase: 'inicio', degrau: 1, cadencia: 3, teto: { mensagens: 2, dias: 7 }, ausencia: 'presente', ausenciaDesde: '2026-10-17', ate: '2026-10-19',
-      ativacao: null, ativacaoDias: null, lembreteAgendamento: false, periodo: 'manhã', semana: 6 });
+      ativacao: null, ativacaoDias: null, lembreteAgendamento: false, periodo: 'manhã', semana: 6, rotinaDias: null });
+});
+
+// ---- os dias fixos da adesão nas primeiras semanas (M6, FASES_VERSION 4) ----
+
+const modeloDia = (semana, dia, texto) => ({
+  id: `rotina:adesao:s${semana}-${semana}:${dia}:x`, situacao: 'rotina', trilha: 'adesao', degrau: null, fase: null,
+  semanas: [semana, semana], dia, texto, envio: 'sozinha', segura: [],
+});
+const modelosDia = [
+  modeloDia(2, 'incentivo', '{nome}, incentivo da semana 2.'),
+  modeloDia(2, 'reforco', '{nome}, reforço da semana 2.'),
+  modeloDia(2, 'persistencia', '{nome}, persistência da semana 2.'),
+  { id: 'rotina:adesao:consolidacao:x', situacao: 'rotina', trilha: 'adesao', degrau: null, fase: 'consolidacao', semanas: null,
+    dia: null, texto: '{nome}, da fase.', envio: 'sozinha', segura: [] },
+];
+/** Adesão na consolidação do ativo, início na segunda 19/10, com a rotina na segunda e na sexta. */
+const adesaoDiasFixos = (mudar = {}) => comFases({
+  semana: 2, inicio: '2026-10-19',
+  fase: { ...comportamento().fase, valor: 'consolidacao', pelo_tempo: 'consolidacao', teto_mensagens: 3, teto_dias: 7, rotina_dias: [1, 5] },
+  ...mudar,
+}, { trilha: { ...ficha().trilha, principal: 'adesao' } });
+const hDia = [{ dia: '2026-10-16', situacao: 'rotina', modelo_id: 'y', valores: {} }];
+const noDia = (hoje, f, historico = hDia) => decidir({ ficha: f, modelos: modelosDia, historico, hoje, modo: 'ensaio', verificaAtividade: false });
+
+test('a semana dos dias fixos é a do calendário: começando na terça, a sexta é a 1 e a segunda seguinte a 2', () => {
+  const d = [1, 5];
+  assert.deepEqual(['2026-10-16', '2026-10-19', '2026-10-23', '2026-10-26'].map(h => semanaDosDiasFixos('2026-10-13', h, d)), [1, 2, 2, 3]);
+  // começando no sábado, a semana 1 é a seguinte
+  assert.deepEqual(['2026-10-19', '2026-10-23', '2026-10-26'].map(h => semanaDosDiasFixos('2026-10-17', h, d)), [1, 1, 2]);
+  assert.equal(semanaDosDiasFixos(null, '2026-10-19', d), null);
+});
+
+test('dias fixos sem texto para a semana: a rotina volta à cadência', () => {
+  // semana 4 do calendário: não há texto, e sai o da fase
+  const d = noDia('2026-11-09', adesaoDiasFixos({ ate: '2026-11-08' }));
+  assert.deepEqual([d.situacao, d.texto], ['rotina', 'Claudia, da fase.']);
+});
+
+test('dias fixos da adesão: segunda o incentivo, e nos outros dias nada, com a próxima data', () => {
+  const seg = noDia('2026-10-26', adesaoDiasFixos({ ate: '2026-10-25' }));
+  assert.deepEqual([seg.situacao, seg.texto], ['rotina', 'Claudia, incentivo da semana 2.']);
+  assert.match(seg.motivo, /o incentivo da semana 2 dos dias fixos/);
+  const ter = noDia('2026-10-27', adesaoDiasFixos({ ate: '2026-10-26' }));
+  assert.equal(ter.status, 'nada');
+  assert.match(ter.motivo, /segunda e sexta; a próxima em 30\/10/);
+});
+
+test('dias fixos da adesão: na segunda da semana que tem o incentivo de quem não treinou, ele vai a quem não veio na semana anterior', () => {
+  const comAusente = [...modelosDia, modeloDia(2, 'incentivo_ausente', '{nome}, incentivo de quem não treinou.')];
+  const em = (f) => decidir({ ficha: f, modelos: comAusente, historico: hDia, hoje: '2026-10-26', modo: 'ensaio', verificaAtividade: false });
+  const veio = em(adesaoDiasFixos({ ate: '2026-10-25', presencas: { ...comportamento().presencas, ultima: '2026-10-21' } }));
+  assert.equal(veio.texto, 'Claudia, incentivo da semana 2.');
+  const naoVeio = em(adesaoDiasFixos({ ate: '2026-10-25', presencas: { ...comportamento().presencas, ultima: '2026-10-16' } }));
+  assert.equal(naoVeio.texto, 'Claudia, incentivo de quem não treinou.');
+  assert.match(naoVeio.motivo, /sem treino visto desde 19\/10/);
+  // na semana sem esse texto, o incentivo vai a todos
+  assert.equal(noDia('2026-10-26', adesaoDiasFixos({ ate: '2026-10-25', presencas: { ...comportamento().presencas, ultima: '2026-10-16' } })).texto,
+    'Claudia, incentivo da semana 2.');
+});
+
+test('dias fixos da adesão: na sexta, o reforço a quem treinou desde segunda, e a persistência a quem não', () => {
+  const veio = noDia('2026-10-30', adesaoDiasFixos({ ate: '2026-10-29', presencas: { ...comportamento().presencas, ultima: '2026-10-28' } }));
+  assert.deepEqual([veio.situacao, veio.texto], ['rotina', 'Claudia, reforço da semana 2.']);
+  const naoVeio = noDia('2026-10-30', adesaoDiasFixos({ ate: '2026-10-29', presencas: { ...comportamento().presencas, ultima: '2026-10-23' } }));
+  assert.deepEqual([naoVeio.situacao, naoVeio.texto], ['rotina', 'Claudia, persistência da semana 2.']);
+  // "não treinou" decide pela falta: com a catraca velha, espera
+  const velha = noDia('2026-10-30', adesaoDiasFixos({ ate: '2026-10-27', presencas: { ...comportamento().presencas, ultima: '2026-10-23' } }));
+  assert.equal(velha.status, 'nada');
+  assert.match(velha.motivo, /espera a carga/);
+});
+
+test('dias fixos da adesão: a situação da semana não segura, mas a do dia anterior sim, e o teto conta', () => {
+  // lembrete na quarta: a sexta sai (a situação da semana não segura nos dias fixos)
+  const comLembrete = [...hDia, { dia: '2026-10-26', situacao: 'rotina', modelo_id: 'a', valores: {} },
+    { dia: '2026-10-28', situacao: 'lembrete_agendamento', modelo_id: 'b', valores: {} }];
+  const f = adesaoDiasFixos({ ate: '2026-10-29', presencas: { ...comportamento().presencas, ultima: '2026-10-28' } });
+  assert.equal(noDia('2026-10-30', f, comLembrete).situacao, 'rotina');
+  // boas-vindas na quinta: a sexta não sai
+  const ontem = noDia('2026-10-30', f, [...hDia, { dia: '2026-10-29', situacao: 'boas_vindas', modelo_id: 'c', valores: {} }]);
+  assert.equal(ontem.status, 'nada');
+  assert.match(ontem.motivo, /não sai no dia seguinte a outra mensagem/);
+  // três na janela de 7 dias: o teto segura
+  const cheio = [...comLembrete, { dia: '2026-10-27', situacao: 'sem_agendamento', modelo_id: 'd', valores: {} }];
+  assert.match(noDia('2026-10-30', f, cheio).motivo, /teto da fase consolidacao alcançado/);
+});
+
+test('sem os dias fixos na ficha, a rotina da adesão volta à cadência e ao modelo da fase', () => {
+  const f = adesaoDiasFixos({ fase: { ...adesaoDiasFixos().comportamento.fase, rotina_dias: null } });
+  const d = noDia('2026-10-20', f);
+  assert.deepEqual([d.situacao, d.texto], ['rotina', 'Claudia, da fase.']);
 });
 
 test('a cadência é a da fase, e a decisão leva fase e degrau', () => {

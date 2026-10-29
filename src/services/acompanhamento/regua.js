@@ -218,6 +218,9 @@ export function fasesDaFicha(ficha) {
     periodo: c.periodo_habitual ?? null,
     // A semana do programa: no início, é ela que escolhe a rotina (o que esperar dela).
     semana: c.semana ?? null,
+    // M6 (FASES_VERSION 4): na adesão das primeiras semanas, os dias fixos da
+    // rotina — [incentivo, reforço], 0 = domingo. null: a cadência manda.
+    rotinaDias: Array.isArray(c.fase.rotina_dias) && c.fase.rotina_dias.length === 2 ? c.fase.rotina_dias : null,
   };
 }
 
@@ -319,12 +322,18 @@ export function cicloDoTreino(ficha, treinos, agenda, hoje) {
  * — os de `degrau`, `fase` e `semanas` nulos, os da tela Modelos. O genérico
  * não entra atrás dos outros: o assunto de um não é o do outro.
  */
-export function camadasDe(modelos, situacao, trilha, { fase = null, degrau = null, semana = null } = {}) {
+export function camadasDe(modelos, situacao, trilha, { fase = null, degrau = null, semana = null, dia = null } = {}) {
   const da = modelos.filter(m => m.situacao === situacao && m.trilha === trilha);
   if (situacao === 'rotina') {
-    const generico = (m) => m.degrau == null && m.fase == null && m.semanas == null;
+    const generico = (m) => m.degrau == null && m.fase == null && m.semanas == null && m.dia == null;
+    // O dia fixo (M6): o texto daquela semana e daquele papel, e nada mais.
+    if (dia !== null) {
+      const doDiaFixo = da.filter(m => m.dia === dia && m.semanas && semana !== null
+        && semana >= m.semanas[0] && semana <= m.semanas[1]);
+      if (doDiaFixo.length) return [doDiaFixo];
+    }
     if (degrau !== null) {
-      const vale = (m) => !generico(m)
+      const vale = (m) => !generico(m) && m.dia == null
         && (m.degrau == null || m.degrau === degrau)
         && (m.fase == null || m.fase === fase)
         && (m.semanas == null || (semana !== null && semana >= m.semanas[0] && semana <= m.semanas[1]));
@@ -431,18 +440,97 @@ function tetoAlcancado({ fases, anteriores, hoje }) {
   return n >= fases.teto.mensagens ? `teto da fase ${fases.fase} alcançado (${n} em ${fases.teto.dias} dias).` : null;
 }
 
-/** Por que a rotina devida não sai hoje — ou null, se sai. */
-function freioDaRotina({ fases, anteriores, hoje, ultimaResposta }) {
+/**
+ * Por que a rotina devida não sai hoje — ou null, se sai. Nos dias fixos da
+ * adesão (M6), a situação da semana não segura a rotina: os dias já dão o
+ * ritmo, e a situação conta no teto. Ela só não sai no dia seguinte a outra
+ * mensagem.
+ */
+function freioDaRotina({ fases, anteriores, hoje, ultimaResposta, diasFixos = false }) {
   if (fases && (fases.ausencia === 'silencio' || fases.ausencia === 'porta_aberta')) {
     return `ausência em ${fases.ausencia === 'silencio' ? 'silêncio' : 'porta aberta'} (dados de ${ddmm(fases.ate)}), nada ao aluno até a próxima presença.`;
   }
   if (ultimaResposta && diasEntre(ultimaResposta, hoje) < RESPOSTA_RECENTE_DIAS) {
     return `o aluno respondeu em ${ddmm(ultimaResposta)}, e a rotina espera 48 h.`;
   }
+  if (diasFixos) {
+    const ontem = somar(hoje, -1);
+    const recente = [...anteriores].reverse().find(h => h.dia >= ontem);
+    if (recente) return `já saiu ${recente.situacao} em ${ddmm(recente.dia)}, e a rotina não sai no dia seguinte a outra mensagem.`;
+    return tetoAlcancado({ fases, anteriores, hoje });
+  }
   const semana = somar(hoje, -(SITUACAO_SEGURA_DIAS - 1));
   const situacao = anteriores.find(h => h.situacao !== 'rotina' && h.dia >= semana);
   if (situacao) return `já saiu ${situacao.situacao} em ${ddmm(situacao.dia)}, e uma situação na semana segura a rotina.`;
   return tetoAlcancado({ fases, anteriores, hoje });
+}
+
+const NOME_DO_DIA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+
+/**
+ * A semana dos dias fixos: a do CALENDÁRIO, que começa no dia do incentivo,
+ * contada da semana do início do programa. A semana do programa conta 7 dias
+ * a partir do início — numa terça, a sexta seria o reforço da semana 1 e a
+ * segunda seguinte o incentivo da mesma semana 1, depois do reforço. Aqui, a
+ * sexta é a 1 e a segunda já é a 2. Início depois do dia do reforço (sábado,
+ * domingo) conta da semana seguinte. null sem o início na ficha.
+ */
+export function semanaDosDiasFixos(inicio, hoje, [incentivo, reforco]) {
+  if (!inicio) return null;
+  const doIncentivo = (d) => (diaDaSemana(d) - incentivo + 7) % 7;
+  let base = somar(inicio, -doIncentivo(inicio));
+  if (doIncentivo(inicio) > (reforco - incentivo + 7) % 7) base = somar(base, 7);
+  const n = Math.floor(diasEntre(base, hoje) / 7) + 1;
+  return n >= 1 ? n : null;
+}
+
+/**
+ * A rotina em dias fixos (M6, 29/10/2026, decisão do responsável): na adesão
+ * das primeiras semanas, a ficha diz os dias (`fase.rotina_dias`: [incentivo,
+ * reforço]) e a cadência não manda. No dia do incentivo, o incentivo; no do
+ * reforço, quem treinou desde o dia do incentivo recebe o reforço, e quem não,
+ * a persistência. "Não treinou" decide pela falta: pede a catraca de ontem,
+ * e com a carga velha espera. Os textos são por semana (`semanaDosDiasFixos`);
+ * sem texto para a semana, null — a rotina volta à cadência.
+ */
+function rotinaEmDiasFixos({ ficha, fases, anteriores, hoje, ultimaResposta, modelos }) {
+  const [incentivo, reforco] = fases.rotinaDias;
+  const semanaFixa = semanaDosDiasFixos(ficha.comportamento?.inicio ?? null, hoje, fases.rotinaDias);
+  modelos = modelos ?? [];
+  const temTexto = semanaFixa !== null && modelos.some(m => m.situacao === 'rotina' && m.trilha === ficha.trilha.principal
+    && m.dia && m.semanas && semanaFixa >= m.semanas[0] && semanaFixa <= m.semanas[1]);
+  if (!temTexto) return null;
+  const dia = diaDaSemana(hoje);
+  const quando = `${NOME_DO_DIA[incentivo]} e ${NOME_DO_DIA[reforco]}`;
+  if (dia !== incentivo && dia !== reforco) {
+    const faltam = Math.min((incentivo - dia + 7) % 7, (reforco - dia + 7) % 7);
+    return { situacao: null, motivo: `Primeiras semanas da adesão: a rotina sai na ${quando}; a próxima em ${ddmm(somar(hoje, faltam))}.` };
+  }
+  const freio = freioDaRotina({ fases, anteriores, hoje, ultimaResposta, diasFixos: true });
+  if (freio) return { situacao: null, motivo: `Dia fixo da adesão (${NOME_DO_DIA[dia]}) e a rotina não sai: ${freio}` };
+  const semana = `semana ${semanaFixa} dos dias fixos`;
+  const fixo = { situacao: 'rotina', valores: {}, semanaDoDia: semanaFixa };
+  const ultima = ficha.comportamento?.presencas?.ultima ?? null;
+  if (dia === incentivo) {
+    // Quem não treinou na semana anterior recebe o incentivo que não fala do
+    // que a prática traz, onde a semana o tem (revisão de 29/10/2026). Sem
+    // treino visto, com a catraca em dia ou não, vale ele: serve a qualquer um.
+    const temAusente = modelos.some(m => m.situacao === 'rotina' && m.trilha === ficha.trilha.principal
+      && m.dia === 'incentivo_ausente' && m.semanas && semanaFixa >= m.semanas[0] && semanaFixa <= m.semanas[1]);
+    const semanaPassada = somar(hoje, -7);
+    if (temAusente && !(ultima && ultima >= semanaPassada)) {
+      return { ...fixo, dia: 'incentivo_ausente', motivo: `Dia fixo da adesão (${NOME_DO_DIA[dia]}), sem treino visto desde ${ddmm(semanaPassada)}: o incentivo de quem não treinou, da ${semana}.` };
+    }
+    return { ...fixo, dia: 'incentivo', motivo: `Dia fixo da adesão (${NOME_DO_DIA[dia]}): o incentivo da ${semana}.` };
+  }
+  const desde = somar(hoje, -((dia - incentivo + 7) % 7));
+  if (ultima && ultima >= desde) {
+    return { ...fixo, dia: 'reforco', motivo: `Dia fixo da adesão (${NOME_DO_DIA[dia]}), com treino em ${ddmm(ultima)}: o reforço da ${semana}.` };
+  }
+  if (!doDia(fases.ate, hoje)) {
+    return { situacao: null, motivo: `Dia fixo da adesão (${NOME_DO_DIA[dia]}), sem treino visto desde ${ddmm(desde)} e com os dados de ${ddmm(fases.ate)}: espera a carga, e não sai.` };
+  }
+  return { ...fixo, dia: 'persistencia', motivo: `Dia fixo da adesão (${NOME_DO_DIA[dia]}), sem treino desde ${ddmm(desde)} (dados até ${ddmm(fases.ate)}): a persistência da ${semana}.` };
 }
 
 /**
@@ -826,6 +914,9 @@ export function situacaoDoDia({
   const desde = diasEntre(ultimo.dia, hoje);
   const nota = notas.map(n => ` ${n}`).join('') + (!agenda ? ' Agenda do EVO ainda não carregada.' : '')
     + (ciclo?.nota ? ` ${ciclo.nota}` : '');
+  // Os dias fixos da adesão nas primeiras semanas (M6): a cadência não manda.
+  const fixa = fases?.rotinaDias ? rotinaEmDiasFixos({ ficha, fases, anteriores, hoje, ultimaResposta, modelos }) : null;
+  if (fixa) return { ...fixa, motivo: `${fixa.motivo}${nota}`, ciclo, fases };
   // A cadência é a da fase (v4); sem comportamento na ficha, a da trilha.
   const cadencia = fases ? fases.cadencia : ficha.trilha.cadencia_dias;
   const daFase = fases ? ` (fase ${fases.fase}, degrau N${fases.degrau ?? '?'})` : '';
@@ -916,7 +1007,7 @@ export function decidir({
   // Só o que veio antes de hoje: rodar o ensaio duas vezes no mesmo dia
   // não pode fazer o relógio andar duas vezes.
   const anteriores = historico.filter(h => h.dia < hoje).sort((a, b) => a.dia.localeCompare(b.dia));
-  const { situacao, motivo: motivoDoDia, valores: valoresDoDia, ciclo, fases, periodo_envio: periodoEnvio = null } = situacaoDoDia({
+  const { situacao, motivo: motivoDoDia, valores: valoresDoDia, ciclo, fases, periodo_envio: periodoEnvio = null, dia: diaFixo = null, semanaDoDia = null } = situacaoDoDia({
     ficha, anteriores, sinais, treinos, hoje, modo, modelos, ativadoEm: inscricao?.ativadoEm ?? null, ultimaResposta,
     verificaAtividade,
   });
@@ -952,7 +1043,9 @@ export function decidir({
   const ultimoId = [...anteriores].reverse().find(h => h.situacao === situacao)?.modelo_id ?? null;
   // O rodízio é dentro de cada camada: a do degrau não começa pelo genérico.
   const candidatos = camadasDe(modelos, situacao, trilha,
-    { fase: fases?.fase ?? null, degrau: fases?.degrau ?? null, semana: fases?.semana ?? null })
+    situacao === 'rotina' && diaFixo
+      ? { fase: fases?.fase ?? null, degrau: fases?.degrau ?? null, semana: semanaDoDia, dia: diaFixo }
+      : { fase: fases?.fase ?? null, degrau: fases?.degrau ?? null, semana: fases?.semana ?? null })
     .flatMap(c => emRodizio(c, ultimoId));
 
   const faltam = new Set();

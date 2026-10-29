@@ -19,7 +19,7 @@ import { config } from '../../config.js';
 /** As versões que este código sabe ler (FICHA_VERSION e MODELOS_VERSION do Prescrev). */
 export const FICHA_VERSAO_LIDA = 4;
 /** 2 (M2 do PLANO_MODELOS): a rotina por degrau traz `degrau` e `fase`, e há situações novas. */
-export const MODELOS_VERSAO_LIDA = 2;
+export const MODELOS_VERSAO_LIDA = 3;
 
 async function buscar(caminho) {
   const { url, segredo } = config.acompanhamento.prescrev;
