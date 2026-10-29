@@ -24,6 +24,12 @@
  * Só olha leads que já têm `evo_id_prospect` e ainda estão abertos: o
  * funil é do que a Leia e o painel tocam, não uma cópia da base de 46 mil
  * prospects da academia.
+ *
+ * 3. **Procura a reserva da aula vendida sem horário** (29/10/2026). A
+ *    consultora às vezes vende a aula experimental no EVO antes de reservar
+ *    a sessão; a venda chega, a sessão ainda não existe, e o lead ficava
+ *    sem a aula para sempre. Uma consulta por aula guardada, até 10 por
+ *    ciclo. Ver `procurarAulasVendidas`.
  */
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
@@ -49,6 +55,10 @@ async function ciclo() {
     }
 
     await evoSync.sincronizarProspects({ dias: 30 });
+
+    // A aula vendida no balcão antes de ter horário reservado: procura a
+    // reserva de novo, e avisa a consultora quando ela não aparece.
+    await evoSync.procurarAulasVendidas();
   } catch (err) {
     logger.error('[evo-sync-worker] Ciclo falhou:', err.message);
   } finally {

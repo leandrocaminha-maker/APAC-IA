@@ -6,6 +6,55 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## A aula marcada no balcão chega ao lead; a régua de silêncio respeita a aula (29/10/2026)
+
+Pedido do responsável depois da análise de seis conversas (Hellen, Cristiane,
+Duda, Amanda, Luara, Márcia): todas tinham aula experimental marcada pela
+consultora direto no EVO e nenhuma tinha a aula no lead. Daí a mensagem de
+encerramento da Amanda três dias antes da aula da Emily, o "parado há 20 dias"
+com conversa recente, e nenhum lembrete nem conversa pós-aula. Na mesma
+análise, 149 follow-ups tinham saído fora do horário desde 15/09, quase todos
+entre 0h e 0h20 de terça.
+
+- **A (evo-sync):** a venda de R$ 0 da aula de um cadastro que nenhum lead
+  conhece (ou que só um lead encerrado conhece) acha o atendimento de venda
+  aberto pelo celular do cadastro e liga o cadastro a ele. Se o lead já tem
+  OUTRO cadastro do mesmo celular, não troca (decisão do responsável) e
+  registra a aula assim mesmo. Sem reserva na hora da venda, a aula fica em
+  `crm_leads.metadata.aula_vendida`, e o worker do EVO procura de novo a cada
+  ciclo (`procurarAulasVendidas`): achou, registra e arma a régua; 3h sem
+  reserva, avisa a consultora pela próxima ação do lead; 7 dias, desiste.
+  Regras puras em `aula-regras.js`.
+- **B (régua de silêncio):** não cutuca quem tem aula futura na ficha ou aula
+  vendida guardada, e pergunta ao EVO (`conferirAulaNoEvo`) antes de mandar:
+  aula por vir pula o lead; aula feita desde o silêncio é registrada e vira
+  "como foi a aula?". A rodada passa a contar desde a última resposta da
+  pessoa — a de encerramento só sai para quem não respondeu à primeira —, com
+  teto de 4 mensagens por lead. O worker cancela a cutucada se a aula chegou
+  depois do agendamento, e `encerrarSemResposta` não dá como perdido quem tem
+  aula depois do encerramento.
+- **C (horário):** o worker só envia dentro da janela de contato, conferida
+  a cada envio. A sobra do teto espera a abertura do dia.
+
+Não resolve a Cristiane: ela tem dois cadastros de oportunidade (dois
+celulares) e um de ex-aluna; as aulas do cadastro do outro celular vão para o
+lead antigo dela (431). Precisa unificar no EVO.
+
+A coluna "Parado há" do painel passou a se chamar **"Na etapa há"**: ela
+sempre contou o tempo desde a última mudança de etapa (`stage_since`), não o
+tempo sem conversa — e era lida como a segunda coisa. O cartão "Parados" usa
+a mesma medida e não mudou.
+
+`scripts/reconciliar-aulas.js` registra, de uma vez, as aulas FUTURAS que os
+leads abertos não conhecem (simula por padrão; `--valendo` grava e arma
+lembrete e pós-aula). A simulação de 29/10 às 15h achou 4: Amanda (31/10),
+Maria Julia (31/10), Karina (05/11) e Marina (29/10, 15h). **A rodada
+`--valendo` ainda não foi feita** — o responsável autorizou, mas a execução
+pela sessão foi barrada pelo classificador de permissões; rodar à mão na
+máquina com o `.env` (`node scripts/reconciliar-aulas.js --valendo`).
+Testes: `aula-regras.test.js` e `followup.test.js` (246 no total). Commit e
+deploy autorizados pelo responsável em 29/10/2026.
+
 ## O acompanhamento saiu do ensaio (29/10/2026)
 
 O responsável declarou o início do uso real. No `.env` da VPS:

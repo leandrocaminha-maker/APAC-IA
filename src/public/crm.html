@@ -473,7 +473,7 @@
             <tr>
               <th class="ordenavel" data-col="full_name">Lead</th>
               <th class="ordenavel" data-col="stage">Etapa</th>
-              <th class="ordenavel" data-col="stage_since">Parado há</th>
+              <th class="ordenavel" data-col="stage_since" title="Tempo desde a última mudança de etapa — não é o tempo sem conversa">Na etapa há</th>
               <th>Consultor</th>
               <th>Interesse</th>
               <th>EVO</th>
@@ -749,7 +749,7 @@ function soData(v) {
   return new Date(v).toLocaleDateString('pt-BR');
 }
 
-/** "há 3h", "há 2d" — o dado que faz a coluna "parado há" ser útil. */
+/** "há 3h", "há 2d" — o dado que faz a coluna "na etapa há" ser útil. */
 function desde(v) {
   if (!v) return { texto: '', classe: '' };
   const ms = Date.now() - new Date(v).getTime();

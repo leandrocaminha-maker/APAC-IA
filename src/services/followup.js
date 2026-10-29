@@ -115,6 +115,19 @@ export function dentroDaJanela(data) {
 }
 
 /**
+ * `data` cai dentro da janela de contato ativo?
+ *
+ * É a pergunta da hora do ENVIO, não do agendamento. Agendar dentro da
+ * janela não bastava: o que sobrava do dia — o teto do número estoura toda
+ * segunda — ficava vencido, o teto zerava à meia-noite, e o worker mandava
+ * tudo entre 0h e 0h20. Foram 149 mensagens fora do horário entre 15/09 e
+ * 28/10/2026 (a Duda recebeu o encerramento às 0h07).
+ */
+export function estaNaJanela(data = new Date()) {
+  return dentroDaJanela(data).getTime() === data.getTime();
+}
+
+/**
  * Antecedência mínima que faz um lembrete valer a pena.
  *
  * Seis horas é o que reproduz a regra da academia — "aula de segunda a
@@ -441,6 +454,10 @@ async function estadoDoSilencio(contactId) {
     desde: new Date(ultimaNossa.created_at),
     porQuem: ultimaNossa.sent_by,
     dias: Math.floor((Date.now() - new Date(ultimaNossa.created_at).getTime()) / DIA_MS),
+    // A última resposta dela, para a rodada recomeçar depois dela (ver
+    // `rodadaDeSilencio`). Fora das 20 últimas mensagens conta como nunca:
+    // é quem não responde há muito tempo.
+    respondeuEm: ultimaDela ? new Date(ultimaDela.created_at) : null,
   };
 }
 
@@ -503,9 +520,31 @@ export async function situacaoComercial(lead) {
 }
 
 /**
+ * Teto de mensagens de silêncio por lead, somando todas as rodadas.
+ *
+ * A rodada recomeça quando a pessoa responde (ver `rodadaDeSilencio`), e
+ * sem teto isso viraria uma cutucada a cada sumiço, para sempre. Quatro são
+ * duas rodadas inteiras — e a terceira e a quarta só saem para quem
+ * respondeu no meio.
+ */
+export const TETO_SILENCIO = 4;
+
+/**
+ * A régua de silêncio já não tem nada a fazer por este lead, seja qual for
+ * a conversa? É a parte da decisão que não precisa ler mensagem nenhuma —
+ * a varredura a usa para não gastar a consulta de mensagens à toa.
+ */
+export function silencioEncerrado(followupsDoLead) {
+  if (followupsDoLead.some(f => f.status === 'pendente')) return true;
+  const enviados = followupsDoLead.filter(f => f.status === 'enviado');
+  if (enviados.some(f => TIPOS_SONDAGEM.includes(f.tipo))) return true;
+  return enviados.filter(f => TIPOS_SILENCIO.includes(f.tipo)).length >= TETO_SILENCIO;
+}
+
+/**
  * Decide qual rodada de silêncio cabe a um lead, olhando o que já correu.
  *
- * Devolve `null` — isto é, "não mexa" — em três situações:
+ * Devolve `null` — isto é, "não mexa" — em quatro situações:
  *
  *  - **Já existe follow-up pendente**, de qualquer tipo. O lembrete da aula
  *    de amanhã já é a próxima mensagem; somar uma cutucada faria a pessoa
@@ -514,18 +553,32 @@ export async function situacaoComercial(lead) {
  *    passou pela experiência. Abrir `silencio_*` em cima seria dar quatro
  *    rodadas a quem a régua deu duas — e a segunda dupla chegaria sem nada
  *    novo a dizer.
- *  - **As duas rodadas de silêncio já se esgotaram.** Acabou. O teto é o
- *    mesmo das sondagens, pela mesma razão: sem teto isto vira perseguição.
+ *  - **As duas mensagens da rodada atual já saíram.** Acabou; quem fecha o
+ *    lead é `encerrarSemResposta`.
+ *  - **O teto do lead (`TETO_SILENCIO`) foi atingido.**
+ *
+ * ## A rodada é contada desde a última resposta da pessoa
+ *
+ * Até 29/10/2026 contava a vida inteira do lead: quem tinha recebido a
+ * primeira cutucada recebia a segunda — a de encerramento, "tudo bem se
+ * não for o momento" — no sumiço seguinte, mesmo tendo respondido à
+ * primeira. A Amanda respondeu "Está ok" à primeira, confirmou a aula da
+ * Emily, e dois dias depois recebeu o encerramento. A segunda mensagem só
+ * faz sentido para quem não respondeu à primeira, e o roteiro dela diz
+ * exatamente isso ao agente.
+ *
+ * @param {Array<{tipo, status, sent_at?, created_at?}>} followupsDoLead
+ * @param {object} [opcoes]
+ * @param {string|Date|null} [opcoes.respondeuEm] a última mensagem da pessoa
  */
-function rodadaDeSilencio(followupsDoLead) {
-  const pendente = followupsDoLead.some(f => f.status === 'pendente');
-  if (pendente) return null;
+export function rodadaDeSilencio(followupsDoLead, { respondeuEm = null } = {}) {
+  if (silencioEncerrado(followupsDoLead)) return null;
 
-  const enviados = new Set(
-    followupsDoLead.filter(f => f.status === 'enviado').map(f => f.tipo)
-  );
+  const corte = respondeuEm ? new Date(respondeuEm).getTime() : -Infinity;
+  const quando = f => new Date(f.sent_at || f.created_at || 0).getTime();
+  const daRodada = followupsDoLead.filter(f => TIPOS_SILENCIO.includes(f.tipo) && quando(f) > corte);
 
-  if (TIPOS_SONDAGEM.some(t => enviados.has(t))) return null;
+  const enviados = new Set(daRodada.filter(f => f.status === 'enviado').map(f => f.tipo));
 
   // Uma rodada também se esgota por falha repetida.
   //
@@ -535,14 +588,15 @@ function rodadaDeSilencio(followupsDoLead) {
   // envio falha de forma permanente. Duas tentativas absorvem o erro
   // passageiro (o agente não gerar texto) sem virar laço.
   const falhas = {};
-  for (const f of followupsDoLead) {
+  for (const f of daRodada) {
     if (f.status === 'falhou') falhas[f.tipo] = (falhas[f.tipo] || 0) + 1;
   }
   const esgotada = t => enviados.has(t) || (falhas[t] || 0) >= 2;
 
-  if (!esgotada('silencio_1')) return 'silencio_1';
-  if (!esgotada('silencio_2')) return 'silencio_2';
-  return null;
+  // O encerramento fecha a rodada mesmo sem a primeira nela — é o caso de
+  // quem recebeu as duas pela regra antiga, respondendo no meio.
+  if (esgotada('silencio_2')) return null;
+  return esgotada('silencio_1') ? 'silencio_2' : 'silencio_1';
 }
 
 /**
@@ -595,7 +649,7 @@ export async function varrerSilenciosos(opcoes = {}) {
   // fora da janela, e o `break` do lote não pode deixá-los para trás.
   const { data: leads, error } = await supabase
     .from('crm_leads')
-    .select('id, full_name, phone, stage, contact_id, last_activity_at, evo_id_member, metadata')
+    .select('id, full_name, phone, stage, contact_id, last_activity_at, evo_id_member, evo_id_prospect, experimental_at, metadata')
     // A régua é de VENDA, e agora existe onde perguntar isso.
     //
     // Antes a única defesa era `situacaoComercial`, no fim do laço, e ela
@@ -632,7 +686,7 @@ export async function varrerSilenciosos(opcoes = {}) {
   // mesma rodada indefinidamente.
   const { data: feitos } = await supabase
     .from('crm_followups')
-    .select('lead_id, tipo, status')
+    .select('lead_id, tipo, status, sent_at, created_at')
     .in('lead_id', leads.map(l => l.id))
     .in('status', ['pendente', 'enviado', 'falhou']);
 
@@ -669,14 +723,30 @@ export async function varrerSilenciosos(opcoes = {}) {
       continue;
     }
 
-    const tipo = rodadaDeSilencio(porLead.get(lead.id) || []);
-    if (!tipo) continue;
+    const feitosDoLead = porLead.get(lead.id) || [];
+    if (silencioEncerrado(feitosDoLead)) continue;
+
+    // Quem tem aula marcada não está sumido: a próxima conversa é a da
+    // aula. Até 29/10/2026 a régua não olhava isso, e a Amanda recebeu o
+    // "tudo bem se não for o momento" três dias antes da aula da Emily.
+    // Os dois sinais daqui são de graça; o EVO é perguntado mais abaixo.
+    if (Date.parse(lead.experimental_at || '') > agora) {
+      ignorados.com_aula = (ignorados.com_aula || 0) + 1;
+      continue;
+    }
+    if (lead.metadata?.aula_vendida) {
+      ignorados.com_aula = (ignorados.com_aula || 0) + 1;
+      continue;
+    }
 
     examinados++;
 
     const silencio = await estadoDoSilencio(lead.contact_id);
     if (!silencio) continue;
     if (silencio.desde.getTime() > agora - dias * DIA_MS) continue;
+
+    const tipo = rodadaDeSilencio(feitosDoLead, { respondeuEm: silencio.respondeuEm });
+    if (!tipo) continue;
 
     // A pergunta cara fica por último de propósito: é a única que sai para
     // a rede, e só vale a pena para quem já passou por todo o resto.
@@ -746,6 +816,40 @@ export async function varrerSilenciosos(opcoes = {}) {
       continue;
     }
 
+    // A aula que o lead não conhece — marcada pela consultora direto no
+    // EVO, num cadastro que o atendimento não tinha, ou vendida antes de
+    // ter horário. Conta a aula desde que a conversa parou: a que vem pela
+    // frente é motivo para não cutucar, e a que aconteceu nesse meio-tempo
+    // pede "como foi a aula?", não "tudo bem se não for o momento". As
+    // duas, ao serem registradas, armam a régua da aula — e o pendente que
+    // ela cria já é o que a próxima varredura vai respeitar.
+    //
+    // Fica depois de todo o resto porque é a parte que mais sai para a
+    // rede: até quatro consultas ao EVO, só para quem já ia receber
+    // mensagem. EVO fora do ar pula o lead nesta passada, como em
+    // `situacaoComercial`: sem saber se há aula, não se manda o
+    // encerramento.
+    const { evoSync } = await import('./evo-sync.js');
+    const aula = await evoSync.conferirAulaNoEvo(lead, {
+      desde: silencio.desde, registrar: !simular, actor: 'sistema',
+    }).catch(err => {
+      logger.warn(`[followup] Lead ${lead.id}: aula no EVO não conferida (${err.message})`);
+      return { indefinido: true };
+    });
+
+    if (aula?.indefinido) {
+      ignorados.indefinido = (ignorados.indefinido || 0) + 1;
+      continue;
+    }
+    if (aula && (aula.futura || aula.nova)) {
+      logger.info(
+        `[followup] Lead ${lead.id} fora da varredura: aula ${aula.futura ? 'marcada' : 'feita'} ` +
+        `no EVO para ${aula.dataHora}${aula.nova ? ' — registrada agora' : ''}`
+      );
+      ignorados.com_aula = (ignorados.com_aula || 0) + 1;
+      continue;
+    }
+
     selecionados.push({
       lead_id: lead.id,
       nome: lead.full_name,
@@ -788,6 +892,7 @@ export async function varrerSilenciosos(opcoes = {}) {
   const descartes = [
     ignorados.aluno ? `${ignorados.aluno} aluno(s) ativo(s)` : null,
     ignorados.indefinido ? `${ignorados.indefinido} sem resposta do EVO` : null,
+    ignorados.com_aula ? `${ignorados.com_aula} com aula experimental` : null,
   ].filter(Boolean).join(', ');
 
   const resumo =
@@ -985,7 +1090,7 @@ export async function retomarHandoffsMudos(opcoes = {}) {
     //
     // Encostar a coluna é honesto: ela responde "quando este lead se
     // mexeu pela última vez", e reabrir o atendimento É movimento. O que
-    // o painel mostra como "parado há" é `stage_since`, e esse não se
+    // o painel mostra como "na etapa há" é `stage_since`, e esse não se
     // toca — a idade do travamento continua visível.
     await tocarAtividade(alvo.lead_id);
 
@@ -1019,7 +1124,7 @@ export async function vencidos(limite = 20) {
       id, tipo, scheduled_for, contexto, tentativas,
       lead:crm_leads (
         id, full_name, phone, stage, trilha, contact_id, interest,
-        evo_id_prospect, evo_id_member, experimental_at, experimental_activity
+        evo_id_prospect, evo_id_member, experimental_at, experimental_activity, metadata
       )
     `)
     .eq('status', 'pendente')
@@ -1083,8 +1188,8 @@ export async function registrarNoFunil(leadId, tipo, resumo, payload = {}) {
 }
 
 export const followup = {
-  JANELA, JANELAS, janelaDoDia, dentroDaJanela, horarioDoLembrete, horarioDoPosAula,
-  TIPOS_SILENCIO, TIPOS_REGUA,
+  JANELA, JANELAS, janelaDoDia, dentroDaJanela, estaNaJanela, horarioDoLembrete, horarioDoPosAula,
+  TIPOS_SILENCIO, TIPOS_REGUA, TETO_SILENCIO, rodadaDeSilencio,
   agendar, cancelar, aoAgendarExperimental, proximaSondagem, varrerSilenciosos,
   retomarHandoffsMudos,
   vencidos, registrarEnvio, registrarTentativa, registrarNoFunil, situacaoComercial,

@@ -24,6 +24,10 @@ import {
 import { planoDaVenda, telefonesDoMembro } from './vendas-regras.js';
 import { registrarVendaDoEvo, vincularVendaAoLead } from './vendas.js';
 import { normalizePhone } from './evolution.js';
+import {
+  escolherSessao, vinculoDoProspect, proximoPassoDaAulaVendida, instanteDaVenda, diaSP,
+  NOTA_SEM_RESERVA,
+} from './aula-regras.js';
 
 /** Autor de uma ação, no formato que crm_lead_events espera. */
 function autor(usuario) {
@@ -628,20 +632,47 @@ function jaSabeDeAulaFutura(lead) {
  * conversa pós-aula. Pelo caminho da Leia isso funciona porque a tool move
  * o lead ela mesma, não porque o webhook faça algo.
  *
+ * ## O que ainda faltava (29/10/2026)
+ *
+ * Mover o lead só funcionava quando o atendimento já conhecia o cadastro e
+ * a reserva já existia no instante da venda. Nas seis conversas analisadas
+ * nesse dia, nenhuma aula do balcão tinha chegado ao lead: em três o
+ * cadastro tinha sido criado ou reaproveitado pela consultora, e em duas a
+ * venda veio antes da reserva. Agora o cadastro desconhecido é procurado pelo celular, e a
+ * aula sem reserva fica guardada para procurar de novo
+ * (`procurarAulasVendidas`).
+ *
  * ## A ordem aqui é de custo
  *
  * Casar o lead é de graça (Supabase). Só depois de existir lead E de ele
  * ainda não saber da aula é que sai a consulta ao EVO — a venda não diz
  * QUANDO é a aula, só que ela foi vendida, e sem hora não há lembrete.
- * Assim o evento do prospect que nunca passou pelo WhatsApp, e o da aula
- * que a própria Leia acabou de marcar, não custam requisição nenhuma.
+ * A aula que a própria Leia acabou de marcar não custa requisição nenhuma.
+ * O cadastro que nenhum atendimento conhece custa uma (o cadastro, para
+ * saber o celular) — eram 41 vendas assim em outubro de 2026, a maioria de
+ * gente que nunca escreveu no WhatsApp.
  */
 async function aoVerExperimentalNaVenda(detalhe, evento) {
   const idMember = detalhe?.idMember ?? detalhe?.IdMember ?? null;
   const idProspect = detalhe?.idProspect ?? detalhe?.IdProspect ?? null;
 
   let lead = idMember ? await leadPorMembro(idMember) : null;
-  if (!lead && idProspect) lead = await leadPorProspect(idProspect);
+  if (!lead && idProspect) {
+    lead = await leadPorProspect(idProspect);
+
+    // Nenhum atendimento conhece este cadastro, ou só um encerrado conhece:
+    // procurar pelo celular dele. Até 29/10/2026 este era o fim da linha, e
+    // a aula marcada no cadastro que a consultora criou no balcão não
+    // chegava a lugar nenhum — ver `leadAbertoDoCelularDoProspect`.
+    if (!lead || ETAPAS_ENCERRADAS.has(lead.stage)) {
+      const achado = await leadAbertoDoCelularDoProspect(idProspect);
+      if (achado) {
+        lead = await ligarCadastroAoLead(achado.lead, achado.prospect, {
+          actor: 'evo-webhook', idSale: evento.id_record,
+        });
+      }
+    }
+  }
 
   // Prospect que só existe no EVO: nada a fazer, e o funil não inventa
   // lead para quem nunca escreveu.
@@ -655,32 +686,182 @@ async function aoVerExperimentalNaVenda(detalhe, evento) {
     return lead;
   }
 
-  const hoje = new Date().toISOString().slice(0, 10);
-  const ate = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const vendidaEm = instanteDaVenda(detalhe, evento);
+  let escolhida = null;
+  try {
+    escolhida = await sessaoNoEvo({ idProspect, idMember }, { desde: vendidaEm });
+  } catch (err) {
+    logger.warn(`[evo-sync] Não deu para ler as sessões do lead ${lead.id}: ${err.message}`);
+  }
 
-  const sessoes = await evoClient
-    .sessoesDaPessoa({ idProspect, idMember, de: hoje, ate })
-    .catch(err => {
-      logger.warn(`[evo-sync] Não deu para ler as sessões do lead ${lead.id}: ${err.message}`);
-      return [];
-    });
-
-  // A mais próxima: o EVO devolve a agenda da pessoa na janela, e a venda
-  // que acabou de chegar é a da aula que ainda vai acontecer.
-  const sessao = sessoes
-    .filter(s => s?.date)
-    .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
-
-  if (!sessao) {
-    logger.warn(
-      `[evo-sync] Venda ${evento.id_record} é de aula experimental do lead ${lead.id}, ` +
-      'mas o EVO não devolveu a sessão — lead não movido, porque sem a hora não há lembrete'
-    );
+  // Sem a sessão, a aula fica guardada para procurar de novo. A consultora
+  // às vezes vende a aula antes de reservar o horário — e até 29/10/2026 o
+  // sistema olhava uma vez só, aqui, e nunca mais.
+  if (!escolhida) {
+    await guardarAulaVendida(lead, { idSale: evento.id_record, idProspect, idMember, vendidaEm });
     return lead;
   }
 
-  const dataHora = `${String(sessao.date).slice(0, 10)} ${String(sessao.startTime || '00:00').slice(0, 5)}`;
-  const atividade = sessao.activitieName || sessao.activityName || null;
+  const { lead: atualizado } = await registrarAulaDoBalcao(lead, escolhida, {
+    actor: 'evo-webhook', payload: { idSale: evento.id_record },
+  });
+  return atualizado || lead;
+}
+
+// ──────────────────────────────────────────────
+// Aula do balcão: achar o atendimento, achar a sessão, registrar
+// ──────────────────────────────────────────────
+
+/** A linha inteira do lead, para quem vai gravar nela (metadata, próxima ação). */
+async function lerLead(id) {
+  const { data } = await supabase.from('crm_leads').select('*').eq('id', id).maybeSingle();
+  return data || null;
+}
+
+/** Nome do cadastro do EVO, para o razão do lead. */
+const nomeDoCadastro = (p) => [p?.firstName, p?.lastName].filter(Boolean).join(' ').trim() || null;
+
+/**
+ * O atendimento de venda aberto do celular de um cadastro do EVO.
+ *
+ * Serve a dois casos que a venda da aula não resolvia sozinha:
+ *
+ *  - **o cadastro que nenhum atendimento conhece.** A consultora assume a
+ *    conversa antes de a Leia cadastrar, e cria ou reaproveita o cadastro
+ *    no balcão. Foi assim com a Amanda (cadastro da Emily, criado pela
+ *    Catia), a Márcia (da Lara) e a Hellen (um cadastro de 2018 do mesmo
+ *    celular, renomeado para Luiza);
+ *  - **o cadastro que só um atendimento encerrado conhece.** Quem foi dado
+ *    como perdido em setembro e voltou a escrever em outubro tem lead novo,
+ *    e o cadastro continua preso ao antigo.
+ *
+ * Só atendimento de VENDA aberto. O celular é da família: a aula do filho
+ * não deve puxar de volta para a venda a conversa de relacionamento da mãe
+ * que já é aluna.
+ *
+ * Custa uma consulta ao EVO — o cadastro, para saber o celular.
+ */
+async function leadAbertoDoCelularDoProspect(idProspect) {
+  let prospect = null;
+  try {
+    prospect = await evoClient.buscarProspectPorId(idProspect);
+  } catch (err) {
+    logger.warn(`[evo-sync] Não deu para ler o cadastro ${idProspect} no EVO: ${err.message}`);
+    return null;
+  }
+
+  const telefone = prospect?.cellphone ? normalizePhone(prospect.cellphone) : null;
+  if (!telefone || !/^55\d{10,11}$/.test(telefone)) return null;
+
+  const abertos = (await leadsDaPessoa({ telefones: [telefone] }))
+    .filter(l => l.phone === telefone)
+    .filter(l => !ETAPAS_ENCERRADAS.has(l.stage) && (l.trilha || 'lead') === 'lead')
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  if (!abertos.length) return null;
+
+  const lead = await lerLead(abertos[0].id);
+  return lead ? { lead, prospect } : null;
+}
+
+/**
+ * Liga ao atendimento o cadastro do EVO em que a aula foi marcada — ou
+ * registra por que não ligou. A regra está em `vinculoDoProspect`.
+ */
+async function ligarCadastroAoLead(lead, prospect, { actor, idSale = null }) {
+  const idProspect = Number(prospect?.idProspect);
+  const nome = nomeDoCadastro(prospect);
+  const rotulo = `${idProspect}${nome ? ` (${nome})` : ''}`;
+  const decisao = vinculoDoProspect(lead, idProspect);
+
+  if (decisao === 'manter') return lead;
+
+  if (decisao === 'outro') {
+    await registrarEvento(lead.id, {
+      type: 'evo_prospect_outro',
+      actor,
+      summary: `Aula marcada no EVO no cadastro ${rotulo}, do mesmo celular. ` +
+        `O atendimento continua ligado ao cadastro ${lead.evo_id_prospect}.`,
+      payload: { idProspect, idSale },
+    });
+    return lead;
+  }
+
+  const { data, error } = await supabase
+    .from('crm_leads')
+    .update({
+      evo_id_prospect: idProspect,
+      evo_sync: 'sincronizado',
+      evo_sync_error: null,
+      evo_synced_at: new Date().toISOString(),
+    })
+    .eq('id', lead.id)
+    .select()
+    .single();
+
+  // O caso típico é o 23505: o cadastro está preso ao atendimento encerrado
+  // de antes (o índice é único na tabela inteira). A aula entra neste
+  // assim mesmo; só o vínculo fica onde estava.
+  if (error) {
+    logger.warn(`[evo-sync] Lead ${lead.id}: cadastro ${idProspect} não ligado (${error.message}) — a aula entra assim mesmo`);
+    return lead;
+  }
+
+  await registrarEvento(lead.id, {
+    type: 'evo_prospect_vinculado',
+    actor,
+    summary: `Cadastro ${rotulo} do EVO ligado pelo celular`,
+    payload: { idProspect, idSale, origem: 'celular' },
+  });
+  logger.info(`[evo-sync] Lead ${lead.id}: cadastro ${idProspect} ligado pelo celular`);
+  return data;
+}
+
+/**
+ * A aula de uma pessoa no EVO, a partir de `desde` (ver `escolherSessao`).
+ *
+ * Lança quando o EVO falha: "não há aula" e "não deu para saber" pedem
+ * coisas diferentes de quem chama.
+ */
+async function sessaoNoEvo({ idProspect = null, idMember = null }, { desde = null, agora = new Date() } = {}) {
+  const de = diaSP(desde || agora);
+  const ate = new Date(agora.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const sessoes = await evoClient.sessoesDaPessoa({ idProspect, idMember, de, ate });
+  return escolherSessao(sessoes, { desde, agora });
+}
+
+/**
+ * Registra no atendimento a aula achada no EVO e arma a régua dela.
+ *
+ * A mesma aula que o lead já conhece não arma nada: os follow-ups dela já
+ * foram agendados ou enviados, e agendar de novo mandaria o lembrete duas
+ * vezes.
+ *
+ * Limpa a aula guardada sem reserva e, se a nota de "aula sem reserva" na
+ * próxima ação foi posta por este sistema, a nota também.
+ *
+ * @returns {Promise<{ lead: object|null, nova: boolean }>}
+ */
+async function registrarAulaDoBalcao(leadOuId, escolhida, { actor, payload = {} }) {
+  const lead = await lerLead(typeof leadOuId === 'object' ? leadOuId.id : leadOuId);
+  if (!lead) return { lead: null, nova: false };
+
+  const { dataHora, sessao } = escolhida;
+  const atividade = sessao?.activitieName || sessao?.activityName || null;
+  const quando = paraISO(dataHora);
+
+  const { aula_vendida: guardada, ...metadata } = lead.metadata || {};
+  const notaNossa = String(lead.next_action_note || '').startsWith(NOTA_SEM_RESERVA);
+  const limpeza = {
+    ...(guardada ? { metadata } : {}),
+    ...(notaNossa ? { next_action_at: null, next_action_note: null } : {}),
+  };
+
+  if (Date.parse(lead.experimental_at || '') === Date.parse(quando)) {
+    if (Object.keys(limpeza).length) {
+      await supabase.from('crm_leads').update(limpeza).eq('id', lead.id);
+    }
+    return { lead: { ...lead, ...limpeza }, nova: false };
+  }
 
   // `somenteAvanco` protege o retrocesso de etapa, mas NÃO descarta a
   // atualização: `mudarEtapa` grava `campos` mesmo quando bloqueia a etapa
@@ -689,15 +870,16 @@ async function aoVerExperimentalNaVenda(detalhe, evento) {
   // nessa etapa, com a ficha e a régua apontando para a aula nova. A etapa
   // não volta atrás, e a pessoa recebe lembrete e conversa pós-aula igual.
   const atualizado = await mudarEtapa(lead, 'experimental_agendada', {
-    actor: 'evo-webhook',
+    actor,
     somenteAvanco: true,
     motivo: `Aula experimental de ${atividade || 'atividade'} marcada no EVO para ${dataHora}`,
     campos: {
-      experimental_at: paraISO(dataHora),
+      experimental_at: quando,
       experimental_status: 'agendada',
       experimental_activity: atividade,
+      ...limpeza,
     },
-    payload: { idSale: evento.id_record, sessao },
+    payload: { ...payload, sessao },
   });
 
   // A régua da aula — lembrete de 24h e conversa depois. É o que torna a
@@ -711,7 +893,256 @@ async function aoVerExperimentalNaVenda(detalhe, evento) {
   }
 
   logger.info(`[evo-sync] Lead ${lead.id}: experimental marcada no EVO para ${dataHora} (${atividade || 'atividade'})`);
-  return atualizado || lead;
+  return { lead: atualizado || lead, nova: true };
+}
+
+/**
+ * Guarda a aula vendida que ainda não tem horário reservado, para procurar
+ * de novo (`procurarAulasVendidas`).
+ *
+ * Em `metadata.aula_vendida`, e não numa tabela: é um estado de dias, de
+ * um punhado de leads, e uma migration a mais é uma chance a mais de o
+ * código rodar contra um banco que não a tem.
+ */
+async function guardarAulaVendida(lead, { idSale, idProspect, idMember, vendidaEm }) {
+  const atual = await lerLead(lead.id);
+  if (!atual) return;
+
+  const marcador = {
+    id_sale: idSale ?? null,
+    id_prospect: idProspect ?? null,
+    id_member: idMember ?? null,
+    vendida_em: vendidaEm.toISOString(),
+    tentativas: 0,
+  };
+
+  await supabase
+    .from('crm_leads')
+    .update({ metadata: { ...(atual.metadata || {}), aula_vendida: marcador } })
+    .eq('id', atual.id);
+
+  await registrarEvento(atual.id, {
+    type: 'aula_vendida_sem_reserva',
+    actor: 'evo-webhook',
+    summary: 'Aula experimental vendida no EVO, ainda sem horário reservado — o sistema volta a procurar a reserva',
+    payload: marcador,
+  });
+  logger.info(`[evo-sync] Lead ${atual.id}: aula vendida (venda ${idSale}) sem reserva ainda — guardada para procurar de novo`);
+}
+
+/** Data e hora de São Paulo, curta, para nota e razão. */
+const curtaSP = (iso) => new Date(iso).toLocaleString('pt-BR', {
+  timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+});
+
+/**
+ * Avisa a consultora que a aula foi vendida e o horário não foi reservado.
+ *
+ * Pela próxima ação do lead, que o painel mostra em vermelho quando vence —
+ * é o mesmo canal da sugestão pós-aula. Não passa por cima de uma próxima
+ * ação que a consultora marcou para o futuro: aí fica só o razão.
+ */
+async function avisarAulaSemReserva(lead, marcador, agora) {
+  const nota = `${NOTA_SEM_RESERVA} em ${curtaSP(marcador.vendida_em)}, sem horário reservado. ` +
+    'Conferir a reserva e confirmar o horário com o cliente.';
+  const proxima = Date.parse(lead.next_action_at || '');
+  const ocupada = Number.isFinite(proxima) && proxima > agora.getTime();
+
+  await supabase
+    .from('crm_leads')
+    .update({
+      metadata: {
+        ...(lead.metadata || {}),
+        aula_vendida: { ...marcador, avisado_em: agora.toISOString(), tentativas: (marcador.tentativas || 0) + 1 },
+      },
+      ...(ocupada ? {} : { next_action_at: agora.toISOString(), next_action_note: nota }),
+    })
+    .eq('id', lead.id);
+
+  await registrarEvento(lead.id, {
+    type: 'sugestao_consultor',
+    actor: 'sistema',
+    summary: nota,
+    payload: { idSale: marcador.id_sale, idProspect: marcador.id_prospect, idMember: marcador.id_member },
+  });
+  logger.info(`[evo-sync] Lead ${lead.id}: aula vendida sem reserva — consultora avisada`);
+}
+
+/**
+ * Procura de novo a reserva das aulas vendidas que ainda não tinham horário.
+ *
+ * Roda no ciclo do worker do EVO. Uma consulta ao EVO por aula guardada, e
+ * no máximo `limite` por ciclo — a fila anda pela mais antiga, porque cada
+ * passada regrava a linha e a manda para o fim.
+ *
+ *  - achou a sessão → registra a aula e arma a régua;
+ *  - não achou, depois de 3h → avisa a consultora, uma vez;
+ *  - não achou em 7 dias → desiste e deixa o motivo no razão.
+ */
+export async function procurarAulasVendidas({ limite = 10, agora = new Date() } = {}) {
+  const resumo = { examinadas: 0, achadas: 0, avisadas: 0, desistidas: 0 };
+
+  const { data: leads, error } = await supabase
+    .from('crm_leads')
+    .select('*')
+    .not('metadata->aula_vendida', 'is', null)
+    .order('updated_at', { ascending: true })
+    .limit(limite);
+
+  if (error) {
+    logger.warn(`[evo-sync] Não deu para ler as aulas vendidas sem reserva: ${error.message}`);
+    return resumo;
+  }
+
+  for (const lead of leads || []) {
+    resumo.examinadas++;
+    const { aula_vendida: marcador, ...semMarcador } = lead.metadata || {};
+
+    // Encerrado, ou já sabe de aula por vir (a Leia marcou, ou outra venda
+    // trouxe a sessão): não há mais o que procurar.
+    if (jaSabeDeAulaFutura(lead)) {
+      await supabase.from('crm_leads').update({ metadata: semMarcador }).eq('id', lead.id);
+      continue;
+    }
+
+    let escolhida = null;
+    try {
+      escolhida = await sessaoNoEvo(
+        { idProspect: marcador.id_prospect, idMember: marcador.id_member },
+        { desde: new Date(marcador.vendida_em), agora },
+      );
+    } catch (err) {
+      // EVO fora: nada muda, e a próxima passada tenta de novo. O prazo
+      // continua correndo, porque ele conta da venda.
+      logger.warn(`[evo-sync] Lead ${lead.id}: sessões não lidas (${err.message}) — tento no próximo ciclo`);
+      await supabase.from('crm_leads').update({ metadata: lead.metadata }).eq('id', lead.id);
+      continue;
+    }
+
+    if (escolhida) {
+      await registrarAulaDoBalcao(lead, escolhida, {
+        actor: 'evo-poll',
+        payload: { idSale: marcador.id_sale, tentativas: (marcador.tentativas || 0) + 1 },
+      });
+      resumo.achadas++;
+      continue;
+    }
+
+    const passo = proximoPassoDaAulaVendida(marcador, agora);
+
+    if (passo === 'desistir') {
+      await supabase.from('crm_leads').update({ metadata: semMarcador }).eq('id', lead.id);
+      await registrarEvento(lead.id, {
+        type: 'aula_vendida_sem_reserva',
+        actor: 'sistema',
+        summary: `A aula vendida em ${curtaSP(marcador.vendida_em)} não ganhou horário em 7 dias — o sistema parou de procurar`,
+        payload: marcador,
+      });
+      resumo.desistidas++;
+    } else if (passo === 'avisar') {
+      await avisarAulaSemReserva(lead, marcador, agora);
+      resumo.avisadas++;
+    } else {
+      await supabase
+        .from('crm_leads')
+        .update({ metadata: { ...lead.metadata, aula_vendida: { ...marcador, tentativas: (marcador.tentativas || 0) + 1 } } })
+        .eq('id', lead.id);
+    }
+  }
+
+  if (resumo.examinadas) {
+    logger.info(
+      `[evo-sync] Aulas vendidas sem reserva: ${resumo.examinadas} examinada(s), ${resumo.achadas} achada(s), ` +
+      `${resumo.avisadas} aviso(s) à consultora, ${resumo.desistidas} desistência(s)`
+    );
+  }
+  return resumo;
+}
+
+/** A aula `a` é melhor que `b`? Por vir ganha de passada; entre as por vir, a mais próxima; entre as passadas, a mais recente. */
+function aulaMelhor(a, b) {
+  if (a.futura !== b.futura) return a.futura;
+  return a.futura ? a.dataHora < b.dataHora : a.dataHora > b.dataHora;
+}
+
+/**
+ * Procura no EVO uma aula da pessoa a partir de `desde` e, se for nova, a
+ * registra no atendimento (com a régua da aula).
+ *
+ * É a rede embaixo do webhook: a régua de silêncio pergunta aqui antes de
+ * cutucar quem parece sumido, e o encerramento antes de dar alguém como
+ * perdido. Assim a mensagem de "tudo bem se não for o momento" não sai mais
+ * para quem tem aula marcada — que foi o caso da Amanda.
+ *
+ * Quem é consultado: o cadastro de aluno e o de oportunidade do lead; e,
+ * quando o lead não tem cadastro de oportunidade, os do celular dele (os
+ * três mais recentes) — é o caso do cadastro feito no balcão.
+ *
+ * @param {object}  lead
+ * @param {object}  [opcoes]
+ * @param {Date}    [opcoes.desde]          a partir de quando a aula conta
+ * @param {boolean} [opcoes.somenteFutura]  ignora aula que já passou
+ * @param {boolean} [opcoes.registrar]      `false` só olha (simulação)
+ * @returns {Promise<
+ *   { dataHora: string, futura: boolean, nova: boolean, lead: object } |
+ *   { indefinido: true } |
+ *   null
+ * >} `null` quando não há aula; `indefinido` quando o EVO não respondeu.
+ */
+export async function conferirAulaNoEvo(lead, {
+  desde = new Date(), somenteFutura = false, registrar = true, actor = 'sistema', agora = new Date(),
+} = {}) {
+  const pessoas = [];
+  let falhou = false;
+
+  if (Number(lead.evo_id_member) > 0) pessoas.push({ idMember: Number(lead.evo_id_member) });
+
+  if (Number(lead.evo_id_prospect) > 0) {
+    pessoas.push({ idProspect: Number(lead.evo_id_prospect) });
+  } else if (lead.phone) {
+    try {
+      const { cellphone } = evoClient.separarDdi(lead.phone);
+      const doCelular = await evoClient.buscarProspects({ phone: cellphone, take: 50 });
+      doCelular
+        .filter(p => p?.idProspect)
+        .sort((a, b) => String(b.registerDate || '').localeCompare(String(a.registerDate || '')))
+        .slice(0, 3)
+        .forEach(p => pessoas.push({ idProspect: Number(p.idProspect), prospect: p }));
+    } catch (err) {
+      falhou = true;
+      logger.warn(`[evo-sync] Lead ${lead.id}: cadastros do celular não lidos (${err.message})`);
+    }
+  }
+
+  let melhor = null;
+  for (const pessoa of pessoas) {
+    let escolhida = null;
+    try {
+      escolhida = await sessaoNoEvo(pessoa, { desde, agora });
+    } catch (err) {
+      falhou = true;
+      logger.warn(`[evo-sync] Lead ${lead.id}: sessões não lidas (${err.message})`);
+      continue;
+    }
+    if (!escolhida || (somenteFutura && !escolhida.futura)) continue;
+    if (!melhor || aulaMelhor(escolhida, melhor)) melhor = { ...escolhida, pessoa };
+  }
+
+  if (!melhor) return falhou ? { indefinido: true } : null;
+
+  const conhecida = Date.parse(lead.experimental_at || '') === Date.parse(paraISO(melhor.dataHora));
+  if (!registrar) {
+    return { dataHora: melhor.dataHora, futura: melhor.futura, nova: !conhecida, lead };
+  }
+
+  let alvo = lead;
+  if (melhor.pessoa.prospect) {
+    alvo = await ligarCadastroAoLead((await lerLead(lead.id)) || lead, melhor.pessoa.prospect, { actor });
+  }
+  const { lead: atualizado, nova } = await registrarAulaDoBalcao(alvo, melhor, {
+    actor, payload: { origem: 'conferencia' },
+  });
+  return { dataHora: melhor.dataHora, futura: melhor.futura, nova, lead: atualizado || lead };
 }
 
 // ──────────────────────────────────────────────
@@ -1355,5 +1786,5 @@ export async function registrarWebhooks({ urlBase = config.crm.urlPublica } = {}
 export const evoSync = {
   cadastrarProspect, agendarExperimental, registrarVenda, lancarFollowUp,
   guardarEventoWebhook, processarEventoWebhook, reprocessarPendentes,
-  sincronizarProspects, registrarWebhooks,
+  sincronizarProspects, registrarWebhooks, procurarAulasVendidas, conferirAulaNoEvo,
 };

@@ -28,6 +28,7 @@ import { funil } from '../services/funil.js';
 import { saveMessage } from '../services/contacts.js';
 import { sendText, telefoneValido, numeroExiste } from '../services/evolution.js';
 import { limiteEnvio } from '../services/limite-envio.js';
+import { evoSync } from '../services/evo-sync.js';
 import { esperar } from '../lib/ritmo.js';
 
 let rodando = false;
@@ -245,6 +246,15 @@ async function enviarUm(item) {
     return;
   }
 
+  // A cutucada de silêncio foi agendada, e depois a aula chegou — pelo
+  // webhook do EVO, ou pela busca da reserva. Quem tem aula marcada não
+  // está sumido, e a régua da aula já cuida da próxima conversa.
+  if (followup.TIPOS_SILENCIO.includes(item.tipo)
+    && (Date.parse(lead.experimental_at || '') > Date.now() || lead.metadata?.aula_vendida)) {
+    await followup.cancelar(lead.id, [item.tipo], 'lead tem aula experimental marcada');
+    return;
+  }
+
   // Telefone utilizável — conferido AQUI, e não só na varredura, porque
   // esta é a última porta antes de gastar uma chamada ao modelo.
   //
@@ -421,7 +431,10 @@ async function encerrarSemResposta() {
   // em vez de omiti-la, e o entupimento volta com outra cara.
   const { data } = await supabase
     .from('crm_followups')
-    .select('lead_id, tipo, sent_at, lead:crm_leads!inner ( id, stage, trilha, contact_id )')
+    .select(
+      'lead_id, tipo, sent_at, lead:crm_leads!inner ( id, stage, trilha, contact_id, phone, ' +
+      'evo_id_member, evo_id_prospect, experimental_at, metadata )'
+    )
     .in('tipo', ['sondagem_2', 'silencio_2'])
     .eq('status', 'enviado')
     .lte('sent_at', limite)
@@ -461,6 +474,28 @@ async function encerrarSemResposta() {
       .limit(1);
 
     if (resposta?.length) continue;
+
+    // Não respondeu, mas tem aula depois da última mensagem: não é perda.
+    //
+    // A Amanda recebeu o encerramento em 28/10/2026 com a aula da Emily
+    // marcada para 31/10, e seria dada como perdida em 02/11 sem ninguém
+    // perguntar como foi a aula. Os dois primeiros sinais são de graça. O
+    // EVO é perguntado uma vez por lead: achando a aula, ela é registrada
+    // (e o primeiro sinal resolve dali em diante); não achando, o lead
+    // fecha e sai desta consulta.
+    if (Date.parse(lead.experimental_at || '') > Date.parse(f.sent_at)) continue;
+    if (lead.metadata?.aula_vendida) continue;
+
+    const aula = await evoSync.conferirAulaNoEvo(lead, { desde: new Date(f.sent_at), actor: 'sistema' })
+      .catch(err => {
+        logger.warn(`[followup] Lead ${lead.id}: aula no EVO não conferida (${err.message})`);
+        return { indefinido: true };
+      });
+    if (aula?.indefinido) continue;   // EVO fora: tenta no próximo ciclo
+    if (aula && (aula.futura || aula.nova)) {
+      logger.info(`[followup] Lead ${lead.id} não encerrado: aula no EVO para ${aula.dataHora}`);
+      continue;
+    }
 
     await funil.mudarEtapa(lead.id, 'perdido', {
       actor: 'sistema',
@@ -546,10 +581,25 @@ async function ciclo() {
     // uma vez, e este laço mandava tudo sem intervalo nenhum. Até 20
     // aberturas de conversa no mesmo minuto, todo dia, no mesmo horário.
     // Foi o que a Meta viu em 31/08/2026.
-    const fila = await followup.vencidos(config.followup.loteCiclo);
+    //
+    // E fora da janela de contato nada sai, nem o que já venceu. Agendar
+    // dentro da janela não bastava: quando o teto do número estoura (toda
+    // segunda), o que sobra fica vencido, o teto zera à meia-noite e o
+    // ciclo mandava tudo entre 0h e 0h20 — 149 mensagens fora do horário
+    // entre 15/09 e 28/10/2026. Agora a sobra espera a abertura do dia.
+    const fila = followup.estaNaJanela(new Date())
+      ? await followup.vencidos(config.followup.loteCiclo)
+      : [];
 
     for (let i = 0; i < fila.length; i++) {
       const item = fila[i];
+
+      // O lote é espaçado e pode atravessar o fim da janela (20h30, ou 13h
+      // no sábado). O resto fica pendente para a abertura seguinte.
+      if (!followup.estaNaJanela(new Date())) {
+        logger.info(`[followup] Janela de contato fechou com ${fila.length - i} follow-up(s) no lote — ficam para a abertura`);
+        break;
+      }
 
       // O teto do número inteiro, conferido a cada envio: campanha e
       // régua de silêncio consomem a mesma cota, e nenhuma das duas sabe
