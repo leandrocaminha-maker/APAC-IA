@@ -1344,6 +1344,24 @@ router.patch('/api/usuarios/:id', exigirAdmin, rota(async (req, res) => {
 
   if (!Object.keys(update).length) return res.status(400).json({ erro: 'Nada para atualizar.' });
 
+  // Sempre sobra um administrador ativo. Tirar o último — inclusive a si
+  // mesmo — trancaria o painel: ninguém mais cria consultor, redefine senha
+  // nem devolve o papel de volta.
+  const { data: alvo } = await supabase
+    .from('crm_users').select('id, name, role, active').eq('id', req.params.id).maybeSingle();
+  if (!alvo) return res.status(404).json({ erro: 'Consultor não encontrado.' });
+
+  const deixaDeSerAdmin = alvo.role === 'admin' && alvo.active
+    && (update.role === 'consultor' || update.active === false);
+  if (deixaDeSerAdmin) {
+    const { count } = await supabase
+      .from('crm_users').select('id', { count: 'exact', head: true })
+      .eq('role', 'admin').eq('active', true).neq('id', alvo.id);
+    if (!count) {
+      return res.status(400).json({ erro: `${alvo.name} é o único administrador ativo. Promova outra pessoa antes.` });
+    }
+  }
+
   const { data, error } = await supabase
     .from('crm_users')
     .update(update)
@@ -1352,6 +1370,10 @@ router.patch('/api/usuarios/:id', exigirAdmin, rota(async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ erro: error.message });
+
+  if (update.role && update.role !== alvo.role) {
+    logger.info(`[crm] ${req.usuario.nome} mudou ${alvo.name} de ${alvo.role} para ${update.role}`);
+  }
   res.json(data);
 }));
 

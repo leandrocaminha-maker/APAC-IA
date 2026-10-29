@@ -2850,21 +2850,57 @@ async function carregarUsuarios() {
   estado.usuarios = lista;
   const ehAdmin = estado.usuario?.papel === 'admin';
 
+  const ROTULO_PAPEL = { consultor: 'Consultor', admin: 'Administrador' };
   $('#lista-usuarios').innerHTML = lista.map(u => `
     <div class="linha-usuario">
-      <span>${esc(u.name)}<br><small>${esc(u.email)} · ${esc(u.role)}${u.active ? '' : ' · inativo'}</small></span>
-      ${ehAdmin ? `<button class="btn pequeno" data-redefinir="${u.id}"
-          data-nome="${esc(u.name)}">Redefinir senha</button>` : ''}
+      <span>${esc(u.name)}<br><small>${esc(u.email)}${ehAdmin ? '' : ' · ' + esc(ROTULO_PAPEL[u.role] || u.role)}${u.active ? '' : ' · inativo'}</small></span>
+      ${ehAdmin ? `<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+          <select class="campo" style="width:auto;padding:5px 8px;font-size:13px" data-papel="${u.id}"
+                  data-nome="${esc(u.name)}" data-atual="${esc(u.role)}" aria-label="Perfil de ${esc(u.name)}">
+            ${Object.entries(ROTULO_PAPEL).map(([v, r]) => `<option value="${v}" ${u.role === v ? 'selected' : ''}>${r}</option>`).join('')}
+          </select>
+          <button class="btn pequeno" data-redefinir="${u.id}" data-nome="${esc(u.name)}">Redefinir senha</button>
+        </span>` : ''}
     </div>`).join('');
 
   $$('#lista-usuarios [data-redefinir]').forEach(b => b.addEventListener('click', () =>
     redefinirSenha(b.dataset.redefinir, b.dataset.nome)));
+
+  $$('#lista-usuarios [data-papel]').forEach(s => s.addEventListener('change', () => mudarPapel(s)));
 
   const sel = $('#f-dono');
   const atual = sel.value;
   sel.innerHTML = '<option value="">Todos os consultores</option><option value="sem_dono">Sem dono</option>'
     + lista.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('');
   sel.value = atual;
+}
+
+/**
+ * Troca o perfil de um consultor (consultor ↔ administrador). O servidor
+ * recusa tirar o último administrador ativo. Quem se rebaixa perde as abas
+ * de administrador na hora: a página recarrega.
+ */
+async function mudarPapel(sel) {
+  const { papel: id, nome, atual } = sel.dataset;
+  const novo = sel.value;
+  const rotulo = novo === 'admin' ? 'Administrador' : 'Consultor';
+  const euMesmo = String(estado.usuario?.id) === String(id);
+  const aviso = euMesmo && novo !== 'admin'
+    ? `Tirar o seu próprio acesso de administrador? Você deixa de ver Gerência, Acompanhamento e a gestão de consultores.`
+    : `Mudar ${nome} para ${rotulo}?`;
+  if (!confirm(aviso)) { sel.value = atual; return; }
+
+  sel.disabled = true;
+  try {
+    await api('/usuarios/' + id, { metodo: 'PATCH', corpo: { papel: novo } });
+    toast(`${nome} agora é ${rotulo}.`, 'ok');
+    if (euMesmo && novo !== 'admin') return location.reload();
+    await carregarUsuarios();
+  } catch (err) {
+    sel.value = atual;
+    sel.disabled = false;
+    toast(err.message, 'erro');
+  }
 }
 
 /**
