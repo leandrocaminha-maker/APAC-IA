@@ -46,6 +46,12 @@ havia mais de uma semana. Três defeitos e uma tela nova:
   silêncio. Situação com mais de 7 dias aparece no painel e não vira
   mensagem. `GERENCIA_MINUTOS` (padrão 10) é opcional.
 
+**Deploy de `db9b6a7` em 29/10/2026 às 17h40.** Os 41 que a fila entupida
+não alcançava já tinham sido fechados antes, às 16h30–16h40, pelo worker
+antigo: a limpeza tirou da frente da fila os que a ocupavam. Resultado do
+dia: venda aberta de 289 para 154; "em conversa" + "com consultor" de 254
+para 137.
+
 Achado no caminho: nas 22 aulas experimentais dos últimos 30 dias, nenhuma
 tem presença registrada — o aviso "aula experimental realizada" do EVO
 quase nunca chega. O painel diz isso; resolver é fechar a aula com presença
