@@ -1,10 +1,31 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 26/10/2026, com o registro de vendas por canal no ar.**
+> **Snapshot de 29/10/2026: o acompanhamento saiu do ensaio (envio real).**
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## O acompanhamento saiu do ensaio (29/10/2026)
+
+O responsável declarou o início do uso real. No `.env` da VPS:
+`ACOMPANHAMENTO_DRY_RUN=false`, `ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS=true` e
+`ENVIO_TETO_DIARIO=38` (D5 do PLANO_ACOMPANHAMENTO.md do Prescrev), com o
+container `backend` recriado — o log de partida passa a dizer "ENVIO REAL
+ligado". O que muda: a rodada do dia (`ensaio.js`, modo `envio`) grava
+'pendente' para quem tem inscrição ATIVA e `envio.js` manda na hora prevista;
+os avisos da régua e da Leia abrem encaminhamento de verdade (briefing ao
+professor com EQUIPE e horário, senão à coordenação de plantão). O histórico
+e a verificação da atividade são por modo: o primeiro dia em `envio` começa
+sem histórico.
+
+Estado na virada: 1 ficha completa publicada pelo Prescrev (as outras 26
+faltam relatório entregue, código ou vínculo do EVO); 1 inscrição, a da
+Claudia, PAUSADA pela Leia desde 15/10 (quem respondia se identificou como
+Lucas); só o master com EQUIPE ativado — todo encaminhamento vai a ele até os
+professores ativarem EQUIPE e terem horário no Prescrev. Os comentários de
+`config.js` e `.env.example` que diziam que o worker recusa `DRY_RUN=false`
+eram da A2 e foram corrigidos: desde a A5c é o envio real.
 
 ## A catraca todo dia, as sessões no domingo (M5 do plano dos modelos, 28/10/2026)
 

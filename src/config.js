@@ -314,16 +314,17 @@ export const config = {
   // no repositório do Prescrev). O Prescrev publica a ficha de cada aluno e
   // os modelos; a régua roda aqui.
   //
-  // Etapa A2: a régua roda em ENSAIO. Decide e grava, todo dia, o que
-  // sairia para cada aluno e por quê — e não envia nada: o envio real não
-  // existe nesta etapa, e o worker recusa iniciar com DRY_RUN=false.
+  // Até a A5c (09/10/2026) a régua só rodava em ENSAIO: decidia e gravava,
+  // todo dia, o que sairia para cada aluno e por quê, sem enviar. Desde a
+  // A5c, DRY_RUN=false é o envio real (`envio.js`): a régua manda a quem
+  // tem inscrição ativa, até o sub-teto do dia. O uso real começou em
+  // 29/10/2026, por decisão do responsável (PLANO_ACOMPANHAMENTO.md).
   acompanhamento: {
     // Chave geral do worker diário. Com false ele nem inicia; o painel
     // ainda roda o ensaio à mão (Acompanhamento → "Rodar o ensaio de hoje").
     habilitado: env('ACOMPANHAMENTO_HABILITADO', 'false') === 'true',
 
-    // Ensaio. Só deixa de ser quando alguém escrever false — e nesta etapa
-    // nem assim: o worker não inicia.
+    // Ensaio por padrão: só deixa de ser quando alguém escrever false.
     dryRun: env('ACOMPANHAMENTO_DRY_RUN', 'true') !== 'false',
 
     // Intervalo em que o worker confere se o ensaio do dia já rodou. 0 desliga.
