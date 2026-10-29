@@ -13,6 +13,11 @@
  *       a equipe confirma, no card, o número pendente (§5.1). O "por" vai na
  *       consulta, e não no corpo: é o caminho que se assina.
  *
+ *   GET  /acompanhamento/numero
+ *       o número de atendimento da academia (WHATSAPP_NUMERO_PRINCIPAL), para
+ *       o QR code de ativação do Relatório 1: é para ele que o aluno manda
+ *       "ATIVAR <código>". O número mora aqui, e o Prescrev não o copia.
+ *
  *   GET  /acompanhamento/encaminhamentos/<id>/conversa
  *       a conversa da ponte (A5d) daquele encaminhamento, sem números, com
  *       quem é o professor e o destinatário — o Prescrev confere se quem está
@@ -87,6 +92,18 @@ router.get('/encaminhamentos/:id/conversa', assinado, async (req, res) => {
     logger.error('[acompanhamento] Conversa da ponte ao Prescrev:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+/** O número como o wa.me o quer: só dígitos, com o 55 quando vem só com o DDD. Vazio sem número. */
+export function numeroParaLink(numero) {
+  const d = String(numero ?? '').replace(/\D/g, '');
+  return d.length === 10 || d.length === 11 ? `55${d}` : d;
+}
+
+router.get('/numero', assinado, (req, res) => {
+  const numero = numeroParaLink(config.whatsapp.numeroPrincipal);
+  if (!numero) return res.status(503).json({ error: 'WHATSAPP_NUMERO_PRINCIPAL não definido.' });
+  res.json({ numero, exibicao: config.whatsapp.numeroPrincipal });
 });
 
 router.get('/inscricoes', assinado, async (req, res) => {
