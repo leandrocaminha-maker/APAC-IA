@@ -932,3 +932,19 @@ test('ausência: a catraca contradiz o aviso do EVO', () => {
   assert.notEqual(d.situacao, 'ausencia');
   assert.match(d.motivo, /contradito pela catraca \(entrada em 15\/10\)/);
 });
+
+test('ausência: a ida à avaliação contradiz o aviso do EVO (M6)', () => {
+  // A catraca parou em 30/09; a pessoa foi avaliada em 08/10, e o EVO avisa em 10/10.
+  const f = pelaCatraca({ presencas: { ...comportamento().presencas, ultima: '2026-09-30', avaliacao: '2026-10-08' },
+    fase: { ...comportamento().fase, cadencia_dias: 30 } });
+  const d = decidir({ ficha: f, modelos: modelosAgenda, historico: h0, hoje: '2026-10-10', modo: 'ensaio',
+    sinais: [{ dia: '2026-10-10', dias: 10 }] });
+  assert.notEqual(d.situacao, 'ausencia');
+  assert.match(d.motivo, /contradito pela avaliação em 08\/10/);
+  // avaliação antes do período que o EVO diz vazio não contradiz
+  const antiga = pelaCatraca({ presencas: { ...comportamento().presencas, ultima: '2026-09-25', avaliacao: '2026-09-28' },
+    fase: { ...comportamento().fase, cadencia_dias: 30 } });
+  const a = decidir({ ficha: antiga, modelos: modelosAgenda, historico: h0, hoje: '2026-10-10', modo: 'ensaio',
+    sinais: [{ dia: '2026-10-10', dias: 10 }] });
+  assert.equal(a.situacao, 'ausencia');
+});

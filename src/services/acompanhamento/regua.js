@@ -379,6 +379,14 @@ function ausencia({ ficha, anteriores, sinais, agenda, hoje }) {
       return { situacao: null, motivo: `Aviso "Sem presença" do EVO de ${ddmm(aviso.dia)} contradito pela catraca (entrada em ${ddmm(ultima)}): não sai.` };
     }
   }
+  // A avaliação confere (M6, FASES_VERSION 3 do Prescrev): a catraca não
+  // registra a ida à avaliação, e "uma pausa nos seus treinos" saía dois dias
+  // depois de a pessoa ser avaliada. Sem o número de dias do EVO, vale o limite.
+  const avaliada = ficha.comportamento?.presencas?.avaliacao ?? null;
+  if (avaliada && avaliada <= aviso.dia
+    && (aviso.dias ? avaliada >= somar(aviso.dia, -aviso.dias + 1) : diasEntre(avaliada, aviso.dia) < limite)) {
+    return { situacao: null, motivo: `Aviso "Sem presença" do EVO de ${ddmm(aviso.dia)} contradito pela avaliação em ${ddmm(avaliada)}: não sai.` };
+  }
   // A agenda confere: presença dentro do período que o EVO diz vazio.
   if (agenda && aviso.dias) {
     const de = somar(aviso.dia, -aviso.dias + 1);
