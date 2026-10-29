@@ -20,7 +20,7 @@
  */
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
-import { supabase } from '../lib/supabase.js';
+import { supabase, lerTodas } from '../lib/supabase.js';
 import { followup } from '../services/followup.js';
 import { controle } from '../services/controle.js';
 import { aiAgent } from '../services/ai-agent.js';
@@ -403,6 +403,34 @@ async function enviarUm(item) {
  * um tempo de silêncio novo. Encerrar no mesmo dia do envio dá o lead por
  * perdido antes de ele ter tido chance de ler.
  */
+/**
+ * A última mensagem RECEBIDA de cada contato desde `desde`, numa leitura só
+ * (em lotes de contatos, paginada — o Supabase corta em 1000 linhas).
+ *
+ * @returns {Promise<Map<number,string>|null>} `null` quando a leitura falhou
+ */
+async function ultimaRespostaPorContato(contatos, desde) {
+  const ultima = new Map();
+  const unicos = [...new Set(contatos)];
+  for (let i = 0; i < unicos.length; i += 100) {
+    const { data, error } = await lerTodas(() => supabase
+      .from('wa_messages')
+      .select('id, contact_id, created_at')
+      .in('contact_id', unicos.slice(i, i + 100))
+      .eq('direction', 'inbound')
+      .gt('created_at', desde));
+    if (error) {
+      logger.error('[followup] Encerramento: falha ao ler as respostas:', error.message);
+      return null;
+    }
+    for (const m of data || []) {
+      const atual = ultima.get(m.contact_id);
+      if (!atual || new Date(m.created_at) > new Date(atual)) ultima.set(m.contact_id, m.created_at);
+    }
+  }
+  return ultima;
+}
+
 async function encerrarSemResposta() {
   const dias = config.followup.diasAtePerdido;
   if (!dias || dias <= 0) return;
@@ -429,51 +457,72 @@ async function encerrarSemResposta() {
   // `!inner` é obrigatório para o filtro na tabela embutida valer como
   // filtro; com o join externo o PostgREST devolve a linha com `lead: null`
   // em vez de omiti-la, e o entupimento volta com outra cara.
-  const { data } = await supabase
+  //
+  // ## E a leitura é da fila INTEIRA, não das 50 primeiras (29/10/2026)
+  //
+  // O entupimento voltou por outro caminho. Quem respondeu à segunda rodada
+  // continua casando o filtro para sempre — o lead segue aberto, a linha
+  // segue `enviado` —, e o laço só o pula. Com a ordem do mais antigo, as 50
+  // vagas ficaram todas com esses: em 29/10/2026 eram 94 linhas, as 50
+  // primeiras de quem tinha respondido, e os 41 leads que deviam virar
+  // `perdido` estavam nas posições 51 a 94, onde a leitura nunca chegava.
+  // Agora se lê tudo, e "respondeu depois?" é UMA consulta para todos.
+  const { data, error } = await lerTodas(() => supabase
     .from('crm_followups')
     .select(
-      'lead_id, tipo, sent_at, lead:crm_leads!inner ( id, stage, trilha, contact_id, phone, ' +
+      'id, lead_id, tipo, sent_at, lead:crm_leads!inner ( id, stage, trilha, contact_id, phone, ' +
       'evo_id_member, evo_id_prospect, experimental_at, metadata )'
     )
     .in('tipo', ['sondagem_2', 'silencio_2'])
     .eq('status', 'enviado')
     .lte('sent_at', limite)
-    .not('lead.stage', 'in', funil.FILTRO_ETAPAS_FECHADAS)
-    .order('sent_at', { ascending: true })
-    .limit(50);
+    .not('lead.stage', 'in', funil.FILTRO_ETAPAS_FECHADAS));
 
+  if (error) {
+    logger.error('[followup] Encerramento: falha ao ler a fila:', error.message);
+    return;
+  }
+
+  // Vale a rodada MAIS RECENTE de cada lead: quem respondeu a um
+  // encerramento antigo e recebeu outro depois é julgado pelo último.
+  const porLead = new Map();
   for (const f of data || []) {
+    const atual = porLead.get(f.lead_id);
+    if (!atual || new Date(f.sent_at) > new Date(atual.sent_at)) porLead.set(f.lead_id, f);
+  }
+
+  // "Perdido" é veredito de venda. Quem saiu da trilha de venda depois
+  // de a rodada ter sido enviada não é venda perdida — é atendimento que
+  // acabou, e quem o encerra é o consultor, com `finalizado`.
+  const fila = [...porLead.values()].filter(f => f.lead
+    && !ETAPAS_MORTAS.has(f.lead.stage)
+    && (f.lead.trilha || 'lead') === TRILHA_DE_VENDA
+    && f.lead.contact_id);
+  if (!fila.length) return;
+
+  // Respondeu depois da última rodada? Então não está perdido.
+  //
+  // A pergunta é sobre uma MENSAGEM DELE, e por isso é feita em
+  // `wa_messages`. Até 31/08/2026 ela era feita em
+  // `crm_leads.last_activity_at`, que não significa isso: a coluna é
+  // encostada por mudança de etapa, por classificação de contato e por
+  // envio nosso — inclusive pelo próprio follow-up. Qualquer uma dessas
+  // deixava `last_activity_at` na frente do `sent_at` e o lead passava a
+  // ser eternamente "alguém que respondeu", sem nunca ter respondido.
+  //
+  // Foi o que a classificação retroativa expôs: ela encostou a coluna de
+  // 43 leads num dia, e teria isentado todos eles do encerramento.
+  const ultimaResposta = await ultimaRespostaPorContato(
+    fila.map(f => f.lead.contact_id),
+    fila.reduce((min, f) => (f.sent_at < min ? f.sent_at : min), fila[0].sent_at),
+  );
+  if (!ultimaResposta) return;   // a leitura falhou: sem saber, ninguém é encerrado
+
+  for (const f of fila) {
     const lead = f.lead;
-    if (!lead || ETAPAS_MORTAS.has(lead.stage)) continue;
 
-    // "Perdido" é veredito de venda. Quem saiu da trilha de venda depois
-    // de a rodada ter sido enviada não é venda perdida — é atendimento que
-    // acabou, e quem o encerra é o consultor, com `finalizado`.
-    if ((lead.trilha || 'lead') !== TRILHA_DE_VENDA) continue;
-
-    // Respondeu depois da última rodada? Então não está perdido.
-    //
-    // A pergunta é sobre uma MENSAGEM DELE, e por isso é feita em
-    // `wa_messages`. Até 31/08/2026 ela era feita em
-    // `crm_leads.last_activity_at`, que não significa isso: a coluna é
-    // encostada por mudança de etapa, por classificação de contato e por
-    // envio nosso — inclusive pelo próprio follow-up. Qualquer uma dessas
-    // deixava `last_activity_at` na frente do `sent_at` e o lead passava a
-    // ser eternamente "alguém que respondeu", sem nunca ter respondido.
-    //
-    // Foi o que a classificação retroativa expôs: ela encostou a coluna de
-    // 43 leads num dia, e teria isentado todos eles do encerramento.
-    if (!lead.contact_id) continue;
-
-    const { data: resposta } = await supabase
-      .from('wa_messages')
-      .select('id')
-      .eq('contact_id', lead.contact_id)
-      .eq('direction', 'inbound')
-      .gt('created_at', f.sent_at)
-      .limit(1);
-
-    if (resposta?.length) continue;
+    const respondeu = ultimaResposta.get(lead.contact_id);
+    if (respondeu && new Date(respondeu) > new Date(f.sent_at)) continue;
 
     // Não respondeu, mas tem aula depois da última mensagem: não é perda.
     //

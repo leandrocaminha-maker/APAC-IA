@@ -313,6 +313,78 @@
   pre.saida { background: var(--fundo); border: 1px solid var(--borda); border-radius: 8px;
     padding: 10px; font-size: 12px; overflow: auto; max-height: 220px; white-space: pre-wrap; }
 
+  /* ── Gerência ────────────────────────────── */
+  .ger-cabeca { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .ger-cabeca h2 { margin: 0; font-size: 18px; }
+  .ger-cabeca .chips { margin-bottom: 0; }
+  .ger-nota { color: var(--suave); font-size: 13px; }
+  .ger-faixa { padding: 9px 13px; border-radius: 9px; font-size: 13px; margin-bottom: 14px;
+    border: 1px solid var(--borda); background: var(--painel); color: var(--suave); }
+  .ger-faixa.ligado { background: #14532d; border-color: var(--acento-escuro); color: #bbf7d0; }
+  .ger-grade { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 14px; margin-bottom: 16px; }
+  @media (max-width: 980px) { .ger-grade { grid-template-columns: 1fr; } }
+  .ger-bloco { background: var(--painel); border: 1px solid var(--borda); border-radius: 11px; padding: 14px 16px; }
+  .ger-bloco > h3 { margin: 0 0 2px; font-size: 15px; }
+  .ger-bloco > .ger-nota { margin: 0 0 12px; font-size: 12px; }
+  .ger-sub { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--suave); }
+  .ger-grupo { margin-bottom: 14px; }
+  .ger-grupo:last-child { margin-bottom: 0; }
+  .ger-grupo h4 { margin: 0 0 2px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+  .ger-grupo h4 .qtd { background: var(--painel-2); border-radius: 99px; padding: 0 8px; font-size: 12px; }
+  .ger-grupo > small { color: var(--suave); font-size: 12px; }
+  .ger-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 8px 0;
+    border-bottom: 1px solid #24324a; cursor: pointer; font-size: 14px; }
+  .ger-item:last-of-type { border-bottom: 0; }
+  .ger-item:hover b { color: var(--info); }
+  .ger-item small { color: var(--suave); font-size: 12px; }
+  .ger-item .citacao { grid-column: 1 / -1; color: var(--suave); font-size: 13px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ger-item .lado, .ger-aula .lado { text-align: right; white-space: nowrap; font-size: 12px; display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+  .selo { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 99px;
+    border: 1px solid var(--borda); color: var(--suave); white-space: nowrap; }
+  .selo.alta { color: #fca5a5; border-color: #7f1d1d; background: #450a0a; }
+  .selo.media { color: #fcd34d; border-color: #92400e; }
+  .selo.ok { color: #bbf7d0; border-color: var(--acento-escuro); }
+  .selo.info { color: #bfdbfe; border-color: #1d4ed8; }
+  .ger-mais { background: transparent; border: 0; color: var(--info); padding: 6px 0 0; font-size: 13px; }
+  .ger-dia { margin: 12px 0 2px; font-size: 12px; color: var(--suave); text-transform: uppercase; letter-spacing: .5px; }
+  .ger-dia:first-child { margin-top: 0; }
+  .ger-aula { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; gap: 2px 10px; padding: 7px 0;
+    border-bottom: 1px solid #24324a; font-size: 14px; cursor: pointer; }
+  .ger-aula:hover b { color: var(--info); }
+  .ger-aula .hora { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .ger-aula small { color: var(--suave); font-size: 12px; }
+  .ger-aula .regras { grid-column: 2 / -1; display: flex; gap: 4px; flex-wrap: wrap; }
+  .ger-vazio { color: var(--suave); font-size: 13px; padding: 6px 0; }
+  .ger-cfg { display: grid; gap: 16px; }
+  .ger-cfg h4 { margin: 0 0 6px; font-size: 13px; }
+  .ger-linha { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .ger-linha label { font-size: 13px; color: var(--suave); display: flex; flex-direction: column; gap: 4px; }
+  .ger-linha label .campo { width: auto; min-width: 120px; }
+  .ger-linha label.largo { flex: 1; min-width: 240px; }
+  .ger-linha label.largo .campo { width: 100%; }
+  .ger-alerta-cfg { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px;
+    align-items: center; padding: 8px 0; border-bottom: 1px solid #24324a; font-size: 14px; }
+  .ger-alerta-cfg:last-child { border-bottom: 0; }
+  .ger-alerta-cfg small { display: block; color: var(--suave); font-size: 12px; }
+  .ger-alerta-cfg .limite { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--suave); }
+  .ger-num { width: 72px !important; min-width: 0 !important; }
+  .ger-regra { border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; background: var(--fundo); margin-bottom: 10px; }
+  .ger-regra.inativa { opacity: .72; }
+  .ger-regra .topo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ger-regra .topo .nome { flex: 1; min-width: 180px; width: auto; }
+  .ger-regra .secao { margin-top: 10px; }
+  .ger-regra .secao > span { display: block; font-size: 11px; color: var(--suave); text-transform: uppercase;
+    letter-spacing: .4px; margin-bottom: 5px; }
+  .pilulas { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .pilula { border: 1px solid var(--borda); background: var(--painel); color: var(--suave); border-radius: 999px;
+    padding: 4px 11px; font-size: 13px; cursor: pointer; user-select: none; }
+  .pilula.ligada { background: var(--acento-escuro); border-color: var(--acento); color: #f0fdf4; }
+  .ger-regra .previa { margin-top: 10px; font-size: 13px; color: var(--info); }
+  .interruptor { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: var(--texto); }
+  .interruptor input { width: 18px; height: 18px; accent-color: var(--acento); margin: 0; }
+  .ger-modelos { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+
   .aviso { padding: 10px 13px; border-radius: 9px; font-size: 13px; margin-bottom: 12px; }
   .aviso.erro { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
   .aviso.ok { background: #14532d; color: #bbf7d0; border: 1px solid var(--acento-escuro); }
@@ -377,6 +449,7 @@
     <div class="marca">AP ACADEMIA<small>CRM · Leia</small></div>
     <nav>
       <button data-vista="funil" class="ativo">Funil</button>
+      <button data-vista="gerencia" id="nav-gerencia" style="display:none">Gerência</button>
       <button data-vista="conversas">Conversas</button>
       <button data-vista="simulador">Simulador</button>
       <button data-vista="ajustes">Ajustes</button>
@@ -526,6 +599,62 @@
           <textarea class="campo" id="sim-texto" rows="1" placeholder="Escreva como se fosse um cliente…"></textarea>
           <button class="btn primario" type="submit" id="btn-sim-enviar">Enviar</button>
         </form>
+      </div>
+    </section>
+
+    <!-- ── GERÊNCIA (admin) ───────────────────── -->
+    <!--
+      O que está parado do nosso lado, as aulas experimentais e os
+      desfechos — e os avisos por WhatsApp ao gerente e à coordenação.
+    -->
+    <section class="vista" id="vista-gerencia">
+      <div class="ger-cabeca">
+        <h2>Painel gerencial</h2>
+        <div class="chips" id="ger-periodo">
+          <button class="chip" data-dias="7">7 dias</button>
+          <button class="chip ativo" data-dias="30">30 dias</button>
+          <button class="chip" data-dias="90">90 dias</button>
+        </div>
+        <button class="btn pequeno" id="btn-ger-atualizar">Atualizar</button>
+        <span class="ger-nota" id="ger-gerado"></span>
+      </div>
+      <div class="ger-faixa" id="ger-faixa"></div>
+      <div class="metricas" id="ger-cartoes"></div>
+
+      <div class="ger-grade">
+        <div class="ger-bloco">
+          <h3>Precisa da sua atenção</h3>
+          <p class="ger-nota">Atendimentos de venda abertos parados do nosso lado. Clique para abrir a ficha.</p>
+          <div id="ger-alertas"></div>
+        </div>
+        <div class="ger-bloco">
+          <h3>Aulas experimentais</h3>
+          <p class="ger-nota">Próximas aulas e quem será avisado. Abaixo, as dos últimos 14 dias e o desfecho de cada uma.</p>
+          <div id="ger-proximas"></div>
+          <div class="ger-sub">Últimos 14 dias</div>
+          <div id="ger-recentes"></div>
+        </div>
+      </div>
+
+      <div class="ger-bloco" style="margin-bottom:16px">
+        <h3>Desfechos do período</h3>
+        <p class="ger-nota" id="ger-desfechos-nota"></p>
+        <div id="ger-desfechos"></div>
+      </div>
+
+      <div class="ger-bloco">
+        <h3>Avisos por WhatsApp</h3>
+        <p class="ger-nota">
+          A Leia manda, pelo número da academia, uma mensagem por pessoa a cada 10 minutos com o que for novo.
+          Situação com mais de 7 dias aparece aqui, mas não vira mensagem. Os números cadastrados ficam fora do funil:
+          resposta deles não abre atendimento nem é respondida pela Leia.
+        </p>
+        <div id="ger-config"></div>
+        <div class="ger-linha" style="margin-top:16px">
+          <button class="btn primario" id="btn-ger-salvar">Salvar avisos</button>
+          <button class="btn" id="btn-ger-teste">Enviar mensagem de teste</button>
+          <span class="ger-nota" id="ger-config-estado"></span>
+        </div>
       </div>
     </section>
 
@@ -916,6 +1045,7 @@ async function mostrarVista(nome) {
   if (nome === 'conversas') await carregarConversas();
   if (nome === 'simulador') await carregarSimulador();
   if (nome === 'ajustes') await carregarAjustes();
+  if (nome === 'gerencia') await carregarGerencia();
   if (nome === 'acompanhamento') await Promise.all([carregarAcompanhamento(), carregarEncaminhamentos(), carregarSimuladorAcomp()]);
 }
 
@@ -1878,6 +2008,414 @@ $('#sim-texto').addEventListener('keydown', e => {
 });
 
 // ══════════════════════════════════════════════════════
+// Gerência — só admin
+//
+// A tela lê tudo de GET /gerencia. A configuração dos avisos é editada numa
+// cópia local (`ger.config`) e só vai ao servidor em "Salvar avisos" — o
+// servidor a normaliza e devolve a versão que vale.
+// ══════════════════════════════════════════════════════
+
+const ger = { dias: 30, dados: null, config: null, alterado: false, expandidos: new Set() };
+
+const GER_MODELOS = {
+  bebe: { nome: 'Bebês (até 3 anos)', eventos: ['agendada', 'vespera'], idadeMin: 0, idadeMax: 3, atividades: ['Natação Bebê'] },
+  infantil: { nome: 'Natação infantil (4 a 12 anos)', eventos: ['agendada'], idadeMin: 4, idadeMax: 12, atividades: ['Natação Infantil', 'Peixinhos'] },
+  presenca: { nome: 'Aula sem presença registrada', eventos: ['sem_presenca'] },
+  branco: { nome: 'Nova regra', eventos: ['agendada'] },
+};
+
+const normTxt = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const diaSPde = iso => new Date(new Date(iso).getTime() - 3 * 3600e3).toISOString().slice(0, 10);
+const semanaSP = iso => new Date(new Date(iso).getTime() - 3 * 3600e3).getUTCDay();
+const gerHora = iso => new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).replace(':', 'h');
+
+function haQuantoTela(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const h = Math.floor(ms / 3600e3);
+  if (h < 1) return `há ${Math.max(1, Math.floor(ms / 60000))} min`;
+  if (h < 48) return `há ${h}h`;
+  return `há ${Math.floor(h / 24)} dias`;
+}
+
+/** A mesma regra do servidor (gerencia-regras.js), para a prévia da tela. */
+function regraCasaTela(r, a) {
+  const temFaixa = r.idadeMin != null || r.idadeMax != null;
+  if (temFaixa) {
+    if (a.idade == null) { if (!r.semIdade) return false; }
+    else {
+      if (r.idadeMin != null && a.idade < r.idadeMin) return false;
+      if (r.idadeMax != null && a.idade > r.idadeMax) return false;
+    }
+  }
+  if (r.atividades?.length && !r.atividades.some(x => normTxt(a.atividade).includes(normTxt(x)))) return false;
+  if (r.diasSemana?.length && !r.diasSemana.includes(semanaSP(a.experimental_at))) return false;
+  return true;
+}
+
+async function carregarGerencia() {
+  $('#ger-gerado').textContent = 'Carregando…';
+  const d = await api('/gerencia?dias=' + ger.dias);
+  ger.dados = d;
+  if (!ger.alterado) ger.config = JSON.parse(JSON.stringify(d.config));
+  renderGerencia();
+}
+
+function renderGerencia() {
+  renderGerFaixa();
+  renderGerCartoes();
+  renderGerAlertas();
+  renderGerAulas();
+  renderGerDesfechos();
+  renderGerConfig();
+  $('#ger-gerado').textContent = 'atualizado às ' + new Date(ger.dados.geradoEm)
+    .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderGerFaixa() {
+  const c = ger.dados.config;
+  const ativas = c.aulas.regras.filter(r => r.ativa).length;
+  const el = $('#ger-faixa');
+  if (c.avisos.ligado && (c.avisos.gerente.length || c.avisos.coordenacao.length)) {
+    el.className = 'ger-faixa ligado';
+    el.textContent = `Avisos por WhatsApp ligados · ${c.avisos.gerente.length} gerente(s) · ` +
+      `${c.avisos.coordenacao.length} na coordenação · das ${c.avisos.horaInicio} às ${c.avisos.horaFim} · ` +
+      `${ativas} regra(s) de aula ativa(s)`;
+  } else {
+    el.className = 'ger-faixa';
+    el.textContent = c.avisos.ligado
+      ? 'Avisos ligados, mas sem nenhum número cadastrado — ninguém recebe. Configure no fim da página.'
+      : 'Avisos por WhatsApp desligados: o painel funciona, mas ninguém é avisado. Configure no fim da página.';
+  }
+}
+
+function renderGerCartoes() {
+  const d = ger.dados;
+  const graves = d.alertas.filter(a => a.gravidade === 'alta').length;
+  const hoje = diaSPde(new Date().toISOString());
+  const em7 = Date.now() + 7 * 864e5;
+  const aulasHoje = d.aulas.proximas.filter(a => diaSPde(a.experimental_at) === hoje).length;
+  const aulas7 = d.aulas.proximas.filter(a => new Date(a.experimental_at).getTime() <= em7).length;
+  const semDesfecho = d.alertas.filter(a => a.tipo === 'aula_sem_desfecho').length;
+  const f = d.desfechos;
+  const cartao = (rotulo, valor, nota, classe = '') =>
+    `<div class="cartao ${classe}"><div class="rotulo">${rotulo}</div><div class="valor">${valor}</div><div class="nota">${nota}</div></div>`;
+  $('#ger-cartoes').innerHTML = [
+    cartao('Precisa de atenção', d.alertas.length, `${graves} há mais tempo`, graves ? 'ruim' : d.alertas.length ? 'atencao' : 'bom'),
+    cartao('Aulas hoje', aulasHoje, `${aulas7} nos próximos 7 dias`),
+    cartao('Aulas sem desfecho', semDesfecho, 'aula feita, sem venda nem perda', semDesfecho ? 'atencao' : ''),
+    cartao('Aula → venda', f.conversao == null ? '—' : f.conversao + '%', `${f.ganhas} de ${f.aulas} aulas em ${d.dias} dias`, f.conversao ? 'bom' : ''),
+    cartao('Atendimentos abertos', d.abertos, 'venda, sem os encerrados'),
+  ].join('');
+}
+
+function renderGerAlertas() {
+  const { alertas, catalogos } = ger.dados;
+  if (!alertas.length) { $('#ger-alertas').innerHTML = '<div class="ger-vazio">Nada parado agora.</div>'; return; }
+  const LIMITE = 6;
+  $('#ger-alertas').innerHTML = Object.entries(catalogos.tipos).map(([tipo, t]) => {
+    const doTipo = alertas.filter(a => a.tipo === tipo);
+    if (!doTipo.length) return '';
+    const todos = ger.expandidos.has(tipo);
+    const visiveis = todos ? doTipo : doTipo.slice(0, LIMITE);
+    return `<div class="ger-grupo">
+      <h4>${esc(t.rotulo)} <span class="qtd">${doTipo.length}</span></h4>
+      <small>${esc(t.descricao)}</small>
+      ${visiveis.map(a => `
+        <div class="ger-item" data-lead="${a.leadId}">
+          <div><b>${esc(a.nome)}</b> <small>${esc(telefoneBonito(a.telefone))} · ${esc(a.consultor || 'sem dono')} · ${esc(estado.rotulos[a.etapa] || a.etapa)}</small></div>
+          <div class="lado"><span class="selo ${a.gravidade}">${haQuantoTela(a.desde)}</span>${a.avisado ? '<span class="selo ok">avisado</span>' : ''}</div>
+          ${a.detalhe || a.quemResponde === 'leia' ? `<div class="citacao">${a.detalhe ? '“' + esc(a.detalhe) + '”' : ''}${a.quemResponde === 'leia' ? ' — a Leia não respondeu' : ''}</div>` : ''}
+        </div>`).join('')}
+      ${doTipo.length > LIMITE ? `<button class="ger-mais" data-expandir="${tipo}">${todos ? 'Mostrar menos' : `Ver os ${doTipo.length}`}</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function rotuloDoDia(iso) {
+  const dia = diaSPde(iso);
+  const hoje = diaSPde(new Date().toISOString());
+  const amanha = diaSPde(new Date(Date.now() + 864e5).toISOString());
+  if (dia === hoje) return 'Hoje';
+  if (dia === amanha) return 'Amanhã';
+  return new Date(iso).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
+}
+
+function seloLembrete(l) {
+  if (!l) return '<span class="selo">sem lembrete</span>';
+  if (l.status === 'enviado') return '<span class="selo ok">lembrete enviado</span>';
+  if (l.status === 'pendente') return '<span class="selo info">lembrete agendado</span>';
+  return `<span class="selo">lembrete ${esc(l.status)}</span>`;
+}
+
+function renderGerAulas() {
+  const { proximas, recentes } = ger.dados.aulas;
+  const idade = a => a.idade != null ? `<small> · ${a.idade} ${a.idade === 1 ? 'ano' : 'anos'}</small>` : '';
+
+  let dia = null;
+  $('#ger-proximas').innerHTML = proximas.length ? proximas.map(a => {
+    const rotulo = rotuloDoDia(a.experimental_at);
+    const cabeca = rotulo !== dia ? `<div class="ger-dia">${esc(rotulo)}</div>` : '';
+    dia = rotulo;
+    return `${cabeca}<div class="ger-aula" data-lead="${a.leadId}">
+      <span class="hora">${gerHora(a.experimental_at)}</span>
+      <div><b>${esc(a.nome)}</b>${idade(a)}<br><small>${esc(a.atividade || 'atividade não informada')} · ${esc(a.consultor || 'sem dono')}</small></div>
+      <div class="lado">${seloLembrete(a.lembrete)}</div>
+      ${a.regras?.length ? `<div class="regras">${a.regras.map(r => `<span class="selo info">avisa: ${esc(r)}</span>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('') : '<div class="ger-vazio">Nenhuma aula experimental marcada.</div>';
+
+  $('#ger-recentes').innerHTML = recentes.length ? recentes.map(a => {
+    const presenca = a.experimental_status === 'realizada'
+      ? '<span class="selo ok">presença registrada</span>' : '<span class="selo">sem presença registrada</span>';
+    const desfecho = a.stage === 'ganho' ? '<span class="selo ok">virou venda</span>'
+      : a.stage === 'perdido' ? `<span class="selo alta" title="${esc(a.lost_reason || '')}">perdido</span>`
+      : a.stage === 'finalizado' ? '<span class="selo">finalizado</span>'
+      : `<span class="selo media">em aberto ${haQuantoTela(a.experimental_at)}</span>`;
+    return `<div class="ger-aula" data-lead="${a.leadId}">
+      <span class="hora">${new Date(a.experimental_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+      <div><b>${esc(a.nome)}</b>${idade(a)}<br><small>${esc(a.atividade || 'atividade não informada')} · ${esc(a.consultor || 'sem dono')}</small></div>
+      <div class="lado">${presenca}${desfecho}</div>
+    </div>`;
+  }).join('') : '<div class="ger-vazio">Nenhuma aula nos últimos 14 dias.</div>';
+}
+
+function renderGerDesfechos() {
+  const f = ger.dados.desfechos;
+  $('#ger-desfechos-nota').textContent = `Aulas experimentais e vendas dos últimos ${ger.dados.dias} dias.` +
+    (f.aulas && !f.comPresenca ? ' Nenhuma aula tem presença registrada: o EVO só avisa quando a aula é fechada com presença.' : '');
+  const cartao = (rotulo, valor, nota = '', classe = '') =>
+    `<div class="cartao ${classe}"><div class="rotulo">${rotulo}</div><div class="valor">${valor}</div><div class="nota">${nota}</div></div>`;
+  const maior = Math.max(1, ...f.motivos.map(m => m.quantos));
+  $('#ger-desfechos').innerHTML = `
+    <div class="metricas">
+      ${cartao('Aulas feitas', f.aulas, `${f.comPresenca} com presença registrada`)}
+      ${cartao('Viraram venda', f.ganhas, f.conversao == null ? '' : `${f.conversao}% das aulas`, f.ganhas ? 'bom' : '')}
+      ${cartao('Perdidas', f.perdidas, 'depois da aula', f.perdidas ? 'ruim' : '')}
+      ${cartao('Em aberto', f.emAberto, 'sem venda nem perda', f.emAberto ? 'atencao' : '')}
+      ${cartao('Vendas no período', f.vendas, `${f.vendasComAula} com aula · ${dinheiro(f.receita)}`)}
+      ${cartao('Perdas no período', f.perdas, 'atendimentos encerrados como perdidos')}
+    </div>
+    ${f.motivos.length ? `<div class="ger-sub" style="margin-top:4px">Motivos de perda</div>
+      ${f.motivos.map(m => `<div class="funil-linha larga">
+        <span title="${esc(m.motivo)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.motivo)}</span>
+        <span class="barra"><i style="width:${m.quantos / maior * 100}%;background:var(--erro)"></i></span>
+        <span class="qtd">${m.quantos}</span></div>`).join('')}` : ''}`;
+}
+
+// ── Configuração dos avisos ───────────────────
+
+function renderGerConfig() {
+  const c = ger.config;
+  const cat = ger.dados.catalogos;
+  const proximas = ger.dados.aulas.proximas;
+
+  const alertasCfg = Object.entries(cat.tipos).map(([tipo, t]) => {
+    const a = c.alertas[tipo];
+    return `<div class="ger-alerta-cfg">
+      <input type="checkbox" data-alerta="${tipo}" data-prop="ativo" ${a.ativo ? 'checked' : ''}>
+      <div>${esc(t.rotulo)}<small>${esc(t.descricao)}</small></div>
+      <label class="limite">${esc(t.limite.rotulo)}
+        <input class="campo ger-num" type="number" min="${t.limite.min}" max="${t.limite.max}" value="${a[t.limite.campo]}"
+               data-alerta="${tipo}" data-prop="${t.limite.campo}"></label>
+    </div>`;
+  }).join('');
+
+  const regras = c.aulas.regras.map((r, i) => {
+    const pilulas = (lista, campo, valores) => valores.map(([v, rotulo]) =>
+      `<span class="pilula ${lista.includes(v) ? 'ligada' : ''}" data-regra="${i}" data-lista="${campo}" data-valor="${esc(v)}">${esc(rotulo)}</span>`).join('');
+    const atividades = [...new Set([...cat.atividades, ...r.atividades])];
+    const casam = proximas.filter(a => regraCasaTela(r, a)).length;
+    return `<div class="ger-regra ${r.ativa ? '' : 'inativa'}">
+      <div class="topo">
+        <label class="interruptor"><input type="checkbox" data-regra="${i}" data-prop="ativa" ${r.ativa ? 'checked' : ''}> ativa</label>
+        <input class="campo nome" value="${esc(r.nome)}" data-regra="${i}" data-prop="nome" maxlength="60">
+        <select class="campo" style="width:auto" data-regra="${i}" data-prop="destino">
+          ${Object.entries(cat.destinos).map(([v, rot]) => `<option value="${v}" ${r.destino === v ? 'selected' : ''}>avisar: ${esc(rot)}</option>`).join('')}
+        </select>
+        <button class="btn pequeno perigo" data-remover="${i}">Remover</button>
+      </div>
+      <div class="secao"><span>Quando avisar</span>
+        <div class="pilulas">${pilulas(r.eventos, 'eventos', Object.entries(cat.eventos))}
+          ${r.eventos.includes('sem_desfecho') ? `<label class="ger-nota" style="display:flex;gap:6px;align-items:center">N =
+            <input class="campo ger-num" type="number" min="1" max="30" value="${r.diasSemDesfecho}" data-regra="${i}" data-prop="diasSemDesfecho"> dias</label>` : ''}
+        </div></div>
+      <div class="secao"><span>Idade do aluno</span>
+        <div class="pilulas">
+          <label class="ger-nota" style="display:flex;gap:6px;align-items:center">de
+            <input class="campo ger-num" type="number" min="0" max="100" value="${r.idadeMin ?? ''}" placeholder="—" data-regra="${i}" data-prop="idadeMin">
+            a <input class="campo ger-num" type="number" min="0" max="100" value="${r.idadeMax ?? ''}" placeholder="—" data-regra="${i}" data-prop="idadeMax"> anos</label>
+          <label class="interruptor" style="font-size:13px"><input type="checkbox" data-regra="${i}" data-prop="semIdade" ${r.semIdade ? 'checked' : ''}>
+            avisar também quando a idade não está cadastrada</label>
+        </div></div>
+      <div class="secao"><span>Aula (nenhuma marcada = todas)</span>
+        <div class="pilulas">${pilulas(r.atividades, 'atividades', atividades.map(a => [a, a]))}
+          <input class="campo" style="width:170px;padding:4px 10px" placeholder="outra palavra + Enter" data-nova-atividade="${i}">
+        </div></div>
+      <div class="secao"><span>Dia da semana da aula (nenhum = todos)</span>
+        <div class="pilulas">${pilulas(r.diasSemana, 'diasSemana', cat.diasSemana.map((d, n) => [n, d]))}</div></div>
+      <div class="previa">${casam} das ${proximas.length} próximas aulas casam com esta regra${r.ativa ? '' : ' (ela está inativa)'}.</div>
+    </div>`;
+  }).join('');
+
+  $('#ger-config').innerHTML = `<div class="ger-cfg">
+    <div>
+      <label class="interruptor"><input type="checkbox" data-av="ligado" ${c.avisos.ligado ? 'checked' : ''}> <b>Mandar avisos por WhatsApp</b></label>
+    </div>
+    <div class="ger-linha">
+      <label class="largo">WhatsApp do gerente (separe por vírgula)
+        <input class="campo" data-av="gerente" value="${esc(c.avisos.gerente.map(telefoneBonito).join(', '))}" placeholder="(11) 98259-2538"></label>
+      <label class="largo">WhatsApp da coordenação
+        <input class="campo" data-av="coordenacao" value="${esc(c.avisos.coordenacao.map(telefoneBonito).join(', '))}" placeholder="(11) 9…"></label>
+      <label>Das <input class="campo" type="time" data-av="horaInicio" value="${c.avisos.horaInicio}"></label>
+      <label>Às <input class="campo" type="time" data-av="horaFim" value="${c.avisos.horaFim}"></label>
+    </div>
+    <div>
+      <h4>Situações que avisam o gerente</h4>
+      ${alertasCfg}
+    </div>
+    <div>
+      <h4>Aulas experimentais que avisam</h4>
+      <p class="ger-nota" style="margin:0 0 10px">Cada regra combina condições (todas precisam valer). A mesma aula pode casar mais de uma regra;
+        cada aviso sai uma vez por aula, evento e regra.</p>
+      ${regras || '<div class="ger-vazio">Nenhuma regra.</div>'}
+      <div class="ger-modelos"><span class="ger-nota">Nova regra:</span>
+        <button class="btn pequeno" data-modelo="bebe">Bebês (até 3 anos)</button>
+        <button class="btn pequeno" data-modelo="infantil">Natação infantil</button>
+        <button class="btn pequeno" data-modelo="presenca">Sem presença</button>
+        <button class="btn pequeno" data-modelo="branco">Em branco</button>
+      </div>
+    </div>
+  </div>`;
+  $('#ger-config-estado').textContent = ger.alterado ? 'Alterações não salvas.' : '';
+}
+
+function gerAlterou() {
+  ger.alterado = true;
+  $('#ger-config-estado').textContent = 'Alterações não salvas.';
+}
+
+function numeroOuNulo(v) {
+  if (v === '' || v == null) return null;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Um ouvinte para a seção inteira: os campos são redesenhados a cada mudança de pílula.
+$('#ger-config').addEventListener('change', e => {
+  const el = e.target;
+  const c = ger.config;
+  if (el.dataset.av) {
+    const campo = el.dataset.av;
+    if (campo === 'ligado') c.avisos.ligado = el.checked;
+    else if (campo === 'gerente' || campo === 'coordenacao') c.avisos[campo] = el.value.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+    else c.avisos[campo] = el.value;
+    return gerAlterou();
+  }
+  if (el.dataset.alerta) {
+    const a = c.alertas[el.dataset.alerta];
+    a[el.dataset.prop] = el.type === 'checkbox' ? el.checked : numeroOuNulo(el.value);
+    return gerAlterou();
+  }
+  if (el.dataset.regra != null && el.dataset.prop) {
+    const r = c.aulas.regras[+el.dataset.regra];
+    const p = el.dataset.prop;
+    if (el.type === 'checkbox') r[p] = el.checked;
+    else if (['idadeMin', 'idadeMax', 'diasSemDesfecho'].includes(p)) r[p] = numeroOuNulo(el.value);
+    else r[p] = el.value;
+    gerAlterou();
+    if (p !== 'nome') renderGerConfig();
+  }
+});
+
+$('#ger-config').addEventListener('click', e => {
+  const el = e.target.closest('[data-lista], [data-remover], [data-modelo]');
+  if (!el) return;
+  const regras = ger.config.aulas.regras;
+  if (el.dataset.lista) {
+    const r = regras[+el.dataset.regra];
+    const lista = el.dataset.lista;
+    const valor = lista === 'diasSemana' ? +el.dataset.valor : el.dataset.valor;
+    r[lista] = r[lista].includes(valor) ? r[lista].filter(v => v !== valor) : [...r[lista], valor];
+    if (lista === 'eventos' && !r.eventos.length) r.eventos = [valor];   // ao menos um evento
+  } else if (el.dataset.remover != null) {
+    if (!confirm(`Remover a regra "${regras[+el.dataset.remover].nome}"?`)) return;
+    regras.splice(+el.dataset.remover, 1);
+  } else if (el.dataset.modelo) {
+    regras.push({
+      id: 'regra-' + Date.now(), ativa: true, eventos: ['agendada'], idadeMin: null, idadeMax: null, semIdade: true,
+      atividades: [], diasSemana: [], destino: 'coordenacao', diasSemDesfecho: 3, ...GER_MODELOS[el.dataset.modelo],
+    });
+  }
+  gerAlterou();
+  renderGerConfig();
+});
+
+$('#ger-config').addEventListener('keydown', e => {
+  const el = e.target;
+  if (e.key !== 'Enter' || el.dataset.novaAtividade == null) return;
+  e.preventDefault();
+  const termo = el.value.trim();
+  if (!termo) return;
+  const r = ger.config.aulas.regras[+el.dataset.novaAtividade];
+  if (!r.atividades.includes(termo)) r.atividades.push(termo);
+  gerAlterou();
+  renderGerConfig();
+});
+
+$('#btn-ger-salvar').addEventListener('click', async () => {
+  const btn = $('#btn-ger-salvar');
+  btn.disabled = true;
+  try {
+    const r = await api('/gerencia/config', { corpo: { config: ger.config }, metodo: 'PUT' });
+    ger.alterado = false;
+    ger.config = JSON.parse(JSON.stringify(r.config));
+    toast('Avisos salvos.', 'ok');
+    await carregarGerencia();
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#btn-ger-teste').addEventListener('click', async () => {
+  if (ger.alterado) return toast('Salve os avisos antes de testar.', 'erro');
+  const btn = $('#btn-ger-teste');
+  btn.disabled = true;
+  try {
+    const r = await api('/gerencia/teste', { corpo: {} });
+    const ok = r.resultado.filter(x => x.ok).length;
+    toast(`Mensagem de teste enviada para ${ok} de ${r.resultado.length} número(s).`, ok ? 'ok' : 'erro');
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#ger-periodo').addEventListener('click', e => {
+  const b = e.target.closest('[data-dias]');
+  if (!b) return;
+  ger.dias = +b.dataset.dias;
+  $$('#ger-periodo .chip').forEach(c => c.classList.toggle('ativo', c === b));
+  carregarGerencia().catch(err => toast(err.message, 'erro'));
+});
+
+$('#btn-ger-atualizar').addEventListener('click', () => carregarGerencia().catch(err => toast(err.message, 'erro')));
+
+// Clique num alerta ou numa aula abre a ficha; "ver todos" expande o grupo.
+$('#vista-gerencia').addEventListener('click', e => {
+  const mais = e.target.closest('[data-expandir]');
+  if (mais) {
+    const t = mais.dataset.expandir;
+    ger.expandidos.has(t) ? ger.expandidos.delete(t) : ger.expandidos.add(t);
+    return renderGerAlertas();
+  }
+  const item = e.target.closest('.ger-item[data-lead], .ger-aula[data-lead]');
+  if (item) abrirFicha(item.dataset.lead).catch?.(err => toast(err.message, 'erro'));
+});
+
+// ══════════════════════════════════════════════════════
 // Acompanhamento (ensaio) — só admin
 // ══════════════════════════════════════════════════════
 
@@ -2304,6 +2842,7 @@ async function iniciar() {
   $('#quem-nome').textContent = eu.usuario.nome;
   $('#quem-papel').textContent = eu.usuario.papel;
   $('#nav-acompanhamento').style.display = eu.usuario.papel === 'admin' ? '' : 'none';
+  $('#nav-gerencia').style.display = eu.usuario.papel === 'admin' ? '' : 'none';
   if (eu.dryRun) $('#fita-dryrun').style.display = 'block';
 
   mostrarApp();

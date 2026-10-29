@@ -417,7 +417,9 @@ export const TIPOS_REGUA = ['ae_pos_aula', ...TIPOS_SONDAGEM, ...TIPOS_SILENCIO]
  */
 function ehNossaFala(sentBy) {
   const quem = String(sentBy || '');
-  if (quem === 'bot:briefing' || quem === 'bot:ponte' || quem.startsWith('bot:acompanhamento')) return false;
+  // `bot:gerencia` é o aviso do painel gerencial à equipe — não é conversa de venda.
+  if (quem === 'bot:briefing' || quem === 'bot:ponte' || quem === 'bot:gerencia'
+    || quem.startsWith('bot:acompanhamento')) return false;
   return quem === 'bot' || quem.startsWith('bot:') || quem.startsWith('human:');
 }
 

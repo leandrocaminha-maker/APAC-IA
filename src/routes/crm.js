@@ -26,6 +26,7 @@ import { funil } from '../services/funil.js';
 import { vendas } from '../services/vendas.js';
 import { followup } from '../services/followup.js';
 import { atendimento } from '../services/atendimento.js';
+import { gerencia } from '../services/gerencia.js';
 import { conexaoWhatsapp } from '../services/whatsapp-monitor.js';
 import { evoSync } from '../services/evo-sync.js';
 import { evoClient } from '../services/evo-client.js';
@@ -1246,6 +1247,32 @@ router.post('/api/acompanhamento/briefing-teste', exigirAdmin, rota(async (req, 
     const enc = await criarTeste({ profileId, alunoPhone });
     logger.info(`[acompanhamento] Briefing de teste pelo painel (${req.usuario.nome}) para ${enc.destinatario_nome}: ${enc.status}`);
     res.json({ ok: true, id: enc.id, destinatario: enc.destinatario_nome, status: enc.status, enviar_em: enc.enviar_em });
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+}));
+
+// ──────────────────────────────────────────────
+// Gerência — admin
+//
+// O que está parado do nosso lado, as aulas experimentais, os desfechos e
+// os avisos por WhatsApp ao gerente e à coordenação (ver gerencia.js).
+// ──────────────────────────────────────────────
+
+router.get('/api/gerencia', exigirAdmin, rota(async (req, res) => {
+  res.json(await gerencia.painel({ dias: req.query.dias }));
+}));
+
+router.put('/api/gerencia/config', exigirAdmin, rota(async (req, res) => {
+  const config = await gerencia.salvarConfig(req.body?.config, req.usuario);
+  res.json({ ok: true, config });
+}));
+
+router.post('/api/gerencia/teste', exigirAdmin, rota(async (req, res) => {
+  try {
+    const r = await gerencia.enviarTeste();
+    logger.info(`[gerencia] Aviso de teste pelo painel (${req.usuario.nome}): ${r.resultado.filter(x => x.ok).length} enviado(s)`);
+    res.json({ ok: true, ...r });
   } catch (err) {
     res.status(400).json({ erro: err.message });
   }

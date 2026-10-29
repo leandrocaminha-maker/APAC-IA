@@ -6,6 +6,51 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## Painel gerencial, funil limpo e duplicatas barradas (29/10/2026, à tarde)
+
+Pedido do responsável depois de ver 254 atendimentos "com a Leia e
+consultores": a verificação achou 289 de venda abertos, 61% sem mensagem
+havia mais de uma semana. Três defeitos e uma tela nova:
+
+- **Fila do encerramento entupida** (`followup-worker.js`,
+  `encerrarSemResposta`): lia só as 50 linhas mais antigas, e as 50 eram de
+  quem respondeu à segunda rodada — que casa o filtro para sempre. Os 41 que
+  deviam virar `perdido` estavam nas posições 51–94. Agora lê a fila
+  inteira, julga a rodada mais recente de cada lead e confere "respondeu
+  depois?" numa consulta só.
+- **Contato fantasma pelo identificador oculto** (`webhook.js`): a mesma
+  mensagem chegava pelo número e por `…@lid` (mesmo id), e a cópia virava
+  contato e lead. Agora a mensagem por `@lid` responde 200 à Evolution,
+  espera 15 s e é descartada se o id já entrou. Há conversa só por `@lid`
+  (a Camilla, 13 mensagens), por isso não se descarta o endereço.
+- **Limpeza única** (`scripts/limpar-funil.js`, rodado com `--valendo` na
+  tarde de 29/10, autorizado pelo responsável): 14 fantasmas e conversas da página de teste finalizados fora da
+  venda (contato "outro"), 80 travados — última mensagem nossa há mais de 14
+  dias — dados como perdidos ("Sem resposta do cliente há mais de 14 dias").
+  Venda aberta: 289 → 195. Os 44 em que o CLIENTE falou por último ficaram
+  para a equipe.
+- **Aba Gerência** (só admin; `gerencia.js`, `gerencia-regras.js`,
+  `gerencia-worker.js`, rotas `/crm/api/gerencia*`): situações que pedem o
+  gerente (cliente sem resposta, pedido de consultor sem dono, aula vendida
+  sem horário, aula feita sem desfecho, próxima ação vencida — cada uma com
+  liga/desliga e limite), aulas experimentais (próximas, com lembrete e quem
+  será avisado; últimos 14 dias com presença e desfecho), desfechos do
+  período (aula → venda, motivos de perda) e o quadro de avisos por
+  WhatsApp: números do gerente e da coordenação, horário, e regras de aula
+  por idade, atividade, dia da semana e momento (marcada, véspera, no dia,
+  sem presença, sem desfecho em N dias). Configuração e registro do que já
+  foi avisado em `crm_controle` (`gerencia:config`, `gerencia:avisados`),
+  sem migration. **Os avisos nascem desligados.** Os números cadastrados
+  ficam fora do funil nos dois sentidos (`ehDestinatario` no webhook), e o
+  aviso sai como `bot:gerencia`, fora do teto do número e da régua de
+  silêncio. Situação com mais de 7 dias aparece no painel e não vira
+  mensagem. `GERENCIA_MINUTOS` (padrão 10) é opcional.
+
+Achado no caminho: nas 22 aulas experimentais dos últimos 30 dias, nenhuma
+tem presença registrada — o aviso "aula experimental realizada" do EVO
+quase nunca chega. O painel diz isso; resolver é fechar a aula com presença
+no EVO.
+
 ## A aula marcada no balcão chega ao lead; a régua de silêncio respeita a aula (29/10/2026)
 
 Pedido do responsável depois da análise de seis conversas (Hellen, Cristiane,

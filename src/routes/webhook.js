@@ -21,6 +21,8 @@ import { SENT_BY_PONTE, idDaCitacao, textoDeEspera } from '../services/acompanha
 import { transcreverAudio } from '../services/transcricao.js';
 import { numeroAlternativo } from '../services/numero-alternativo.js';
 import { pesquisa } from '../services/pesquisa.js';
+import { dormir } from '../lib/ritmo.js';
+import { gerencia } from '../services/gerencia.js';
 
 const router = Router();
 
@@ -86,6 +88,15 @@ router.post('/evolution', async (req, res) => {
     switch (eventType) {
       case 'messages.upsert':
       case 'MESSAGES_UPSERT':
+        // A mensagem pelo identificador oculto espera a cópia pelo número
+        // real — e a Evolution não pode ficar com a conexão presa esse
+        // tempo. A resposta sai antes, como no número alternativo.
+        if (ehIdentificadorOculto(event)) {
+          res.status(200).json({ received: true });
+          tratarIdentificadorOculto(event).catch(err =>
+            logger.error('[webhook] Mensagem por identificador oculto falhou:', err.message));
+          return;
+        }
         await handleIncomingMessage(event);
         break;
 
@@ -181,6 +192,61 @@ router.post('/evo', async (req, res) => {
     }
   }
 });
+
+// ──────────────────────────────────────────────
+// Identificador oculto do WhatsApp (@lid)
+//
+// O WhatsApp passou a endereçar algumas pessoas por um identificador que
+// não é o número (`124094842454020@lid`). Às vezes a MESMA mensagem chega
+// duas vezes — pelo número real e pelo identificador, com o mesmo id —, e
+// a segunda virava um contato novo, com conversa e lead próprios: um lead
+// fantasma em "em conversa" que ninguém respondia nem fechava. Em
+// 29/10/2026 eram 11 leads abertos assim; nos 15 pares encontrados, o
+// número real chegou primeiro em 14.
+//
+// Mas há conversa que só existe pelo identificador (a Camilla trocou 13
+// mensagens com a Leia assim, todas respondidas), então descartar o
+// endereço inteiro perderia gente. O que se descarta é a CÓPIA: espera-se
+// alguns segundos e, se a mensagem com o mesmo id já entrou, esta é
+// ignorada. Sem cópia, segue o caminho de sempre.
+// ──────────────────────────────────────────────
+
+/** Tempo para a cópia pelo número real chegar. O par mais lento visto levou 8 s. */
+const ESPERA_COPIA_MS = 15_000;
+
+function chaveDoEvento(event) {
+  const data = event?.data || event || {};
+  const messageData = data.message || data;
+  return data.key || messageData.key || {};
+}
+
+/** Mensagem RECEBIDA pelo identificador oculto? As que saem de nós seguem direto. */
+function ehIdentificadorOculto(event) {
+  const key = chaveDoEvento(event);
+  return String(key.remoteJid || '').endsWith('@lid') && !key.fromMe && !!key.id;
+}
+
+async function tratarIdentificadorOculto(event) {
+  const key = chaveDoEvento(event);
+  await dormir(ESPERA_COPIA_MS);
+
+  const { data: jaEntrou, error } = await supabase
+    .from('wa_messages')
+    .select('id, contact_id')
+    .eq('evolution_msg_id', key.id)
+    .eq('direction', 'inbound')
+    .limit(1);
+
+  if (!error && jaEntrou?.length) {
+    logger.info(
+      `[webhook] Cópia pelo identificador oculto (${key.remoteJid}) de mensagem que já entrou ` +
+      `pelo contato ${jaEntrou[0].contact_id} — ignorada`
+    );
+    return;
+  }
+
+  await handleIncomingMessage(event);
+}
 
 /**
  * Processa mensagem recebida do WhatsApp.
@@ -371,6 +437,14 @@ async function handleIncomingMessage(event) {
     })) return;
   } catch (err) {
     logger.error('[webhook] Porta da equipe falhou — a mensagem segue o caminho normal:', err.message);
+  }
+
+  // Quem recebe os avisos do painel gerencial (gerente, coordenação) não é
+  // lead. A mensagem fica gravada na conversa daquele número, e mais nada:
+  // sem funil, sem Leia.
+  if (await gerencia.ehDestinatario(phone).catch(() => false)) {
+    logger.info(`[webhook] Mensagem de ${phone} (avisos do painel gerencial) registrada, fora do funil`);
+    return;
   }
 
   // Aluno do acompanhamento (§5.1 e §6.1): "ATIVAR <código>" e "PAUSAR
@@ -810,6 +884,11 @@ async function tratarConsentimentoDeCampanha({ phone, contact, conversation, con
  *    (aí a mensagem da Leia foi gravada com `evolution_msg_id` nulo).
  */
 async function registrarMensagemDeSaida({ phone, content, contentType, evolutionMsgId }) {
+  // Para quem recebe os avisos do painel gerencial, o que sai do número é
+  // o próprio aviso (gravado por `gerencia.js`) — e lido aqui como
+  // "consultor escrevendo do aparelho", abriria um lead para o gerente.
+  if (await gerencia.ehDestinatario(phone).catch(() => false)) return;
+
   const contact = await getOrCreateContact(phone);
   const conversation = await getOrCreateConversation(contact.id);
 

@@ -24,6 +24,7 @@ import { startFollowupWorker } from './workers/followup-worker.js';
 import { startWhatsappMonitor } from './services/whatsapp-monitor.js';
 import { startCampanhaWorker } from './workers/campanha-worker.js';
 import { startAcompanhamentoWorker } from './workers/acompanhamento-worker.js';
+import { startGerenciaWorker } from './workers/gerencia-worker.js';
 
 const app = express();
 
@@ -162,6 +163,9 @@ app.listen(config.port, () => {
   // Acompanhamento dos alunos do Prescrev: nasce desligado e só ensaia,
   // ver config.acompanhamento
   startAcompanhamentoWorker();
+
+  // Avisos do painel gerencial: ligam e desligam no próprio painel
+  startGerenciaWorker();
 });
 
 /**
