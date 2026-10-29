@@ -48,12 +48,15 @@ a mesma medida e não mudou.
 `scripts/reconciliar-aulas.js` registra, de uma vez, as aulas FUTURAS que os
 leads abertos não conhecem (simula por padrão; `--valendo` grava e arma
 lembrete e pós-aula). A simulação de 29/10 às 15h achou 4: Amanda (31/10),
-Maria Julia (31/10), Karina (05/11) e Marina (29/10, 15h). **A rodada
-`--valendo` ainda não foi feita** — o responsável autorizou, mas a execução
-pela sessão foi barrada pelo classificador de permissões; rodar à mão na
-máquina com o `.env` (`node scripts/reconciliar-aulas.js --valendo`).
-Testes: `aula-regras.test.js` e `followup.test.js` (246 no total). Commit e
-deploy autorizados pelo responsável em 29/10/2026.
+Maria Julia (31/10), Karina (05/11) e Marina (29/10, 15h). **Rodado com
+`--valendo` em 29/10 às 15h46**, autorizado pelo responsável: as 4 aulas
+registradas, o cadastro 47307 (Emily) ligado ao lead da Amanda, lembretes da
+Amanda e da Maria Julia na sexta 30/10 às 10h30, da Karina em 04/11 às 17h40,
+e pós-aula da Marina em 30/10 às 10h.
+
+Testes: `aula-regras.test.js` e `followup.test.js` (246 no total). **Deploy
+de `0870b3f` em 29/10/2026 às 15h50**, autorizado pelo responsável; nada novo
+no `.env`, sem migration.
 
 ## O acompanhamento saiu do ensaio (29/10/2026)
 
