@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import {
   normalizarConfig, telefoneDaEquipe, dentroDoHorario, idadeNaData, ehCortesia,
   alertasDe, regraCasa, eventosValendo, avisosDeAula, mensagemDoCiclo, CONFIG_PADRAO,
+  aplicarBaixas, chaveDeAlertaValida,
 } from './gerencia-regras.js';
 
 const sp = (s) => new Date(`${s}-03:00`);
@@ -95,6 +96,24 @@ test('aula vendida sem horário e aula feita sem desfecho', () => {
   const feita = lead({ id: 3, stage: 'experimental_agendada', experimental_at: '2026-10-24T13:30:00Z', experimental_activity: 'Natação Bebê 1 e 2' });
   const tipos = alertasDe([vendida, feita], CONFIG_PADRAO, AGORA).map(a => a.tipo);
   assert.deepEqual(tipos, ['aula_sem_reserva', 'aula_sem_desfecho']);
+});
+
+test('baixa é do fato: mensagem nova do cliente traz o alerta de volta', () => {
+  const antes = lead({ ultima: { quem: 'cliente', texto: 'Tava vendo a unidade de pinheiros', em: '2026-10-28T22:55:00Z', id: 9 } });
+  const baixas = { 'csr:1:9': { em: '2026-10-29T18:00:00Z', por: 'Leandro' } };
+  const [comBaixa] = aplicarBaixas(alertasDe([antes], CONFIG_PADRAO, AGORA), baixas);
+  assert.equal(comBaixa.baixa.por, 'Leandro');
+
+  const depois = lead({ ultima: { quem: 'cliente', texto: 'E aí, alguém?', em: '2026-10-29T12:00:00Z', id: 12 } });
+  const [novo] = aplicarBaixas(alertasDe([depois], CONFIG_PADRAO, AGORA), baixas);
+  assert.equal(novo.baixa, undefined);
+});
+
+test('chave de baixa: só a de alerta', () => {
+  assert.equal(chaveDeAlertaValida('csr:1236:98765'), true);
+  assert.equal(chaveDeAlertaValida('asd:849:2026-10-24T13:00:00+00:00'), true);
+  assert.equal(chaveDeAlertaValida('gerencia:config'), false);
+  assert.equal(chaveDeAlertaValida({}), false);
 });
 
 test('alerta desligado não aparece', () => {

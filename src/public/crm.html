@@ -332,13 +332,21 @@
   .ger-grupo h4 { margin: 0 0 2px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
   .ger-grupo h4 .qtd { background: var(--painel-2); border-radius: 99px; padding: 0 8px; font-size: 12px; }
   .ger-grupo > small { color: var(--suave); font-size: 12px; }
-  .ger-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 8px 0;
-    border-bottom: 1px solid #24324a; cursor: pointer; font-size: 14px; }
+  .ger-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 10px; padding: 8px 0;
+    border-bottom: 1px solid #24324a; cursor: pointer; font-size: 14px; align-items: start;
+    transition: opacity .25s ease, transform .25s ease; }
   .ger-item:last-of-type { border-bottom: 0; }
   .ger-item:hover b { color: var(--info); }
   .ger-item small { color: var(--suave); font-size: 12px; }
-  .ger-item .citacao { grid-column: 1 / -1; color: var(--suave); font-size: 13px;
+  .ger-item .citacao { grid-column: 2 / -1; color: var(--suave); font-size: 13px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ger-check { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--acento); cursor: pointer; }
+  .ger-item.saindo { opacity: 0; transform: translateX(12px); }
+  .ger-item.com-baixa { opacity: .55; }
+  .ger-item.com-baixa b { text-decoration: line-through; }
+  .ger-baixas { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    margin: -4px 0 10px; font-size: 12px; color: var(--suave); }
+  @media (prefers-reduced-motion: reduce) { .ger-item { transition: none; } }
   .ger-item .lado, .ger-aula .lado { text-align: right; white-space: nowrap; font-size: 12px; display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
   .selo { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 99px;
     border: 1px solid var(--borda); color: var(--suave); white-space: nowrap; }
@@ -624,7 +632,8 @@
       <div class="ger-grade">
         <div class="ger-bloco">
           <h3>Precisa da sua atenção</h3>
-          <p class="ger-nota">Atendimentos de venda abertos parados do nosso lado. Clique para abrir a ficha.</p>
+          <p class="ger-nota">Atendimentos de venda abertos parados do nosso lado. Clique para abrir a ficha; marque a caixa para dar baixa
+            no que não pede ação. Mensagem nova do cliente traz o item de volta.</p>
           <div id="ger-alertas"></div>
         </div>
         <div class="ger-bloco">
@@ -2015,7 +2024,10 @@ $('#sim-texto').addEventListener('keydown', e => {
 // servidor a normaliza e devolve a versão que vale.
 // ══════════════════════════════════════════════════════
 
-const ger = { dias: 30, dados: null, config: null, alterado: false, expandidos: new Set() };
+const ger = { dias: 30, dados: null, config: null, alterado: false, expandidos: new Set(), mostrarBaixas: false };
+
+/** Os alertas que pedem alguém: os sem baixa. */
+const gerAtivos = () => ger.dados.alertas.filter(a => !a.baixa);
 
 const GER_MODELOS = {
   bebe: { nome: 'Bebês (até 3 anos)', eventos: ['agendada', 'vespera'], idadeMin: 0, idadeMax: 3, atividades: ['Natação Bebê'] },
@@ -2090,17 +2102,18 @@ function renderGerFaixa() {
 
 function renderGerCartoes() {
   const d = ger.dados;
-  const graves = d.alertas.filter(a => a.gravidade === 'alta').length;
+  const ativos = gerAtivos();
+  const graves = ativos.filter(a => a.gravidade === 'alta').length;
   const hoje = diaSPde(new Date().toISOString());
   const em7 = Date.now() + 7 * 864e5;
   const aulasHoje = d.aulas.proximas.filter(a => diaSPde(a.experimental_at) === hoje).length;
   const aulas7 = d.aulas.proximas.filter(a => new Date(a.experimental_at).getTime() <= em7).length;
-  const semDesfecho = d.alertas.filter(a => a.tipo === 'aula_sem_desfecho').length;
+  const semDesfecho = ativos.filter(a => a.tipo === 'aula_sem_desfecho').length;
   const f = d.desfechos;
   const cartao = (rotulo, valor, nota, classe = '') =>
     `<div class="cartao ${classe}"><div class="rotulo">${rotulo}</div><div class="valor">${valor}</div><div class="nota">${nota}</div></div>`;
   $('#ger-cartoes').innerHTML = [
-    cartao('Precisa de atenção', d.alertas.length, `${graves} há mais tempo`, graves ? 'ruim' : d.alertas.length ? 'atencao' : 'bom'),
+    cartao('Precisa de atenção', ativos.length, `${graves} há mais tempo`, graves ? 'ruim' : ativos.length ? 'atencao' : 'bom'),
     cartao('Aulas hoje', aulasHoje, `${aulas7} nos próximos 7 dias`),
     cartao('Aulas sem desfecho', semDesfecho, 'aula feita, sem venda nem perda', semDesfecho ? 'atencao' : ''),
     cartao('Aula → venda', f.conversao == null ? '—' : f.conversao + '%', `${f.ganhas} de ${f.aulas} aulas em ${d.dias} dias`, f.conversao ? 'bom' : ''),
@@ -2110,25 +2123,70 @@ function renderGerCartoes() {
 
 function renderGerAlertas() {
   const { alertas, catalogos } = ger.dados;
-  if (!alertas.length) { $('#ger-alertas').innerHTML = '<div class="ger-vazio">Nada parado agora.</div>'; return; }
+  const comBaixa = alertas.filter(a => a.baixa).length;
+  const lista = ger.mostrarBaixas ? alertas : gerAtivos();
+  const barra = comBaixa ? `<div class="ger-baixas">
+      <span>${comBaixa} com baixa${ger.mostrarBaixas ? ' — desmarque para trazer de volta' : ''}</span>
+      <button class="ger-mais" style="padding:0" data-ver-baixas>${ger.mostrarBaixas ? 'Ocultar as com baixa' : 'Mostrar as com baixa'}</button>
+    </div>` : '';
+  if (!lista.length) {
+    $('#ger-alertas').innerHTML = barra + '<div class="ger-vazio">Nada parado agora.</div>';
+    return;
+  }
   const LIMITE = 6;
-  $('#ger-alertas').innerHTML = Object.entries(catalogos.tipos).map(([tipo, t]) => {
-    const doTipo = alertas.filter(a => a.tipo === tipo);
+  const quemDeu = a => a.baixa ? `baixa ${a.baixa.por ? 'por ' + a.baixa.por + ' ' : ''}${haQuantoTela(a.baixa.em)}` : '';
+  $('#ger-alertas').innerHTML = barra + Object.entries(catalogos.tipos).map(([tipo, t]) => {
+    const doTipo = lista.filter(a => a.tipo === tipo);
     if (!doTipo.length) return '';
     const todos = ger.expandidos.has(tipo);
     const visiveis = todos ? doTipo : doTipo.slice(0, LIMITE);
     return `<div class="ger-grupo">
-      <h4>${esc(t.rotulo)} <span class="qtd">${doTipo.length}</span></h4>
+      <h4>${esc(t.rotulo)} <span class="qtd">${doTipo.filter(a => !a.baixa).length}</span></h4>
       <small>${esc(t.descricao)}</small>
       ${visiveis.map(a => `
-        <div class="ger-item" data-lead="${a.leadId}">
+        <div class="ger-item ${a.baixa ? 'com-baixa' : ''}" data-lead="${a.leadId}" data-chave="${esc(a.chave)}">
+          <input type="checkbox" class="ger-check" data-baixa="${esc(a.chave)}" ${a.baixa ? 'checked' : ''}
+                 title="${a.baixa ? esc(quemDeu(a)) + ' — desmarque para trazer de volta' : 'Dar baixa: não pede ação'}"
+                 aria-label="Dar baixa em ${esc(a.nome)}">
           <div><b>${esc(a.nome)}</b> <small>${esc(telefoneBonito(a.telefone))} · ${esc(a.consultor || 'sem dono')} · ${esc(estado.rotulos[a.etapa] || a.etapa)}</small></div>
-          <div class="lado"><span class="selo ${a.gravidade}">${haQuantoTela(a.desde)}</span>${a.avisado ? '<span class="selo ok">avisado</span>' : ''}</div>
+          <div class="lado">${a.baixa ? `<span class="selo">${esc(quemDeu(a))}</span>` : `<span class="selo ${a.gravidade}">${haQuantoTela(a.desde)}</span>`}${a.avisado ? '<span class="selo ok">avisado</span>' : ''}</div>
           ${a.detalhe || a.quemResponde === 'leia' ? `<div class="citacao">${a.detalhe ? '“' + esc(a.detalhe) + '”' : ''}${a.quemResponde === 'leia' ? ' — a Leia não respondeu' : ''}</div>` : ''}
         </div>`).join('')}
       ${doTipo.length > LIMITE ? `<button class="ger-mais" data-expandir="${tipo}">${todos ? 'Mostrar menos' : `Ver os ${doTipo.length}`}</button>` : ''}
     </div>`;
   }).join('');
+}
+
+/**
+ * Dá ou desfaz a baixa. Otimista: o item sai da tela na hora, e volta com
+ * aviso se o servidor recusar.
+ */
+async function gerBaixa(caixa) {
+  const chave = caixa.dataset.baixa;
+  const alerta = ger.dados.alertas.find(a => a.chave === chave);
+  if (!alerta) return;
+  const dar = caixa.checked;
+  const anterior = alerta.baixa;
+  alerta.baixa = dar ? { em: new Date().toISOString(), por: estado.usuario?.nome || null } : undefined;
+
+  const item = caixa.closest('.ger-item');
+  if (dar && !ger.mostrarBaixas && item) {
+    item.classList.add('saindo');
+    setTimeout(() => { renderGerAlertas(); renderGerCartoes(); }, 260);
+  } else {
+    renderGerAlertas();
+    renderGerCartoes();
+  }
+
+  try {
+    const r = await api('/gerencia/baixa', { corpo: { chave, desfazer: !dar } });
+    if (dar && r.baixa) alerta.baixa = r.baixa;
+  } catch (err) {
+    alerta.baixa = anterior;
+    renderGerAlertas();
+    renderGerCartoes();
+    toast('Não deu para registrar a baixa: ' + err.message, 'erro');
+  }
 }
 
 function rotuloDoDia(iso) {
@@ -2403,8 +2461,18 @@ $('#ger-periodo').addEventListener('click', e => {
 
 $('#btn-ger-atualizar').addEventListener('click', () => carregarGerencia().catch(err => toast(err.message, 'erro')));
 
+// A caixa de baixa: muda o alerta e não abre a ficha.
+$('#ger-alertas').addEventListener('change', e => {
+  if (e.target.matches('.ger-check')) gerBaixa(e.target);
+});
+
 // Clique num alerta ou numa aula abre a ficha; "ver todos" expande o grupo.
 $('#vista-gerencia').addEventListener('click', e => {
+  if (e.target.closest('.ger-check')) return;
+  if (e.target.closest('[data-ver-baixas]')) {
+    ger.mostrarBaixas = !ger.mostrarBaixas;
+    return renderGerAlertas();
+  }
   const mais = e.target.closest('[data-expandir]');
   if (mais) {
     const t = mais.dataset.expandir;

@@ -31,11 +31,12 @@ import { evoClient } from './evo-client.js';
 import {
   CONFIG_PADRAO, TIPOS_ALERTA, EVENTOS_AULA, DESTINOS, DIAS_SEMANA, AVISO_ATE_DIAS,
   normalizarConfig, alertasDe, avisosDeAula, regrasQueCasam, mensagemDoCiclo,
-  dentroDoHorario, idadeNaData, telefoneDaEquipe,
+  dentroDoHorario, idadeNaData, telefoneDaEquipe, aplicarBaixas, chaveDeAlertaValida,
 } from './gerencia-regras.js';
 
 const CHAVE_CONFIG = 'gerencia:config';
 const CHAVE_AVISADOS = 'gerencia:avisados';
+const CHAVE_BAIXAS = 'gerencia:baixas';
 export const SENT_BY_GERENCIA = 'bot:gerencia';
 
 const HORA_MS = 60 * 60 * 1000;
@@ -277,11 +278,13 @@ async function atividadesConhecidas() {
 /** Os dados da tela: alertas, aulas, desfechos, a configuração e os catálogos dela. */
 export async function painel({ dias = 30, agora = new Date() } = {}) {
   const periodo = [7, 30, 90].includes(Number(dias)) ? Number(dias) : 30;
-  const [config, dados, atividades, avisados] = await Promise.all([
+  const [config, dados, atividades, avisados, baixas] = await Promise.all([
     carregarConfig({ fresca: true }), lerDados({ dias: periodo, agora }), atividadesConhecidas(), lerAvisados(),
+    lerBaixas(),
   ]);
 
-  const alertas = alertasDe(dados.leadsAbertos, config, agora)
+  // As com baixa vêm junto, marcadas: a tela as esconde, e mostra se pedirem.
+  const alertas = aplicarBaixas(alertasDe(dados.leadsAbertos, config, agora), baixas)
     .map(a => ({ ...a, avisado: !!avisados[a.chave] }));
 
   const t = agora.getTime();
@@ -318,6 +321,36 @@ export async function painel({ dias = 30, agora = new Date() } = {}) {
 async function lerAvisados() {
   const marca = await controle.lerMarcador(CHAVE_AVISADOS);
   return marca?.valor || {};
+}
+
+// ──────────────────────────────────────────────
+// Baixa dada no painel
+// ──────────────────────────────────────────────
+
+async function lerBaixas() {
+  const marca = await controle.lerMarcador(CHAVE_BAIXAS);
+  return marca?.valor || {};
+}
+
+/**
+ * Dá (ou desfaz) a baixa de um alerta. Some do painel e não vira mensagem.
+ *
+ * Guardada pela chave do fato, por 60 dias — mais que isso o fato já não
+ * gera alerta. Leitura e gravação do mesmo registro: duas baixas no mesmo
+ * segundo podem se sobrepor, o que num time de poucas pessoas é aceitável.
+ */
+export async function darBaixa(chave, usuario = null, { desfazer = false, agora = new Date() } = {}) {
+  if (!chaveDeAlertaValida(chave)) throw new Error('Alerta inválido.');
+  const baixas = await lerBaixas();
+  if (desfazer) delete baixas[chave];
+  else baixas[chave] = { em: agora.toISOString(), por: usuario?.nome || null };
+
+  const corte = agora.getTime() - 60 * DIA_MS;
+  const vivas = Object.fromEntries(Object.entries(baixas).filter(([, b]) => new Date(b.em).getTime() >= corte));
+  const ok = await controle.carimbarMarcador(CHAVE_BAIXAS, vivas);
+  if (!ok) throw new Error('Não foi possível gravar a baixa.');
+  logger.info(`[gerencia] Baixa ${desfazer ? 'desfeita' : 'dada'}${usuario ? ` por ${usuario.nome}` : ''}: ${chave}`);
+  return vivas[chave] || null;
 }
 
 async function gravarAvisados(avisados, agora) {
@@ -395,9 +428,10 @@ export async function avisar({ agora = new Date() } = {}) {
   const dados = await lerDados({ dias: 14, agora });
   await completarIdades(dados.aulas, config);
 
-  const avisados = await lerAvisados();
+  const [avisados, baixas] = await Promise.all([lerAvisados(), lerBaixas()]);
   const recente = (a) => agora.getTime() - new Date(a.desde).getTime() <= AVISO_ATE_DIAS * DIA_MS;
-  const alertas = alertasDe(dados.leadsAbertos, config, agora).filter(a => recente(a) && !avisados[a.chave]);
+  const alertas = alertasDe(dados.leadsAbertos, config, agora)
+    .filter(a => recente(a) && !avisados[a.chave] && !baixas[a.chave]);
   const aulas = avisosDeAula(dados.aulas, config, agora).filter(a => !avisados[a.chave]);
 
   const pacotes = [
@@ -454,5 +488,5 @@ export async function enviarTeste() {
 }
 
 export const gerencia = {
-  carregarConfig, salvarConfig, ehDestinatario, painel, avisar, enviarTeste, SENT_BY_GERENCIA,
+  carregarConfig, salvarConfig, ehDestinatario, painel, avisar, enviarTeste, darBaixa, SENT_BY_GERENCIA,
 };

@@ -346,6 +346,20 @@ export function alertasDe(leads, config, agora = new Date()) {
     || new Date(b.desde) - new Date(a.desde));
 }
 
+/**
+ * Marca nos alertas as baixas dadas no painel. A baixa é do FATO (a
+ * chave), não do lead: mensagem nova do cliente é chave nova, e o alerta
+ * volta sozinho.
+ */
+export function aplicarBaixas(alertas, baixas = {}) {
+  return alertas.map(a => (baixas[a.chave] ? { ...a, baixa: baixas[a.chave] } : a));
+}
+
+/** Chave de alerta aceitável para dar baixa: tipo curto, lead, e o resto do fato. */
+export function chaveDeAlertaValida(chave) {
+  return typeof chave === 'string' && chave.length <= 160 && /^[a-z]{2,4}:\d+:[\w:.+-]+$/.test(chave);
+}
+
 // ──────────────────────────────────────────────
 // Aulas experimentais → coordenação
 // ──────────────────────────────────────────────

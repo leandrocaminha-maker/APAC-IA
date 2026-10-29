@@ -1268,6 +1268,15 @@ router.put('/api/gerencia/config', exigirAdmin, rota(async (req, res) => {
   res.json({ ok: true, config });
 }));
 
+router.post('/api/gerencia/baixa', exigirAdmin, rota(async (req, res) => {
+  try {
+    const baixa = await gerencia.darBaixa(req.body?.chave, req.usuario, { desfazer: req.body?.desfazer === true });
+    res.json({ ok: true, baixa });
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+}));
+
 router.post('/api/gerencia/teste', exigirAdmin, rota(async (req, res) => {
   try {
     const r = await gerencia.enviarTeste();
