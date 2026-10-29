@@ -23,14 +23,13 @@ const OFFSET_SP_MS = -3 * HORA_MS;
 // Catálogos
 // ──────────────────────────────────────────────
 
-/** As situações que pedem o gerente. A ordem é a da tela. */
+/**
+ * As situações que pedem o gerente. A ordem é a da tela, a do quadro de
+ * avisos e a da mensagem de WhatsApp. "Cliente sem resposta" fica abaixo
+ * das aulas a pedido do responsável (29/10/2026): é o grupo mais longo, e
+ * as aulas são as que têm data.
+ */
 export const TIPOS_ALERTA = {
-  cliente_sem_resposta: {
-    rotulo: 'Cliente sem resposta',
-    descricao: 'O cliente escreveu e ninguém respondeu. Cortesia ("ok", "obrigada", figurinha) não conta.',
-    limite: { campo: 'horas', rotulo: 'depois de (horas)', padrao: 4, min: 1, max: 168 },
-    ativo: true,
-  },
   handoff_parado: {
     rotulo: 'Pedido de consultor sem dono',
     descricao: 'A Leia passou o atendimento para a equipe e ninguém assumiu.',
@@ -47,6 +46,12 @@ export const TIPOS_ALERTA = {
     rotulo: 'Aula feita sem desfecho',
     descricao: 'A aula experimental já passou e o atendimento não virou venda nem perda.',
     limite: { campo: 'dias', rotulo: 'depois de (dias)', padrao: 3, min: 1, max: 30 },
+    ativo: true,
+  },
+  cliente_sem_resposta: {
+    rotulo: 'Cliente sem resposta',
+    descricao: 'O cliente escreveu e ninguém respondeu. Cortesia ("ok", "obrigada", figurinha) não conta.',
+    limite: { campo: 'horas', rotulo: 'depois de (horas)', padrao: 4, min: 1, max: 168 },
     ativo: true,
   },
   acao_vencida: {
