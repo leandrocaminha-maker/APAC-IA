@@ -787,7 +787,10 @@ router.post('/api/conversas/:id/reativar', rota(async (req, res) => {
     .eq('resolved', false);
 
   logger.info(`[crm] ${req.usuario.nome} devolveu a conversa ${id} para a Leia`);
-  res.json({ ok: true });
+  // Quem devolveu precisa saber que a resposta imediata do cliente volta
+  // para ele (ver `consultor-regras.js`) — senão a conversa reaparece no
+  // cartão e parece defeito.
+  res.json({ ok: true, vezDoConsultorHoras: config.agente.vezDoConsultorHoras });
 }));
 
 // ──────────────────────────────────────────────

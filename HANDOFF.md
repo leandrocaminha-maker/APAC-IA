@@ -6,6 +6,28 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## A Leia não responde por cima da consultora (30/10/2026)
+
+Reclamação do responsável: a Tais ((11) 98425-0461) agradeceu à Shirlei às
+9h57 e a Leia respondeu às 9h58. A Shirlei tinha respondido pelo painel às
+9h56 e clicado em "Devolver para a Leia" logo em seguida — as consultoras
+usam o botão como "encerrei", e para tirar a conversa do cartão
+"aguardando resposta". Em 09/10, na mesma conversa, a devolução veio 5 s
+depois da resposta. Nos 60 dias até 30/10 foram 176 respostas da Leia menos
+de 6 h depois da fala de um consultor, 96 delas em menos de 10 minutos.
+
+- **A vez do consultor** (`consultor-regras.js`, `vezDoConsultor` no
+  `webhook.js`): até `AGENTE_VEZ_DO_CONSULTOR_HORAS` (padrão 6; 0 desliga)
+  depois da última mensagem `human:*` da conversa, a resposta do cliente é
+  do consultor. Despedida ("obrigada", "ok obg", "Obrigada Shirlei!", 👍)
+  fica sem resposta e a conversa segue devolvida; o resto volta a modo
+  humano, com o nome de quem atendia, e cai no cartão "aguardando
+  resposta". Se o consultor terminou com pergunta, até "sim" é dele.
+  Reaplicada aos 60 dias: 90 respostas viram silêncio, 86 voltam ao
+  consultor, 125 seguem com a Leia (fora da janela).
+- **O aviso do botão** (`crm.html`): "Devolvida para a Leia. Se o cliente
+  te responder nas próximas 6 h, volta para você."
+
 ## Painel gerencial, funil limpo e duplicatas barradas (29/10/2026, à tarde)
 
 Pedido do responsável depois de ver 254 atendimentos "com a Leia e

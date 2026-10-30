@@ -23,6 +23,7 @@ import { numeroAlternativo } from '../services/numero-alternativo.js';
 import { pesquisa } from '../services/pesquisa.js';
 import { dormir } from '../lib/ritmo.js';
 import { gerencia } from '../services/gerencia.js';
+import { quemResponde, emailDoConsultor } from '../services/consultor-regras.js';
 
 const router = Router();
 
@@ -530,6 +531,11 @@ async function handleIncomingMessage(event) {
     return;
   }
 
+  // Devolvida à Leia, mas o cliente está respondendo ao consultor: a vez é
+  // dele. Vem antes do filtro de mídia porque o comprovante que o cliente
+  // manda logo depois do consultor é para o consultor ver.
+  if (await vezDoConsultor({ phone, conversation, content })) return;
+
   // Imagem, documento, vídeo: registra e não responde. Só o áudio tem
   // caminho de volta, porque só ele carrega o que a pessoa quis dizer.
   if (contentType !== 'text' && contentType !== 'unknown') return;
@@ -537,6 +543,83 @@ async function handleIncomingMessage(event) {
   // Não responde agora: enfileira e espera os próximos balões. Ver
   // `agendarResposta`.
   agendarResposta({ phone, contact, conversation, savedMessage, content });
+}
+
+const VEZ_DO_CONSULTOR_HORAS = config.agente.vezDoConsultorHoras;
+
+/**
+ * A conversa foi devolvida à Leia, mas o cliente está respondendo ao
+ * consultor que acabou de falar?
+ *
+ * O "Devolver para a Leia" é clicado logo depois da última resposta — é o
+ * jeito de tirar a conversa do cartão "aguardando resposta". Sem esta
+ * checagem, o "obrigada" do cliente para a consultora era respondido pela
+ * Leia (Tais, 30/10/2026; 176 casos em 60 dias). A regra está em
+ * `consultor-regras.js`; aqui só se lê o banco e se age:
+ *
+ *   ninguem   → só registra. A conversa segue devolvida para a próxima vez.
+ *   consultor → volta para modo humano, com o nome de quem atendia, e cai
+ *               no cartão "aguardando resposta".
+ *
+ * Falha ABERTA: sem conseguir ler a última fala nossa, a Leia responde —
+ * que é o que acontecia antes.
+ *
+ * @returns {Promise<boolean>} true se a Leia não deve responder.
+ */
+async function vezDoConsultor({ phone, conversation, content }) {
+  if (!(VEZ_DO_CONSULTOR_HORAS > 0)) return false;
+
+  const { data, error } = await supabase
+    .from('wa_messages')
+    .select('sent_by, content, created_at')
+    .eq('conversation_id', conversation.id)
+    .eq('direction', 'outbound')
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    logger.warn('[webhook] Última fala nossa não lida — a Leia segue respondendo:', error.message);
+    return false;
+  }
+
+  const ultimaNossa = data?.[0] || null;
+  const vez = quemResponde({ ultimaNossa, conteudo: content, janelaHoras: VEZ_DO_CONSULTOR_HORAS });
+  if (vez === 'leia') return false;
+
+  const consultor = ultimaNossa.sent_by.replace(/^human:/, '');
+
+  if (vez === 'ninguem') {
+    logger.info(
+      `[webhook] ${phone} encerrou com o consultor (${consultor}): "${content.slice(0, 60)}" — ` +
+      'a Leia não responde, e a conversa segue com ela para a próxima vez'
+    );
+    return true;
+  }
+
+  // O painel grava `assigned_to` com o NOME de quem respondeu; a mensagem
+  // guarda o e-mail. Pelo aparelho não se sabe quem foi, e o dono que já
+  // estava na conversa fica.
+  let nome = null;
+  const email = emailDoConsultor(ultimaNossa.sent_by);
+  if (email) {
+    const { data: usuario } = await supabase.from('crm_users').select('name').eq('email', email).maybeSingle();
+    nome = usuario?.name || null;
+  }
+
+  const { error: falha } = await supabase
+    .from('wa_conversations')
+    .update({ status: 'human', ai_enabled: false, ...(nome ? { assigned_to: nome } : {}) })
+    .eq('id', conversation.id);
+
+  if (falha) {
+    logger.warn(`[webhook] Conversa ${conversation.id} não voltou para o consultor: ${falha.message}`);
+  } else {
+    logger.info(
+      `[webhook] ${phone} respondeu ao consultor (${nome || consultor}) — conversa ${conversation.id} ` +
+      'voltou para modo humano, a Leia não responde'
+    );
+  }
+  return true;
 }
 
 // ──────────────────────────────────────────────

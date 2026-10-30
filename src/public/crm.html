@@ -1933,8 +1933,11 @@ async function abrirConversa(id) {
   if ($('#btn-abrir-lead')) $('#btn-abrir-lead').addEventListener('click', () => abrirFicha(dado.lead.id));
   if ($('#btn-reativar')) $('#btn-reativar').addEventListener('click', async () => {
     try {
-      await api(`/conversas/${id}/reativar`, { corpo: {} });
-      toast('Conversa devolvida para a Leia.', 'ok');
+      const r = await api(`/conversas/${id}/reativar`, { corpo: {} });
+      const horas = r?.vezDoConsultorHoras;
+      toast(horas > 0
+        ? `Devolvida para a Leia. Se o cliente te responder nas próximas ${horas} h, volta para você.`
+        : 'Conversa devolvida para a Leia.', 'ok');
       abrirConversa(id);
       carregarPendencias();
     } catch (err) { toast(err.message, 'erro'); }

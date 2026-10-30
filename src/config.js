@@ -399,9 +399,14 @@ export const config = {
   // último. `debounceTetoSegundos` é o tempo máximo que a primeira mensagem
   // pode ficar esperando — sem ele, quem digita sem parar nunca é
   // respondido. 0 no debounce desliga o agrupamento.
+  //
+  // `vezDoConsultorHoras`: por quanto tempo, depois da última fala de um
+  // consultor, a resposta do cliente é dele — mesmo com a conversa
+  // devolvida à Leia. Ver `consultor-regras.js`. 0 desliga.
   agente: {
     debounceSegundos: parseInt(env('AGENTE_DEBOUNCE_SEGUNDOS', '12'), 10),
     debounceTetoSegundos: parseInt(env('AGENTE_DEBOUNCE_TETO_SEGUNDOS', '45'), 10),
+    vezDoConsultorHoras: parseFloat(env('AGENTE_VEZ_DO_CONSULTOR_HORAS', '6')),
   },
 
   // Follow-up de venda — a régua que recupera quem some.
