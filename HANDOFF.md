@@ -28,6 +28,9 @@ de 6 h depois da fala de um consultor, 96 delas em menos de 10 minutos.
 - **O aviso do botão** (`crm.html`): "Devolvida para a Leia. Se o cliente
   te responder nas próximas 6 h, volta para você."
 
+**Deploy de `6193124` em 30/10/2026 às 14h22.** Sem mudança no `.env` da
+VPS: a janela de 6 h é o padrão do código, conferido dentro do container.
+
 ## Painel gerencial, funil limpo e duplicatas barradas (29/10/2026, à tarde)
 
 Pedido do responsável depois de ver 254 atendimentos "com a Leia e
