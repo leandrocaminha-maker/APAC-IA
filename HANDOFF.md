@@ -6,6 +6,33 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## O relatório em PDF no WhatsApp do aluno (30/10/2026, à tarde)
+
+Decisão do responsável: o Relatório 1 e o relatório completo do Prescrev vão
+em PDF a quem aceitou o acompanhamento e ATIVOU o código — o Relatório 1
+assim que a pessoa ativa, o completo quando é gerado, e a versão corrigida
+quando o relatório é reaberto e gerado de novo. O aceite do Prescrev ganhou a
+frase "Os seus relatórios também chegam por lá, em PDF".
+
+- **O Prescrev publica** (migration 054 de lá): o PDF do "Baixar PDF" vai a
+  um bucket privado ao gerar, ou na abertura do relatório gerado, só de quem
+  tem o aceite. A lista sai pela rota assinada `/api/acompanhamento/relatorios`
+  (`buscarRelatorios`, `baixarRelatorio` em `prescrev.js`;
+  `RELATORIOS_VERSAO_LIDA` = 1).
+- **Daqui sai o envio** (`relatorios.js`): só à inscrição ATIVA (a pendente
+  não), número não suprimido. Na ativação, logo depois do aceite, a qualquer
+  hora (`emResposta`); no ciclo dos encaminhamentos do worker, na janela de
+  contato e com cota no teto do número. Sai como `bot:acompanhamento`, com
+  `sendMediaBase64` (documento) e a frase do Prescrev. De cada relatório, só
+  a versão mais nova; "corrigida" só para quem recebeu a anterior. O que saiu
+  fica em `acomp_relatorios` (migration **021**); envio que falha tenta de
+  novo até 3 vezes.
+- Testes: `relatorios.test.js` (6; 281 no total).
+
+**Para ir ao ar:** rodar a 021 aqui e a 054 no Prescrev, deploy do Prescrev
+primeiro (a rota nova), depois daqui. Nada novo no `.env`. Sem a 021 o
+worker avisa no log e não envia.
+
 ## A Leia não responde por cima da consultora (30/10/2026)
 
 Reclamação do responsável: a Tais ((11) 98425-0461) agradeceu à Shirlei às

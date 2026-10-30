@@ -35,6 +35,17 @@ import { buscarFichas } from './prescrev.js';
 import { primeiroNome } from './render.js';
 import { TEXTOS_ATIVACAO, lerComandoAtivar, mesmoNumero, textoDoAceite } from './comandos.js';
 import { SENT_BY_ACEITE, TEXTO_PAUSA, ehPedidoDePausa } from './conversa.js';
+import { enviarRelatorios } from './relatorios.js';
+
+/**
+ * Logo depois do aceite, o relatório em PDF já publicado (o Relatório 1, que a
+ * pessoa acabou de receber no papel): é resposta a quem escreveu, e sai já.
+ * Não segura a resposta da ativação, e nunca lança.
+ */
+function relatorioDaAtivacao(clienteId) {
+  void enviarRelatorios({ clienteId, emResposta: true })
+    .catch(err => logger.warn('[ativacao] Relatório em PDF:', err.message));
+}
 
 const VIVAS = ['ativa', 'pendente', 'pausada'];
 const TENTATIVAS_MAX = 5;
@@ -134,6 +145,7 @@ export async function tratarAtivacao({ phone, contact, content, responder }) {
       status: 'ativa', pausado_ate: null, historico: [...(doNumero.historico ?? []), evento('retomado', 'ATIVAR de novo')],
     }).eq('id', doNumero.id);
     await responder(aceiteDaFicha(ficha), SENT_BY_ACEITE);
+    relatorioDaAtivacao(ficha.cliente_id);
     logger.info(`[ativacao] ${ficha.aluno?.primeiro_nome}: acompanhamento retomado`);
     return true;
   }
@@ -157,6 +169,7 @@ export async function tratarAtivacao({ phone, contact, content, responder }) {
   if (doCadastro) {
     await virarAluno(contact?.id);
     await responder(aceiteDaFicha(ficha), SENT_BY_ACEITE);
+    relatorioDaAtivacao(ficha.cliente_id);
     logger.info(`[ativacao] ${ficha.aluno?.primeiro_nome}: acompanhamento ativo`);
   } else {
     await responder(TEXTOS_ATIVACAO.pendente);

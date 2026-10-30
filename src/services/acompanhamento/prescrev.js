@@ -56,6 +56,27 @@ export async function buscarSituacaoDasSessoes() {
   return r.sessoes ?? null;
 }
 
+/** A versão da lista de relatórios em PDF que este código sabe ler (RELATORIOS_VERSION do Prescrev). */
+export const RELATORIOS_VERSAO_LIDA = 1;
+
+/**
+ * Os relatórios em PDF publicados no Prescrev (migration 054 de lá), só de
+ * quem mantém o aceite, com a frase que vai junto de cada um.
+ * @returns {Promise<{relatorios: object[], mensagens: Record<string, string>, migracao: boolean}>}
+ */
+export async function buscarRelatorios() {
+  const r = await buscar('/api/acompanhamento/relatorios');
+  if (r.versao > RELATORIOS_VERSAO_LIDA) {
+    throw new Error(`Relatórios na versão ${r.versao}, e este código lê até a ${RELATORIOS_VERSAO_LIDA}: atualize o APAC.`);
+  }
+  return { relatorios: r.relatorios ?? [], mensagens: r.mensagens ?? {}, migracao: r.migracao !== false };
+}
+
+/** O PDF de um relatório publicado. @returns {Promise<{id: string, nome_arquivo: string, mimetype: string, base64: string}>} */
+export async function baixarRelatorio(id) {
+  return buscar(`/api/acompanhamento/relatorios?id=${encodeURIComponent(id)}`);
+}
+
 /** Os modelos publicados. @returns {Promise<{versao: number, marcadores: object[], modelos: object[]}>} */
 export async function buscarModelos() {
   const r = await buscar('/api/acompanhamento/modelos');

@@ -27,6 +27,7 @@ import { supabase } from '../lib/supabase.js';
 import { hojeSP } from '../services/campanhas.js';
 import { modoAtual, rodarEnsaio, ultimaRodada } from '../services/acompanhamento/ensaio.js';
 import { enviarDisparos } from '../services/acompanhamento/envio.js';
+import { enviarRelatorios } from '../services/acompanhamento/relatorios.js';
 import { processarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
 import { processarPontes } from '../services/acompanhamento/ponte.js';
 import { conferirSessoesDaSemana } from '../services/acompanhamento/aviso-sessoes.js';
@@ -71,6 +72,9 @@ async function cicloDosEncaminhamentos() {
   encaminhando = true;
   try {
     await enviarDisparos().catch(err => logger.warn('[acompanhamento] Envio:', err.message));
+    // O relatório em PDF (Prescrev 054): o completo gerado, a versão corrigida,
+    // a inscrição que a equipe confirmou — só na janela de contato.
+    await enviarRelatorios().catch(err => logger.warn('[acompanhamento] Relatórios:', err.message));
     await processarEncaminhamentos();
     // A ponte (A5d): o que o aluno mandou fora do turno do professor sai no
     // começo do turno, e a ponte sem mensagem há 72 h fecha.
