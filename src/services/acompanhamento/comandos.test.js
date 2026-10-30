@@ -28,12 +28,19 @@ test('mensagem de cliente que começa com "equipe" não é comando', () => {
 test('a confirmação diz o horário, e ao coordenador que ele também recebe o que não for assumido', () => {
   const horario = { 1: [['06:00', '10:00']] };
   assert.match(textoDeConfirmacao({ nome: 'Rafael', papel: 'professor', horario }),
-    /^Pronto, Rafael: os encaminhamentos dos seus alunos chegam aqui, só no seu horário de trabalho\. Em teste/);
+    /^Pronto, Rafael: os encaminhamentos dos seus alunos chegam aqui, só no seu horário de trabalho\.$/);
   assert.match(textoDeConfirmacao({ nome: 'Ana', papel: 'coordinator', horario }),
     /Como coordenação, você também recebe os que o professor não assumir/);
   assert.match(textoDeConfirmacao({ nome: 'Rafael', papel: 'professor', horario: null }),
     /Ainda não há horário de trabalho seu no Prescrev: até a coordenação cadastrar, nenhum encaminhamento chega/);
   assert.doesNotMatch(textoDeConfirmacao({ nome: 'Leo', papel: 'master', horario }), /coordenação/);
+});
+
+test('o aviso de teste só sai com os encaminhamentos simulados', () => {
+  const horario = { 1: [['06:00', '10:00']] };
+  assert.doesNotMatch(textoDeConfirmacao({ nome: 'Rafael', papel: 'professor', horario }, { reais: true }), /teste/);
+  assert.match(textoDeConfirmacao({ nome: 'Rafael', papel: 'professor', horario }, { reais: false }),
+    /Em teste: por enquanto só chegam encaminhamentos de teste\.$/);
 });
 
 // ---- encaminhamentos ----

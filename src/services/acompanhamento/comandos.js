@@ -30,16 +30,19 @@ export function lerComandoEquipe(texto) {
 /**
  * A confirmação, pelo papel e pelo horário: o coordenador também recebe o que
  * o professor não assume, e nada chega fora do horário de trabalho — nem a
- * quem ainda não tem horário no Prescrev.
+ * quem ainda não tem horário no Prescrev. O aviso de teste só sai com os
+ * encaminhamentos simulados (`ACOMPANHAMENTO_ENCAMINHAMENTOS_REAIS` desligado):
+ * até 30/10/2026 saía sempre, e o uso real começou em 29/10.
  */
-export function textoDeConfirmacao(membro) {
+export function textoDeConfirmacao(membro, { reais = true } = {}) {
   const extra = membro.papel === 'coordinator'
     ? ' Como coordenação, você também recebe os que o professor não assumir.'
     : '';
   const quando = temHorario(membro.horario)
     ? 'os encaminhamentos dos seus alunos chegam aqui, só no seu horário de trabalho.'
     : 'número registrado. Ainda não há horário de trabalho seu no Prescrev: até a coordenação cadastrar, nenhum encaminhamento chega.';
-  return `Pronto, ${membro.nome}: ${quando}${extra} Em teste: por enquanto só chegam encaminhamentos de teste.`;
+  const teste = reais ? '' : ' Em teste: por enquanto só chegam encaminhamentos de teste.';
+  return `Pronto, ${membro.nome}: ${quando}${extra}${teste}`;
 }
 
 // ──────────────────────────────────────────────

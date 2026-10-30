@@ -21,6 +21,7 @@
  * tem 6 caracteres de 32 (~10⁹); errar 5 vezes em 24h cala a porta para
  * aquele número — sem resposta, para não ensinar a tentar.
  */
+import { config } from '../../config.js';
 import { supabase } from '../../lib/supabase.js';
 import { logger } from '../../lib/logger.js';
 import { buscarEquipe } from './prescrev.js';
@@ -90,7 +91,7 @@ async function ativar({ phone, contact, codigo, responder }) {
     logger.info(`[equipe] ${membro.nome} ativou de um número diferente do cadastro do AQUAP — vale o que mandou o código`);
   }
   logger.info(`[equipe] ${membro.nome} (${membro.papel}) ativou o WhatsApp para encaminhamentos`);
-  await responder(textoDeConfirmacao(membro));
+  await responder(textoDeConfirmacao(membro, { reais: config.acompanhamento.encaminhamentosReais }));
 }
 
 /**
