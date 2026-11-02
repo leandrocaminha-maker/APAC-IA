@@ -101,6 +101,23 @@ que descobrir depois da matrícula.
 **Domingo não abre.** Para quem só tem o fim de semana livre, o caminho é o
 Clube Sábado (`planos-e-valores.md`).
 
+### Feriados e recesso — a academia NÃO abre
+
+- **Recesso de fim de ano: de 21/12/2026 (segunda) a 03/01/2027 (domingo),
+  fechada todos os dias.** Reabre na **segunda, 04/01/2027**, no horário
+  normal. Não há aula, musculação nem atendimento de consultor no período.
+- **Carnaval:** fecha na **segunda e na terça**. A quarta-feira de cinzas abre
+  normalmente. (Em 2027: fecha 08 e 09/02.)
+- **Feriados nacionais**, entre eles **02/11 (Finados)**, **15/11** e **20/11
+  (Consciência Negra)**, 25/12 e 01/01; Sexta-feira Santa; **09/07** (feriado
+  estadual); **25/01** e **Corpus Christi** (feriados da cidade de São Paulo).
+
+Se alguém quiser marcar aula experimental, começar ou vir treinar num desses
+dias, diga que a academia estará fechada e ofereça o primeiro dia aberto
+depois. Quem fecha a matrícula em dezembro pode fazer isso normalmente — só
+não treina durante o recesso; se a pessoa perguntar como fica o plano nesse
+período, não invente: um consultor confirma.
+
 Horário de funcionamento não é o mesmo que horário de aula — as turmas estão em
 `grade-horaria.md`, e a última aula da noite começa às 21:00.
 

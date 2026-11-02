@@ -24,8 +24,12 @@ follow-up, campanha e acompanhamento como numa segunda comum.
   avisos só de segunda a sexta, fora de feriado. O sábado dos CLIENTES
   continua 9h–13h.
 - **Leia:** `atividades.md` ganhou o treino no estilo HYROX (prescrito na
-  sala de musculação). "Como entrar" está `PENDENTE`: dias/horários/agendamento.
-  A Leia ainda NÃO sabe do recesso (`informacoes-gerais.md` não fala dele).
+  sala de musculação). Complemento do responsável: vai na ficha de treino,
+  há desafios periódicos, vale a partir do Performa, sem nível mínimo.
+- **Leia sabe dos dias fechados:** `informacoes-gerais.md` ganhou "Feriados e
+  recesso" (recesso 21/12/2026–03/01/2027, Carnaval, feriados). **Ao mudar o
+  recesso de um ano, mexa nos dois lugares:** `RECESSOS` em `feriados.js` e
+  esse trecho da base.
 - Testes: `feriados.test.js` (290 no total).
 
 ## O relatório em PDF no WhatsApp do aluno (30/10/2026, à tarde)

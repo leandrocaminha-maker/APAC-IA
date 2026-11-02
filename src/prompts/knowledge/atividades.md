@@ -92,11 +92,21 @@
 - **Para quem costuma fechar:** quem já treina e quer um desafio novo, quem
   gosta de treino intenso e variado, quem corre ou quer melhorar o
   condicionamento.
-- **Como entrar:** PENDENTE (dias, horários, se precisa agendar no FITI à
-  parte ou pedir ao professor, se há nível mínimo).
+- **Como entrar:** faz parte do treino de musculação: o professor coloca o
+  treino no estilo HYROX **na ficha de treino** do aluno. Não há agenda nem
+  turma à parte — é treinar no horário da sala de musculação. Além da ficha, há
+  **desafios periódicos** no estilo HYROX para os alunos.
+- **Plano:** dá direito **a partir do Performa** — ou seja, está nos três
+  planos adulto (Performa, Estilo Aqua e Estilo de Vida Plus), porque todos
+  incluem Musculação.
+- **Nível:** **não há nível mínimo**. O professor faz as adaptações
+  necessárias para cada aluno — iniciante também pode fazer.
 - **O que NÃO dizer:**
-  - Não é o HYROX oficial, nem uma competição, nem preparação para a prova:
-    diga sempre "no estilo HYROX" ou "inspirado no HYROX".
+  - Não é o HYROX oficial, nem competição oficial, nem preparação para a
+    prova: diga sempre "no estilo HYROX" ou "inspirado no HYROX". Os desafios
+    periódicos são internos, entre os alunos da AP.
+  - Não cite datas nem formato dos próximos desafios — não estão nesta base;
+    um consultor ou o professor da sala informa.
   - Não cite distâncias, estações, tempo de sessão nem exercícios
     específicos — variam por sessão e não estão nesta base.
   - Não ofereça como atividade avulsa ou com preço próprio: vem junto com a

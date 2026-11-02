@@ -152,7 +152,8 @@ Sessões (início de cada uma):
 
 ## Pendências desta grade (não invente estes dados)
 
-- **Horário de feriados:** ver `informacoes-gerais.md`.
+- **Feriados e recesso (21/12/2026 a 03/01/2027):** não há aula — ver
+  `informacoes-gerais.md`.
 - **Vagas livres por turma** não existem nesta base — só a lotação máxima.
 - **Musculação a partir de 11 anos** existe em horários específicos
   (9h30–11h30 e 15h15–18h, conforme a base de natação infantil), mas a
