@@ -17,6 +17,7 @@ import {
 // Sem ciclo: `evolution.js` só importa config e logger.
 import { telefoneValido } from './evolution.js';
 import { evoClient } from './evo-client.js';
+import { ehFeriado } from '../lib/feriados.js';
 
 /**
  * Janela de contato ativo, em horário de São Paulo.
@@ -27,6 +28,7 @@ import { evoClient } from './evo-client.js';
  *   segunda a sexta   9h00 – 20h30
  *   sábado            9h00 – 13h00
  *   domingo           sem contato
+ *   feriado           sem contato (`lib/feriados.js`)
  *
  * Domingo era dia normal até 28/08/2026, com a justificativa de que "mandar
  * WhatsApp no domingo de manhã não incomoda ninguém". A regra da academia é
@@ -71,22 +73,39 @@ function deSP({ ano, mes, dia, hora, minuto = 0 }) {
   return new Date(Date.UTC(ano, mes, dia, hora, minuto) - OFFSET_SP_MS);
 }
 
-/** A janela de contato do dia em que `data` cai, ou `null` se for domingo. */
+/**
+ * A janela de contato do dia (de São Paulo) `p`, ou `null` sem contato.
+ *
+ * Feriado não tem contato (01/11/2026): a academia não abre, e 02/11 teria
+ * saído como uma segunda qualquer. A lista está em `lib/feriados.js`.
+ */
+function janelaDasPartes(p) {
+  const janela = JANELAS[p.diaSemana];
+  if (!janela) return null;
+  return ehFeriado(deSP({ ...p, hora: 12, minuto: 0 })) ? null : janela;
+}
+
+/** As partes de São Paulo do dia `i` dias depois de `p` (negativo = antes). */
+function diaDeslocado(p, i) {
+  return partesSP(deSP({ ...p, dia: p.dia + i, hora: 12, minuto: 0 }));
+}
+
+/** A janela de contato do dia em que `data` cai, ou `null` se for domingo ou feriado. */
 export function janelaDoDia(data) {
-  return JANELAS[partesSP(data).diaSemana];
+  return janelaDasPartes(partesSP(data));
 }
 
 /**
  * Abertura do primeiro dia com contato a partir de `desloc` dias adiante.
  *
- * O laço vai até 7 porque com um único dia fechado na semana ele nunca dá
- * mais de dois passos — mas escrito assim ele continua correto se o
- * domingo virar dois dias, ou se um feriado entrar em `JANELAS`.
+ * O laço vai até 31: o recesso de fim de ano (21/12 a 03/01) fecha 14
+ * dias seguidos, e sábado à tarde antes dele precisa de 16 passos.
  */
 function proximaAbertura(p, desloc = 1) {
-  for (let i = desloc; i < desloc + 7; i++) {
-    const janela = JANELAS[(p.diaSemana + i) % 7];
-    if (janela) return deSP({ ...p, dia: p.dia + i, hora: 0, minuto: janela.inicioMin });
+  for (let i = desloc; i < desloc + 31; i++) {
+    const d = diaDeslocado(p, i);
+    const janela = janelaDasPartes(d);
+    if (janela) return deSP({ ...d, hora: 0, minuto: janela.inicioMin });
   }
   return deSP({ ...p, dia: p.dia + desloc, hora: 9, minuto: 0 });   // inalcançável
 }
@@ -105,7 +124,7 @@ function proximaAbertura(p, desloc = 1) {
 export function dentroDaJanela(data) {
   const p = partesSP(data);
   const minutos = p.hora * 60 + p.minuto;
-  const hoje = JANELAS[p.diaSemana];
+  const hoje = janelaDasPartes(p);
 
   if (hoje && minutos >= hoje.inicioMin && minutos <= hoje.fimMin) return data;
   if (hoje && minutos < hoje.inicioMin) {
@@ -176,11 +195,12 @@ export function horarioDoLembrete(aula) {
   const pi = partesSP(ideal);
   const minutosIdeal = pi.hora * 60 + pi.minuto;
 
-  for (let i = 0; i <= 7; i++) {
-    const janela = JANELAS[(pi.diaSemana - i + 7) % 7];
+  for (let i = 0; i <= 31; i++) {
+    const d = diaDeslocado(pi, -i);
+    const janela = janelaDasPartes(d);
     if (!janela) continue;
     const minuto = Math.min(Math.max(minutosIdeal, janela.inicioMin), janela.fimMin);
-    const recuado = deSP({ ...pi, dia: pi.dia - i, hora: 0, minuto });
+    const recuado = deSP({ ...d, hora: 0, minuto });
     if (recuado.getTime() < aula.getTime()) return recuado;
   }
   return candidato;   // inalcançável com JANELAS de um dia fechado só

@@ -31,7 +31,7 @@ import { evoClient } from './evo-client.js';
 import {
   CONFIG_PADRAO, TIPOS_ALERTA, EVENTOS_AULA, DESTINOS, DIAS_SEMANA, AVISO_ATE_DIAS,
   normalizarConfig, alertasDe, avisosDeAula, regrasQueCasam, mensagemDoCiclo,
-  dentroDoHorario, idadeNaData, telefoneDaEquipe, aplicarBaixas, chaveDeAlertaValida,
+  dentroDoHorario, diaUtil, idadeNaData, telefoneDaEquipe, aplicarBaixas, chaveDeAlertaValida,
 } from './gerencia-regras.js';
 
 const CHAVE_CONFIG = 'gerencia:config';
@@ -423,6 +423,7 @@ export async function avisar({ agora = new Date() } = {}) {
   const { gerente, coordenacao, ligado } = config.avisos;
   if (!ligado) return { enviados: 0, motivo: 'avisos desligados' };
   if (!gerente.length && !coordenacao.length) return { enviados: 0, motivo: 'ninguém para avisar' };
+  if (!diaUtil(agora)) return { enviados: 0, motivo: 'fim de semana ou feriado' };
   if (!dentroDoHorario(agora, config.avisos)) return { enviados: 0, motivo: 'fora do horário' };
 
   const dados = await lerDados({ dias: 14, agora });

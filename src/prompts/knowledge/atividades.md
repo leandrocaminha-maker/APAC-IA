@@ -71,6 +71,39 @@
   capacidades físicas. Os equipamentos da sala estão em `informacoes-gerais.md`.
 - **A partir de 11 anos** em horários específicos (9h30–11h30 e 15h15–18h).
 
+### Treino no estilo HYROX (na sala de musculação)
+
+> Em divulgação (novembro de 2026), com o texto "🔥 Você conhece o treino no
+> estilo HYROX da AP?" — quem perguntar provavelmente viu essa divulgação.
+
+- **O que é:** um treino que combina **corrida e exercícios funcionais** numa
+  sessão dinâmica e desafiadora. A mistura trabalha várias capacidades ao mesmo
+  tempo — resistência cardiorrespiratória, resistência muscular, força e
+  condicionamento físico geral — e **complementa o treino convencional de
+  musculação**, sem substituí-lo.
+- **Onde e como:** é **prescrito na sala de musculação**, pelos professores da
+  sala. Faz parte da Musculação, não é uma aula coletiva da grade — por isso
+  não aparece em `grade-horaria.md`.
+- **Diferencial na AP:** o treino é **inspirado no HYROX e adaptado à proposta
+  de treinamento da AP**: os exercícios e as distâncias são ajustados à
+  estrutura da academia e ao objetivo de cada sessão. Para quem já faz
+  musculação, é um jeito de variar o estímulo e ganhar condicionamento sem sair
+  da sala.
+- **Para quem costuma fechar:** quem já treina e quer um desafio novo, quem
+  gosta de treino intenso e variado, quem corre ou quer melhorar o
+  condicionamento.
+- **Como entrar:** PENDENTE (dias, horários, se precisa agendar no FITI à
+  parte ou pedir ao professor, se há nível mínimo).
+- **O que NÃO dizer:**
+  - Não é o HYROX oficial, nem uma competição, nem preparação para a prova:
+    diga sempre "no estilo HYROX" ou "inspirado no HYROX".
+  - Não cite distâncias, estações, tempo de sessão nem exercícios
+    específicos — variam por sessão e não estão nesta base.
+  - Não ofereça como atividade avulsa ou com preço próprio: vem junto com a
+    Musculação do plano.
+- **Fechamento que a divulgação usa:** "🚀 Que tal experimentar um novo
+  desafio?"
+
 ## Pilates Fit Studio
 
 - **O que é:** Pilates nos aparelhos tradicionais, em estúdio com 8 lugares por

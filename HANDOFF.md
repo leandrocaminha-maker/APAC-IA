@@ -6,6 +6,28 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## Feriados, recesso e avisos da gerência só em dia útil (01/11/2026, à noite)
+
+Reclamação do responsável: a Leia mandou o painel para a gerência no fim de
+semana. E não havia feriado em lugar nenhum — 02/11 (Finados) teria
+follow-up, campanha e acompanhamento como numa segunda comum.
+
+- **`src/lib/feriados.js`** (novo): nacionais (com 20/11), Carnaval (segunda
+  e terça — a academia não abre), Sexta-feira Santa, 09/07, 25/01, Corpus
+  Christi, e `RECESSOS` — **21/12/2026 a 03/01/2027**. Extras pontuais em
+  `FERIADOS_EXTRA` (env, opcional).
+- **Janela de contato** (`followup.js`): feriado não tem janela, como o
+  domingo. Vale para tudo que usa `janelaDoDia`/`dentroDaJanela` — follow-up,
+  campanha, fila, acompanhamento, relatórios. O que vence no feriado vai para
+  a próxima abertura (o laço olha até 31 dias por causa do recesso).
+- **Gerência** (`gerencia-regras.js` `diaUtil`, `gerencia.js` `avisar`):
+  avisos só de segunda a sexta, fora de feriado. O sábado dos CLIENTES
+  continua 9h–13h.
+- **Leia:** `atividades.md` ganhou o treino no estilo HYROX (prescrito na
+  sala de musculação). "Como entrar" está `PENDENTE`: dias/horários/agendamento.
+  A Leia ainda NÃO sabe do recesso (`informacoes-gerais.md` não fala dele).
+- Testes: `feriados.test.js` (290 no total).
+
 ## O relatório em PDF no WhatsApp do aluno (30/10/2026, à tarde)
 
 Decisão do responsável: o Relatório 1 e o relatório completo do Prescrev vão

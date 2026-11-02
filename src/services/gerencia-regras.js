@@ -15,6 +15,8 @@
  * do NOSSO lado, e ser avisado sem ter de abrir o painel.
  */
 
+import { ehFeriado } from '../lib/feriados.js';
+
 const HORA_MS = 60 * 60 * 1000;
 const DIA_MS = 24 * HORA_MS;
 const OFFSET_SP_MS = -3 * HORA_MS;
@@ -207,6 +209,19 @@ export function dentroDoHorario(agora, { horaInicio, horaFim }) {
   const [hi, mi] = horaInicio.split(':').map(Number);
   const [hf, mf] = horaFim.split(':').map(Number);
   return m >= hi * 60 + mi && m <= hf * 60 + mf;
+}
+
+/**
+ * `agora` é dia útil em São Paulo — segunda a sexta, fora de feriado?
+ *
+ * Os avisos à gerência e à coordenação só saem em dia útil (01/11/2026):
+ * a Leia mandou o painel para a gerência no fim de semana. O que surgir no
+ * sábado, no domingo ou no feriado espera o próximo dia útil — a chave do
+ * alerta segura a repetição, e `AVISO_ATE_DIAS` cobre o fim de semana.
+ */
+export function diaUtil(agora) {
+  const { semana } = partesSP(agora);
+  return semana >= 1 && semana <= 5 && !ehFeriado(agora);
 }
 
 /** Idade em anos completos na data dada, ou `null` sem nascimento. */

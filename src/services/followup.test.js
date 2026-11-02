@@ -21,7 +21,11 @@ test('aula de manhã: conversa na manhã SEGUINTE, depois do aviso do EVO', () =
 });
 
 test('aula de sábado: domingo não tem contato, vai para a abertura de segunda', () => {
-  assert.equal(horarioDoPosAula(new Date('2026-10-31T12:00:00Z')).toISOString(), '2026-11-02T12:00:00.000Z');
+  assert.equal(horarioDoPosAula(new Date('2026-10-24T12:00:00Z')).toISOString(), '2026-10-26T12:00:00.000Z');
+});
+
+test('aula de sábado antes de feriado (02/11, Finados): pula domingo e feriado, vai para a terça', () => {
+  assert.equal(horarioDoPosAula(new Date('2026-10-31T12:00:00Z')).toISOString(), '2026-11-03T12:00:00.000Z');
 });
 
 test('aula no último dia do mês vira o mês', () => {
