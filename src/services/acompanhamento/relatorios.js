@@ -155,16 +155,18 @@ export async function enviarRelatorios({ agora = new Date(), clienteId = null, e
 
         const arquivo = await baixarRelatorio(relatorio.id);
         const legenda = legendaDoRelatorio(lista.mensagens, relatorio, corrigido);
+        const nomeArquivo = arquivo.nome_arquivo ?? relatorio.nome_arquivo;
         const r = await sendMediaBase64(inscricao.phone, {
           base64: arquivo.base64, mimetype: arquivo.mimetype ?? 'application/pdf',
-          fileName: arquivo.nome_arquivo ?? relatorio.nome_arquivo, caption: legenda, mediatype: 'document',
+          fileName: nomeArquivo, caption: legenda, mediatype: 'document',
         });
         const contato = await getOrCreateContact(inscricao.phone, null);
         const conversa = await getOrCreateConversation(contato.id);
         await saveMessage({
           conversationId: conversa.id, contactId: contato.id, direction: 'outbound', content: legenda,
           contentType: 'document', sentBy: SENT_BY_REGUA, evolutionMsgId: r?.key?.id || null, status: 'sent',
-          metadata: { acompanhamento: 'relatorio', relatorio: relatorio.id, tipo: relatorio.tipo, versao: relatorio.versao, corrigido },
+          // `arquivo`: o painel mostra o anexo no balão, e não só a legenda.
+          metadata: { acompanhamento: 'relatorio', relatorio: relatorio.id, tipo: relatorio.tipo, versao: relatorio.versao, corrigido, arquivo: nomeArquivo },
         });
         await supabase.from('acomp_relatorios').upsert({
           ...registro, status: 'enviado', enviado_em: new Date().toISOString(), ultimo_erro: null,

@@ -670,6 +670,11 @@ router.get('/api/conversas/:id/mensagens', rota(async (req, res) => {
       texto: m.content,
       tipo: m.content_type,
       midia: m.media_url,
+      // O nome do anexo, para o balão (30/10/2026). O relatório em PDF grava
+      // `metadata.arquivo`; os dois primeiros envios, de antes disso, têm só o tipo.
+      arquivo: m.metadata?.arquivo
+        || (m.metadata?.acompanhamento === 'relatorio'
+          ? `Relatório ${m.metadata.tipo === 'completo' ? 'completo' : 'inicial'}.pdf` : null),
       handoff: m.metadata?.handoff || false,
       motivoHandoff: m.metadata?.motivo_handoff || null,
       status: m.status,

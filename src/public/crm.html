@@ -283,6 +283,7 @@
   .balao.leia { align-self: flex-end; background: #14532d; border-bottom-right-radius: 4px; }
   .balao.consultor { align-self: flex-end; background: #3b2f63; border-bottom-right-radius: 4px; }
   .balao .assinatura { display: block; font-size: 11px; opacity: .7; margin-top: 4px; }
+  .balao .anexo { display: block; font-weight: 600; margin-bottom: 4px; }
   .marca-handoff { align-self: center; background: #78350f; color: #fcd34d;
     font-size: 12px; padding: 4px 12px; border-radius: 999px; }
   /* O briefing que a Leia escreve no handoff. Fica no fio da conversa, no
@@ -1868,6 +1869,21 @@ async function carregarConversas() {
 
 $('#c-filtro').addEventListener('change', carregarConversas);
 
+/**
+ * A linha do anexo no balão (30/10/2026). O balão mostrava só a legenda, e o
+ * PDF do relatório no WhatsApp do aluno parecia uma frase comum — como toda
+ * imagem com legenda. O áudio já vem marcado no texto ("[áudio] …"), e a
+ * mídia sem legenda também ("[imagem]"): aí a linha não se repete.
+ */
+const ANEXO = { document: '📎 Documento', image: '🖼 Imagem', video: '🎬 Vídeo' };
+function anexoDoBalao(item) {
+  const rotulo = ANEXO[item.tipo];
+  if (!rotulo) return '';
+  if (/^\[(imagem|documento|vídeo)\]$/.test(String(item.texto || '').trim())) return '';
+  const texto = item.tipo === 'document' && item.arquivo ? `📎 ${item.arquivo}` : rotulo;
+  return `<span class="anexo">${esc(texto)}</span>`;
+}
+
 async function abrirConversa(id) {
   const dado = await api(`/conversas/${id}/mensagens`);
   estado.conversaAberta = dado;
@@ -1922,7 +1938,7 @@ async function abrirConversa(id) {
     const assinatura = item.de === 'consultor' ? esc(item.autor.replace('human:', ''))
       : item.de === 'professor' ? 'professor, pela ponte'
       : item.de === 'leia' ? 'Leia' : '';
-    return `<div class="balao ${classe}">${esc(item.texto)}
+    return `<div class="balao ${classe}">${anexoDoBalao(item)}${esc(item.texto)}
          <span class="assinatura">${assinatura}${assinatura ? ' · ' : ''}${dataHora(item.em)}</span>
        </div>`;
   }).join('');
