@@ -25,6 +25,7 @@ import { startWhatsappMonitor } from './services/whatsapp-monitor.js';
 import { startCampanhaWorker } from './workers/campanha-worker.js';
 import { startAcompanhamentoWorker } from './workers/acompanhamento-worker.js';
 import { startGerenciaWorker } from './workers/gerencia-worker.js';
+import { startAvaliacaoWorker } from './workers/avaliacao-worker.js';
 
 const app = express();
 
@@ -166,6 +167,10 @@ app.listen(config.port, () => {
 
   // Avisos do painel gerencial: ligam e desligam no próprio painel
   startGerenciaWorker();
+
+  // Avisos da avaliação física (compra, 3 dias antes, véspera): simulam
+  // até AVALIACAO_AVISOS_ENVIO=true, ver config.avaliacao
+  startAvaliacaoWorker();
 });
 
 /**

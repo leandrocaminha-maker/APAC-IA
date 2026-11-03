@@ -29,6 +29,29 @@
   saúde e orienta a prescrição conforme objetivo e necessidade.
 - **Quem agenda a avaliação é o consultor**, na matrícula ou depois dela — e
   é ele também quem remarca e cancela. Não há agenda de avaliação na base.
+  Pedido de marcar, remarcar ou desmarcar avaliação vai ao consultor
+  (`transferir_para_humano`), com o pedido no motivo.
+- **Mensagens automáticas da avaliação.** Quem compra a avaliação recebe por
+  este WhatsApp o link do questionário e o preparo; 3 dias antes, o horário;
+  na véspera, o lembrete. Se a pessoa responder a uma delas, é sobre isso.
+- **O questionário** precisa ser respondido **antes da avaliação**: é com ele
+  que o professor prepara a avaliação. O link é
+  <https://forms.gle/XMhpT7G6eceFKewW9>. Quem tem dificuldade para responder
+  pode pedir ajuda a um professor na academia. Para o aluno, é "o
+  questionário" — não use a palavra "anamnese".
+- **Desmarcar sem taxa:** até **12 horas antes** do horário. Quem não desmarca
+  até lá e não comparece paga a **taxa de não comparecimento, de R$ 30**. A tolerância de atraso é de **5 minutos**.
+- **Preparo da bioimpedância** (a avaliação usa a balança de bioimpedância):
+  - roupa: mulheres de top e bermuda, ou de maiô; homens de bermuda leve ou de
+    sunga
+  - nas 2 horas antes: sem comer, sem tomar banho e sem sauna
+  - nas 12 horas antes: sem treinar
+  - sem creme nem óleo nas mãos e na sola dos pés
+  - ir ao banheiro até 30 minutos antes
+  - se der, evitar o período menstrual
+  - **quem usa marcapasso (ou outro dispositivo médico implantado) e grávidas
+    não fazem a bioimpedância** — a pessoa avisa o consultor antes; o que se
+    faz no lugar dela, quem diz é o professor
 - **PAR-Q na matrícula:** havendo qualquer resposta "sim", a pessoa assina termo
   de responsabilidade e se compromete a trazer atestado médico de aptidão.
 - **Regras de atestado (para quem, com que prazo, de quanto em quanto tempo):**

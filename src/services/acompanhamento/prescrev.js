@@ -86,6 +86,20 @@ export async function buscarModelos() {
   return r;
 }
 
+/**
+ * O questionário de quem tem avaliação marcada já chegou ao Prescrev?
+ * (`/api/acompanhamento/questionario`, 03/11/2026). Conta pelo cadastro
+ * vinculado ao EVO e, sem vínculo, pelo e-mail; só o que chegou desde `desde`.
+ * @returns {Promise<{recebido: boolean, em: string|null, por: 'cadastro'|'email'|null}>}
+ */
+export async function questionarioRecebido({ evo, email, desde }) {
+  const q = new URLSearchParams();
+  if (evo) q.set('evo', String(evo));
+  if (email) q.set('email', String(email));
+  if (desde) q.set('desde', desde);
+  return buscar(`/api/acompanhamento/questionario?${q}`);
+}
+
 const EQUIPE_CACHE_MS = 5 * 60_000;
 let cacheEquipe = { em: 0, equipe: null };
 

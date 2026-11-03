@@ -68,8 +68,12 @@ export function inicioDoDiaSP(agora = new Date()) {
  * dentro deste). O aceite do ATIVAR e a Leia do acompanhamento
  * (`bot:acompanhamento:aceite`, `:leia`) respondem a quem escreveu, e o
  * `eq` os deixa de fora.
+ *
+ * `bot:avaliacao` são os avisos da avaliação física (na compra, 3 dias antes
+ * e na véspera — `avaliacao-avisos.js`): quem começa somos nós, e contam.
  */
-const AUTOMATICOS = 'sent_by.eq.bot:followup,sent_by.like.app:*,sent_by.eq.bot:acompanhamento';
+const AUTOMATICOS =
+  'sent_by.eq.bot:followup,sent_by.like.app:*,sent_by.eq.bot:acompanhamento,sent_by.eq.bot:avaliacao';
 
 /**
  * Quantas conversas a máquina já iniciou hoje.

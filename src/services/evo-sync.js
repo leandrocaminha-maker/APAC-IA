@@ -28,6 +28,7 @@ import {
   escolherSessao, vinculoDoProspect, proximoPassoDaAulaVendida, instanteDaVenda, diaSP,
   NOTA_SEM_RESERVA,
 } from './aula-regras.js';
+import { aoAvisoDaAutomacao, aoVenderAvaliacao } from './avaliacao-avisos.js';
 
 /** Autor de uma ação, no formato que crm_lead_events espera. */
 function autor(usuario) {
@@ -1179,8 +1180,18 @@ async function atendimentosDoAviso(person) {
  *
  * @returns {Promise<object|null>} o lead a que o aviso foi ligado
  */
-export async function processarAutomacaoDoCrm(tipo, payload) {
+export async function processarAutomacaoDoCrm(tipo, payload, evento = null) {
   const person = payload?.person || {};
+
+  // As automações da avaliação física (3 dias antes e véspera, pelo nome):
+  // marcam o aviso e param aqui — não são de lead nenhum
+  // (avaliacao-avisos.js). Falha nelas não segura as outras regras.
+  try {
+    if (await aoAvisoDaAutomacao(payload, evento)) return null;
+  } catch (err) {
+    logger.error(`[evo-sync] Aviso da avaliação (${payload?.eventLabel || tipo}) falhou: ${err.message}`);
+    return null;
+  }
 
   // Aula experimental realizada: quem foi à academia.
   //
@@ -1282,6 +1293,14 @@ export async function processarEventoWebhook(evento) {
         logger.warn(`[evo-sync] ApiCallback de ${tipo} falhou: ${err.message}`);
         return null;
       });
+    }
+
+    // Compra da avaliação física ("AF E CONSULTORIA"): o aviso com o link do
+    // questionário e o preparo (avaliacao-avisos.js). À parte do funil, e
+    // antes dele: vem junto com o plano ou sozinha, de lead ou de aluno.
+    if (tipo === 'NewSale' && detalhe) {
+      await aoVenderAvaliacao(detalhe, evento).catch(err =>
+        logger.error(`[evo-sync] Aviso da compra da avaliação (${evento.id_record}) falhou: ${err.message}`));
     }
 
     switch (tipo) {
@@ -1387,7 +1406,7 @@ export async function processarEventoWebhook(evento) {
 
       default:
         if (String(tipo).startsWith('crm.automation.')) {
-          lead = await processarAutomacaoDoCrm(tipo, evento.payload);
+          lead = await processarAutomacaoDoCrm(tipo, evento.payload, evento);
           break;
         }
         logger.debug(`[evo-sync] Evento ${tipo} guardado sem regra de funil`);

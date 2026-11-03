@@ -366,6 +366,35 @@ export const config = {
     },
   },
 
+  // Os avisos da avaliação física (03/11/2026, `avaliacao-avisos.js`): o
+  // link do questionário e o preparo na compra do "AF E CONSULTORIA", e o
+  // lembrete 3 dias antes e na véspera, pelas automações do CRM do EVO.
+  avaliacao: {
+    // Com false nada é registrado: a venda e a automação passam como antes.
+    habilitado: env('AVALIACAO_AVISOS_HABILITADO', 'true') === 'true',
+
+    // Envio de VERDADE. Com false (o padrão), cada aviso chega à hora dele
+    // como 'simulado', com o texto que sairia — para conferir antes de ligar.
+    envio: env('AVALIACAO_AVISOS_ENVIO', 'false') === 'true',
+
+    // Minutos entre os ciclos do worker. 0 desliga o worker.
+    minutos: parseInt(env('AVALIACAO_AVISOS_MINUTOS', '5'), 10),
+
+    // O questionário (Google Forms) que o Prescrev recebe.
+    linkQuestionario: env('AVALIACAO_QUESTIONARIO_URL', 'https://forms.gle/XMhpT7G6eceFKewW9'),
+
+    // O serviço vendido quando a avaliação é comprada (o id no EVO). O nome
+    // "AF E CONSULTORIA" vale de rede, se o id mudar.
+    servicos: env('AVALIACAO_SERVICOS_EVO', '83').split(',').map(s => Number(s.trim())).filter(Number.isFinite),
+
+    // As atividades da agenda em que a avaliação se marca. A 9 é a
+    // "AVALIAÇÃO E CONSULTORIA AVULSA": a única com sessão desde setembro.
+    atividades: env('AVALIACAO_ATIVIDADES_EVO', '9').split(',').map(s => Number(s.trim())).filter(Number.isFinite),
+
+    // O nome das automações do CRM do EVO (o `eventLabel`) precisa ter isto.
+    rotuloAutomacao: env('AVALIACAO_ROTULO_AUTOMACAO', 'avalia'),
+  },
+
   // Transcrição de áudio recebido no WhatsApp.
   //
   // O Claude não aceita áudio, então isto exige um serviço de fora — não é

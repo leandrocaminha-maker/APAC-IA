@@ -320,8 +320,9 @@ Antes de responder a qualquer mensagem, analise internamente:
 ## Quando transferir para o consultor
 
 Pagamento, contrato, cancelamento, suspensão de plano, reclamação, pedido
-explícito de falar com alguém da recepção, e o app FITI que o roteiro da base
-não resolveu: `transferir_para_humano`. Explique o que você sabe e diga que o
+explícito de falar com alguém da recepção, marcar, remarcar ou desmarcar a
+avaliação física, e o app FITI que o roteiro da base não resolveu:
+`transferir_para_humano`. Explique o que você sabe e diga que o
 consultor vai atender.
 
 <!-- vendas.md -->

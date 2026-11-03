@@ -180,12 +180,21 @@ const LEMBRETE_ANTECEDENCIA_MIN_MS = 6 * 60 * 60 * 1000;
  * aula de domingo à tarde — o ideal caía no sábado, que TEM janela, mas
  * fora dela, e o ajuste jogava o lembrete para a segunda, depois da aula.
  * Perguntar pela antecedência fecha os dois casos com uma regra só.
+ *
+ * `antecedenciaMinMs` troca as seis horas por outra antecedência, que passa
+ * a valer também no recuo. É o lembrete da véspera da avaliação física: ele
+ * diz até quando se desmarca sem taxa (12 h antes), e chegar depois disso
+ * seria avisar de um prazo vencido.
  */
-export function horarioDoLembrete(aula) {
+export function horarioDoLembrete(aula, { antecedenciaMinMs } = {}) {
   const ideal = new Date(aula.getTime() - 24 * 60 * 60 * 1000);
   const candidato = dentroDaJanela(ideal);
+  const antecedencia = antecedenciaMinMs ?? LEMBRETE_ANTECEDENCIA_MIN_MS;
+  // Sem antecedência própria, o recuo só pede que o aviso venha antes da
+  // aula — como sempre foi. Com ela, o recuo também a respeita.
+  const limiteDoRecuo = aula.getTime() - (antecedenciaMinMs ?? 0);
 
-  if (candidato.getTime() <= aula.getTime() - LEMBRETE_ANTECEDENCIA_MIN_MS) {
+  if (candidato.getTime() <= aula.getTime() - antecedencia) {
     return candidato;
   }
 
@@ -201,7 +210,9 @@ export function horarioDoLembrete(aula) {
     if (!janela) continue;
     const minuto = Math.min(Math.max(minutosIdeal, janela.inicioMin), janela.fimMin);
     const recuado = deSP({ ...d, hora: 0, minuto });
-    if (recuado.getTime() < aula.getTime()) return recuado;
+    if (antecedenciaMinMs === undefined ? recuado.getTime() < aula.getTime() : recuado.getTime() <= limiteDoRecuo) {
+      return recuado;
+    }
   }
   return candidato;   // inalcançável com JANELAS de um dia fechado só
 }

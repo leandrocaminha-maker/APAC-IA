@@ -6,6 +6,59 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## Os avisos da avaliação física (03/11/2026) — em simulação
+
+Decisão do responsável: quem compra a avaliação recebe pelo WhatsApp o link
+do questionário e o preparo; 3 dias antes, o horário e o preparo (o link só
+se o questionário não chegou ao Prescrev); na véspera, o lembrete com o
+preparo e até quando desmarcar sem a taxa de não comparecimento, de R$ 30
+(12 h antes; até 03/11 o cartaz a chamava de "remarcação"). Sem a
+palavra "anamnese".
+
+**De onde vem cada coisa.** O EVO não avisa o agendamento: `ActivityEnroll`
+nunca chegou, e a sessão de avaliação é avulsa (`idConfiguration: 0`), fora da
+grade da API — só aparece nas sessões da pessoa. Então:
+
+- **A compra:** o webhook `NewSale` com o serviço "AF E CONSULTORIA" (id 83,
+  quase sempre R$ 0, 2 unidades; 56 vendas até 03/11). A "REMARCAÇÃO AF E
+  CONSULTORIA" não conta. Venda guardada há mais de 2 dias (reprocessamento)
+  não avisa; uma compra por pessoa a cada 30 dias.
+- **A data:** duas automações do CRM do EVO, com envio por webhook para
+  `/webhook/evo`, em relação à data agendada da atividade "AVALIAÇÃO E
+  CONSULTORIA AVULSA" (id 9): 3 dias antes e 1 dia antes. **O nome da
+  automação precisa ter "avaliacao"** (`AVALIACAO_ROTULO_AUTOMACAO`, sem
+  acento conta igual). A automação traz a pessoa; a sessão (dia, hora,
+  professor) sai de `sessoesDaPessoa`. A dos 3 dias já marca a véspera.
+- **O questionário:** a rota assinada nova do Prescrev
+  `/api/acompanhamento/questionario` (`questionarioRecebido`), pelo cadastro
+  vinculado ou pelo e-mail, nos 60 dias antes da avaliação, na hora do envio.
+
+**Quando sai.** Na janela de contato. A véspera é o `horarioDoLembrete` da
+aula experimental com 13 h de antecedência (ganhou o parâmetro
+`antecedenciaMinMs`; sem ele, o de sempre): a de segunda recua para o sábado,
+porque segunda de manhã o prazo de desmarcar já passou. Na hora de sair,
+confere de novo: prazo, supressão, a sessão ainda na agenda no mesmo horário
+(remarcada é outra sessão, e a automação a anuncia), o da compra há menos de
+24 h (o dos 3 dias cai), consultor na conversa (espera), teto do número
+(espera). Sai como `bot:avaliacao`, que conta no teto (`limite-envio.js`), e
+o contato novo vira `tipo_contato: 'aluno'`.
+
+- Código: `avaliacao-avisos-regras.js` (puro: textos, quando, reconhecer),
+  `avaliacao-avisos.js` (grava e envia), `avaliacao-worker.js` (5 min), ganchos
+  em `evo-sync.js` (`NewSale` e `processarAutomacaoDoCrm`).
+- Tabela `aval_avisos` (migration **022**): uma linha por aviso, com o texto
+  e o motivo de quem não saiu.
+- Base: `operacional-adulto.md` ganhou o preparo, o link, o prazo de
+  desmarcar e as mensagens automáticas; `acompanhamento.md`, desmarcar
+  avaliação na lista do que vai ao consultor.
+- Testes: `avaliacao-avisos-regras.test.js` (23; 313 no total).
+
+**Para ir ao ar:** rodar a 022; deploy do Prescrev (a rota nova), depois
+daqui. Nasce em **simulação** (`AVALIACAO_AVISOS_ENVIO=false`): cada aviso
+chega à hora como `simulado`, com o texto em `aval_avisos.texto`. Criar as
+duas automações no CRM do EVO. Ligar o envio é decisão do responsável:
+`AVALIACAO_AVISOS_ENVIO=true` no `.env`.
+
 ## Feriados, recesso e avisos da gerência só em dia útil (01/11/2026, à noite)
 
 Reclamação do responsável: a Leia mandou o painel para a gerência no fim de
