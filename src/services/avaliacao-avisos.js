@@ -26,7 +26,6 @@
  *   o da compra saiu há     o dos 3 dias não sai (seria o mesmo texto duas
  *   menos de 24 h           vezes); a véspera continua
  *   consultor na conversa   espera o próximo ciclo, até o prazo
- *   teto do número          espera o próximo ciclo
  *
  * E o questionário se pergunta ao Prescrev só na hora do envio: quem
  * respondeu entre a automação e a mensagem não recebe o link.
@@ -34,8 +33,10 @@
  * ## Desligado por padrão
  *
  * Com `AVALIACAO_AVISOS_ENVIO=false` (o padrão), cada aviso chega à hora
- * dele como 'simulado', com o texto que sairia, e nada vai ao WhatsApp nem
- * conta no teto do número. Ligar é decisão do responsável, no `.env`.
+ * dele como 'simulado', com o texto que sairia, e nada vai ao WhatsApp.
+ *
+ * O envio fica FORA do teto diário do número (decisão de 03/11/2026): não
+ * conta nem espera por ele (`limite-envio.js`). Ligar é decisão do responsável, no `.env`.
  */
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
@@ -44,7 +45,6 @@ import { sendText, normalizePhone } from './evolution.js';
 import { getOrCreateContact, getOrCreateConversation, saveMessage } from './contacts.js';
 import { estaNaJanela } from './followup.js';
 import { estaSuprimido } from './campanhas.js';
-import { limiteEnvio } from './limite-envio.js';
 import { buscarMembroPorId, sessoesDaPessoa } from './evo-client.js';
 import { telefonesDoMembro } from './vendas-regras.js';
 import { questionarioRecebido } from './acompanhamento/prescrev.js';
@@ -313,11 +313,7 @@ export async function enviarAvisos({ agora = new Date() } = {}) {
           continue;
         }
 
-        const cota = await limiteEnvio.podeIniciarConversa();
-        if (!cota.ok) {
-          logger.info(`[avaliacao] Teto do número: ${cota.motivo}. Os avisos esperam o próximo ciclo.`);
-          break;
-        }
+        // Fora do teto do número (decisão de 03/11/2026, `limite-envio.js`).
         if (feitos > 0) await esperar(20_000 + Math.random() * 20_000);
 
         const contato = await getOrCreateContact(aviso.phone, aviso.nome_completo ?? null);

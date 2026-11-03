@@ -69,11 +69,14 @@ export function inicioDoDiaSP(agora = new Date()) {
  * (`bot:acompanhamento:aceite`, `:leia`) respondem a quem escreveu, e o
  * `eq` os deixa de fora.
  *
- * `bot:avaliacao` são os avisos da avaliação física (na compra, 3 dias antes
- * e na véspera — `avaliacao-avisos.js`): quem começa somos nós, e contam.
+ * `bot:avaliacao` (os avisos da avaliação física, `avaliacao-avisos.js`)
+ * fica FORA do teto, por decisão do responsável em 03/11/2026: é aviso a
+ * quem tem horário marcado, e no dia em que o teto bateu às 10h17 (34
+ * follow-ups represados do domingo e do feriado) o lembrete da véspera
+ * esperaria atrás das retomadas de venda até passar do prazo de desmarcar.
+ * Ele não conta e não consulta o teto.
  */
-const AUTOMATICOS =
-  'sent_by.eq.bot:followup,sent_by.like.app:*,sent_by.eq.bot:acompanhamento,sent_by.eq.bot:avaliacao';
+const AUTOMATICOS = 'sent_by.eq.bot:followup,sent_by.like.app:*,sent_by.eq.bot:acompanhamento';
 
 /**
  * Quantas conversas a máquina já iniciou hoje.

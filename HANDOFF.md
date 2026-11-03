@@ -39,8 +39,9 @@ aula experimental com 13 h de antecedência (ganhou o parâmetro
 porque segunda de manhã o prazo de desmarcar já passou. Na hora de sair,
 confere de novo: prazo, supressão, a sessão ainda na agenda no mesmo horário
 (remarcada é outra sessão, e a automação a anuncia), o da compra há menos de
-24 h (o dos 3 dias cai), consultor na conversa (espera), teto do número
-(espera). Sai como `bot:avaliacao`, que conta no teto (`limite-envio.js`), e
+24 h (o dos 3 dias cai), consultor na conversa (espera). Sai como `bot:avaliacao`, **fora do teto do número** (decisão de
+03/11, no dia em que 34 follow-ups represados bateram o teto às 10h17: o
+lembrete da véspera esperaria atrás deles), e
 o contato novo vira `tipo_contato: 'aluno'`.
 
 - Código: `avaliacao-avisos-regras.js` (puro: textos, quando, reconhecer),
