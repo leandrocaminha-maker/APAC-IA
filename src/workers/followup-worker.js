@@ -317,7 +317,7 @@ async function enviarUm(item) {
   // Última porta antes de gastar o modelo, e a única que pergunta ao
   // WhatsApp em vez de ao formato: o número existe?
   //
-  // `telefoneValido`, acima, confere 11 dígitos e o 9 na terceira posição.
+  // `telefoneValido`, acima, confere o formato de celular.
   // Isso recusa fixo e lixo de cadastro, e não sabe nada sobre número
   // desligado — que é o caso comum numa base de lead de meses atrás.
   // Enviar para número morto é sinal pesado no detector de spam da Meta,

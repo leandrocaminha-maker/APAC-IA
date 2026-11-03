@@ -140,15 +140,21 @@ export function normalizePhone(phone) {
  * Evolution respondeu `exists: false`, mas a mensagem já tinha sido gerada,
  * e o modelo já tinha sido pago. Recusar antes é o que evita o gasto.
  *
- * Duas validações, não uma: 11 dígitos depois do DDI, e o `9` na terceira
- * posição, que é o que distingue celular de fixo no plano brasileiro.
+ * Aceita dois formatos de celular depois do DDI:
+ *   - 11 dígitos com o `9` na terceira posição (o do cadastro);
+ *   - 10 dígitos começando de 6 a 9 depois do DDD — o que o próprio
+ *     WhatsApp entrega para muitos celulares de fora de SP, sem o 9 na
+ *     frente (`556392248078`). Até 03/11/2026 este era recusado, e a lead
+ *     que escreveu por ele não recebia lembrete nem follow-up, embora a Leia
+ *     conversasse com ela normalmente. Fixo (2 a 5) continua de fora.
+ * O número volta como chegou: é o endereço que o WhatsApp reconhece.
  */
 export function telefoneValido(bruto) {
   const digitos = String(bruto || '').replace(/\D/g, '');
   const semDdi = digitos.startsWith('55') && digitos.length > 11 ? digitos.slice(2) : digitos;
-  if (semDdi.length !== 11) return null;
-  if (semDdi[2] !== '9') return null;
-  return `55${semDdi}`;
+  if (semDdi.length === 11 && semDdi[2] === '9') return `55${semDdi}`;
+  if (semDdi.length === 10 && /[6-9]/.test(semDdi[2])) return `55${semDdi}`;
+  return null;
 }
 
 /**
@@ -207,7 +213,7 @@ export async function sendText(phone, text, { delayMs, instancia = instance } = 
 /**
  * O número existe no WhatsApp?
  *
- * `telefoneValido` confere FORMATO — 11 dígitos e o 9 na terceira posição.
+ * `telefoneValido` confere FORMATO de celular.
  * Isto confere existência, que é outra pergunta e só a Meta responde.
  *
  * Por que passou a importar em 31/08/2026: enviar para número morto é um
