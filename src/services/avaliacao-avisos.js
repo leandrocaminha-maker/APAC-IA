@@ -25,7 +25,9 @@
  *                           automação a anuncia de novo
  *   o da compra saiu há     o dos 3 dias não sai (seria o mesmo texto duas
  *   menos de 24 h           vezes); a véspera continua
- *   consultor na conversa   espera o próximo ciclo, até o prazo
+ *   consultor na conversa   NÃO espera (decisão de 03/11/2026): é aviso de
+ *                           horário marcado, e a resposta do cliente continua
+ *                           com o consultor — a conversa segue em modo humano
  *
  * E o questionário se pergunta ao Prescrev só na hora do envio: quem
  * respondeu entre a automação e a mensagem não recebe o link.
@@ -248,14 +250,6 @@ async function consultarQuestionario(aviso) {
   }
 }
 
-async function conversaComConsultor(phone) {
-  const { data: contato } = await supabase.from('wa_contacts').select('id').eq('phone', phone).maybeSingle();
-  if (!contato) return false;
-  const { data } = await supabase.from('wa_conversations').select('id')
-    .eq('contact_id', contato.id).eq('status', 'human').limit(1).maybeSingle();
-  return !!data;
-}
-
 let rodando = false;
 
 /**
@@ -297,8 +291,6 @@ export async function enviarAvisos({ agora = new Date() } = {}) {
           await cancelar(aviso, 'O aviso da compra saiu há menos de 24 h: a véspera continua marcada.');
           continue;
         }
-        // Consultor na conversa: espera. Se ele ficar até o prazo, o aviso cai.
-        if (c.envio && await conversaComConsultor(aviso.phone)) continue;
 
         const questionario = aviso.etapa === 'venda' ? null : await consultarQuestionario(aviso);
         const texto = textoDoAviso(aviso.etapa, {
