@@ -212,13 +212,14 @@ export function prazoDeDesmarcar(sessaoEm, agora = new Date()) {
   return `${dia} às ${hora(limite)}`;
 }
 
-/** O preparo da bioimpedância, do cartaz da academia, em ações. */
+/** O preparo da avaliação (o do cartaz da bioimpedância e o calçado de treino), em ações. */
 export function preparo(genero, { comPeriodo = true } = {}) {
   const roupa = genero === 'F' ? 'vem de top e bermuda, ou de maiô'
     : genero === 'M' ? 'vem de bermuda leve ou de sunga'
     : 'vem de top e bermuda ou maiô (mulheres), ou de bermuda leve ou sunga (homens)';
   const linhas = [
     roupa,
+    'vem com calçado de treino',
     'nas 2 horas antes, fica sem comer, sem tomar banho e sem sauna',
     'nas 12 horas antes, fica sem treinar',
     'não passa creme nem óleo nas mãos e nos pés',
@@ -228,7 +229,7 @@ export function preparo(genero, { comPeriodo = true } = {}) {
   const restricao = genero === 'M'
     ? 'Se você usa marcapasso, avisa a gente antes: nesse caso a bioimpedância não é feita.'
     : 'Se você está grávida ou usa marcapasso, avisa a gente antes: nesses casos a bioimpedância não é feita.';
-  return `Pra bioimpedância sair certinha:\n${linhas.map(l => `• ${l}`).join('\n')}\n${restricao}`;
+  return `Pra avaliação sair certinha:\n${linhas.map(l => `• ${l}`).join('\n')}\n${restricao}`;
 }
 
 function oi(nome) {

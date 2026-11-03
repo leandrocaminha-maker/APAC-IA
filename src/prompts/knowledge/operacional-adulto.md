@@ -43,7 +43,7 @@
   até lá e não comparece paga a **taxa de não comparecimento, de R$ 30**. A tolerância de atraso é de **5 minutos**.
 - **Preparo da bioimpedância** (a avaliação usa a balança de bioimpedância):
   - roupa: mulheres de top e bermuda, ou de maiô; homens de bermuda leve ou de
-    sunga
+    sunga, e com calçado de treino
   - nas 2 horas antes: sem comer, sem tomar banho e sem sauna
   - nas 12 horas antes: sem treinar
   - sem creme nem óleo nas mãos e na sola dos pés

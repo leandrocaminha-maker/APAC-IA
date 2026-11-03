@@ -139,6 +139,7 @@ test('na compra: o questionário com o link, a ajuda do professor e o preparo �
   assert.match(t, /precisa chegar antes do dia/);
   assert.match(t, /chama um professor/);
   assert.match(t, /maiô/);
+  assert.match(t, /calçado de treino/);
   assert.match(t, /grávida/);
   assert.match(t, /período menstrual/);
   assert.doesNotMatch(t, /anamnese/i);
