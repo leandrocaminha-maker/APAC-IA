@@ -62,3 +62,19 @@ test('a base é curta e cada pedaço existe nos arquivos de knowledge/', async (
 test('seção que mudou de título é erro, e não base pela metade', async () => {
   await assert.rejects(montarBase(async () => '# arquivo sem as seções'), /não está em/);
 });
+
+// Decisão do responsável em 05/11/2026: a API do EVO não agenda a sessão sob
+// demanda da avaliação, então a Leia não agenda a reavaliação — recolhe o dia
+// e o período e transfere ao consultor, com o pedido pronto no `motivo`.
+test('a reavaliação confirmada vai ao consultor, com o pedido no motivo e sem promessa', () => {
+  const prompt = limparPrompt(bruto);
+  const ini = prompt.indexOf('### Reavaliação: o consultor agenda');
+  assert.ok(ini >= 0, 'falta a seção da reavaliação');
+  const secao = prompt.slice(ini, prompt.indexOf('\n### ', ini + 10));
+  assert.ok(secao.includes('`transferir_para_humano`'), 'a reavaliação se transfere');
+  for (const campo of ['Reavaliação para agendar', 'Próxima reavaliação', 'prefere', 'professor']) {
+    assert.ok(secao.includes(campo), `o motivo leva: ${campo}`);
+  }
+  assert.ok(/Não ofereça horário/.test(secao) && /Nunca diga que está marcado/.test(secao), 'sem horário oferecido nem marcado');
+  assert.ok(secao.includes('`consultor`'), 'o desfecho é consultor');
+});

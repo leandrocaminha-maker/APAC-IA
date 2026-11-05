@@ -44,8 +44,23 @@ const FICHA = {
 const REGUA = 'Oi, Marta! Passando para saber como estão a hidro e a musculação nesta semana. ' +
   'Você já fez 4 sessões nos últimos 14 dias — bonito de ver! Qualquer coisa, o Rafael está por aqui.';
 
-/** Cada caso: as mensagens do aluno, em ordem (cada uma é uma troca). */
+// A mensagem de reavaliação da régua (situação 'reavaliacao', modelos.ts do
+// Prescrev), 7 dias antes. Decisão de 05/11/2026: o "sim" vai ao consultor.
+const REAVALIACAO = {
+  regua: `Marta, sua reavaliação tá prevista pra ${somar(6).slice(8, 10)}/${somar(6).slice(5, 7)}, e é nela que a gente vê ` +
+    'o que mudou desde a primeira. Quer que eu avise a equipe pra reservar um horário?',
+  ficha: { proxima_avaliacao: somar(6) },
+};
+
+/**
+ * Cada caso: as mensagens do aluno, em ordem (cada uma é uma troca). Um caso
+ * também pode ser `{ mensagens, regua, ficha }`: outra mensagem da régua e o
+ * que muda na ficha.
+ */
 const CASOS = {
+  reavaliacao_sim: { ...REAVALIACAO, mensagens: ['Sim, quero!', 'Quinta de manhã'] },
+  reavaliacao_ja_diz: { ...REAVALIACAO, mensagens: ['Pode sim, de preferência terça à noite'] },
+  reavaliacao_agora_nao: { ...REAVALIACAO, mensagens: ['Agora não, depois eu vejo'] },
   treino_bom: ['Fiz meu treino ontem e foi ótimo! Consegui fazer tudo sem parar'],
   horario_hidro: ['Que horas tem hidro amanhã?'],
   dor_no_joelho: ['Estou com uma dor no joelho desde a hidro de ontem, dói quando subo escada'],
@@ -72,9 +87,11 @@ const ROTULO = (t) => [
   t.handoff ? `consultor: ${t.handoff.motivo}` : null,
 ].filter(Boolean).join('\n      ');
 
-async function rodar(nome, mensagens) {
+async function rodar(nome, caso) {
+  const { mensagens, regua = REGUA, ficha: mudancas = {} } = Array.isArray(caso) ? { mensagens: caso } : caso;
+  const ficha = { ...FICHA, ...mudancas };
   console.log(`\n══ ${nome} ══`);
-  console.log(`  [régua] ${REGUA}`);
+  console.log(`  [régua] ${regua}`);
   const historico = [];
   let respondidas = 0;
   let encaminhado = null;
@@ -85,8 +102,8 @@ async function rodar(nome, mensagens) {
 
     const troca = { troca: respondidas + 1, respondidas, limiteAtingido: respondidas >= 3 };
     const contexto = contextoDoAluno({
-      ficha: FICHA, hoje, troca, simulacao: true,
-      ultimaDoAcompanhamento: { texto: REGUA, quando: 'ontem' },
+      ficha, hoje, troca, simulacao: true,
+      ultimaDoAcompanhamento: { texto: regua, quando: 'ontem' },
       encaminhamentoAberto: encaminhado,
       // Um caso com o professor fora do turno pelo resto do dia.
       situacaoDoProfessor: nome.endsWith('_fora') ? { estado: 'nao_hoje', volta: 'amanhã', as: '06:00' } : { estado: 'agora', ate: '21:00' },
