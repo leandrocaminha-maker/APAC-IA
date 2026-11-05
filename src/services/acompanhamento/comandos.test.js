@@ -144,6 +144,13 @@ test('destino: o card, depois quem prescreveu o treino no EVO, depois o avaliado
   assert.equal(destinoDoAluno({ ficha: { ...fichaB, professor: null }, treinos: [], hoje: '2026-10-12', equipe: equipeB }), null);
 });
 
+test('destino: o professor assistente não assume o aluno pelo treino do EVO', () => {
+  const comAssistente = equipeB.map(m => m.profile_id === 'p-rafa' ? { ...m, cargo: 'professor_assistente' } : m);
+  // o treino é do Rafael, assistente: vale o avaliador
+  assert.deepEqual(destinoDoAluno({ ficha: fichaB, treinos: treinoB('RAFAEL SOUZA'), hoje: '2026-10-12', equipe: comAssistente }),
+    { profile_id: 'p-aval', nome: 'Vanessa', origem: 'avaliador' });
+});
+
 // 08/10/2026 é quinta-feira.
 const sp = (s) => new Date(`${s}-03:00`);
 const MANHA = { 1: [['06:00', '12:00']], 2: [['06:00', '12:00']], 3: [['06:00', '12:00']], 4: [['06:00', '12:00']], 5: [['06:00', '12:00']] };

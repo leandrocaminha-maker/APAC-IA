@@ -216,7 +216,9 @@ const normalizarNome = (s) => String(s ?? '').normalize('NFD').replace(/\p{Diacr
  *
  *   card        o professor escolhido no card do Prescrev
  *   treino_evo  quem prescreveu o treino vigente no EVO, casado pelo nome
- *               completo com um usuário do Prescrev
+ *               completo com um usuário do Prescrev — menos o professor
+ *               assistente (cargo 'professor_assistente' na lista da equipe,
+ *               059 do Prescrev, 05/11/2026): ele não assume o aluno
  *   avaliador   o avaliador da avaliação mais recente
  *
  * O número de WhatsApp é outra conta: quem não ativou o EQUIPE não tem, e o
@@ -233,7 +235,7 @@ export function destinoDoAluno({ ficha, treinos = [], hoje, equipe = [] }) {
   const vig = treinoVigente(treinos, hoje);
   if (vig?.professor) {
     const m = equipe.find(x => normalizarNome(x.nome_completo) === normalizarNome(vig.professor));
-    if (m) return { profile_id: m.profile_id, nome: m.nome, origem: 'treino_evo' };
+    if (m && m.cargo !== 'professor_assistente') return { profile_id: m.profile_id, nome: m.nome, origem: 'treino_evo' };
   }
   if (p) return { profile_id: p.profile_id, nome: primeiroNome(p.nome), origem: p.origem ?? 'avaliador' };
   return null;
