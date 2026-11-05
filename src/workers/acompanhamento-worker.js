@@ -31,6 +31,7 @@ import { enviarRelatorios } from '../services/acompanhamento/relatorios.js';
 import { processarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
 import { processarPontes } from '../services/acompanhamento/ponte.js';
 import { conferirSessoesDaSemana } from '../services/acompanhamento/aviso-sessoes.js';
+import { avisarAgendaDeTestes } from '../services/acompanhamento/agenda-testes.js';
 
 let rodando = false;
 
@@ -75,6 +76,9 @@ async function cicloDosEncaminhamentos() {
     // O relatório em PDF (Prescrev 054): o completo gerado, a versão corrigida,
     // a inscrição que a equipe confirmou — só na janela de contato.
     await enviarRelatorios().catch(err => logger.warn('[acompanhamento] Relatórios:', err.message));
+    // A agenda de testes do dia (Prescrev 060): no começo do turno de cada
+    // professor, e o que entrou ou saiu depois.
+    await avisarAgendaDeTestes();
     await processarEncaminhamentos();
     // A ponte (A5d): o que o aluno mandou fora do turno do professor sai no
     // começo do turno, e a ponte sem mensagem há 72 h fecha.

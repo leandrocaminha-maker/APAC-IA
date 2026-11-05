@@ -359,6 +359,13 @@ export const config = {
       telefone: env('ACOMPANHAMENTO_AVISO_SESSOES_TELEFONE', '5511982592538'),
     },
 
+    // A agenda de testes do dia no WhatsApp de cada professor (05/11/2026,
+    // decisão do responsável: ligada). Mensagem de operação à equipe, no
+    // horário de quem recebe. Com false, não sai.
+    agendaTestes: {
+      habilitado: env('ACOMPANHAMENTO_AGENDA_TESTES', 'true') === 'true',
+    },
+
     prescrev: {
       url: env('PRESCREV_URL', 'https://prescrev.apacademia.com.br'),
       // O mesmo valor do ACOMPANHAMENTO_SECRET no .env do Prescrev.
