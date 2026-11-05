@@ -18,6 +18,12 @@
  *       o QR code de ativação do Relatório 1: é para ele que o aluno manda
  *       "ATIVAR <código>". O número mora aqui, e o Prescrev não o copia.
  *
+ *   GET  /acompanhamento/treinos?evo=<id do aluno no EVO>
+ *       os treinos de musculação do aluno no EVO, resumidos por
+ *       `resumirTreinos` (os mesmos que a régua lê), para o card do cliente
+ *       no Prescrev comparar a validade com o ciclo prescrito. Lê o EVO na
+ *       hora, um aluno por chamada.
+ *
  *   GET  /acompanhamento/encaminhamentos/<id>/conversa
  *       a conversa da ponte (A5d) daquele encaminhamento, sem números, com
  *       quem é o professor e o destinatário — o Prescrev confere se quem está
@@ -37,6 +43,8 @@ import { supabase } from '../lib/supabase.js';
 import { equipeAtivada, listarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
 import { confirmar, listarInscricoes } from '../services/acompanhamento/ativacao.js';
 import { conversaDoEncaminhamento } from '../services/acompanhamento/ponte.js';
+import { resumirTreinos } from '../services/acompanhamento/regua.js';
+import { treinosDoAluno } from '../services/evo-client.js';
 
 const JANELA_MS = 5 * 60_000;
 const router = Router();
@@ -104,6 +112,17 @@ router.get('/numero', assinado, (req, res) => {
   const numero = numeroParaLink(config.whatsapp.numeroPrincipal);
   if (!numero) return res.status(503).json({ error: 'WHATSAPP_NUMERO_PRINCIPAL não definido.' });
   res.json({ numero, exibicao: config.whatsapp.numeroPrincipal });
+});
+
+router.get('/treinos', assinado, async (req, res) => {
+  const evo = Number(req.query.evo);
+  if (!Number.isInteger(evo) || evo <= 0) return res.status(400).json({ error: 'evo precisa ser o id do aluno no EVO.' });
+  try {
+    res.json({ treinos: resumirTreinos(await treinosDoAluno(evo)) });
+  } catch (err) {
+    logger.error('[acompanhamento] Treinos ao Prescrev:', err.message);
+    res.status(502).json({ error: `O EVO não respondeu: ${err.message}` });
+  }
 });
 
 router.get('/inscricoes', assinado, async (req, res) => {
