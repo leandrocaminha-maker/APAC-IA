@@ -24,6 +24,11 @@
  *       no Prescrev comparar a validade com o ciclo prescrito. Lê o EVO na
  *       hora, um aluno por chamada.
  *
+ *   GET  /acompanhamento/grade?atividades=18,41,54
+ *       a grade de sessões da agenda do EVO daquelas atividades, de segunda
+ *       a sexta, nas próximas duas semanas (`aulasDaGrade`): os horários de
+ *       encontro de meta do Prescrev (062 de lá) saem dela.
+ *
  *   GET  /acompanhamento/encaminhamentos/<id>/conversa
  *       a conversa da ponte (A5d) daquele encaminhamento, sem números, com
  *       quem é o professor e o destinatário — o Prescrev confere se quem está
@@ -44,7 +49,8 @@ import { equipeAtivada, listarEncaminhamentos } from '../services/acompanhamento
 import { confirmar, listarInscricoes } from '../services/acompanhamento/ativacao.js';
 import { conversaDoEncaminhamento } from '../services/acompanhamento/ponte.js';
 import { resumirTreinos } from '../services/acompanhamento/regua.js';
-import { treinosDoAluno } from '../services/evo-client.js';
+import { buscarGrade, treinosDoAluno } from '../services/evo-client.js';
+import { aulasDaGrade, proximosDias } from '../services/acompanhamento/grade-sessoes.js';
 
 const JANELA_MS = 5 * 60_000;
 const router = Router();
@@ -121,6 +127,20 @@ router.get('/treinos', assinado, async (req, res) => {
     res.json({ treinos: resumirTreinos(await treinosDoAluno(evo)) });
   } catch (err) {
     logger.error('[acompanhamento] Treinos ao Prescrev:', err.message);
+    res.status(502).json({ error: `O EVO não respondeu: ${err.message}` });
+  }
+});
+
+router.get('/grade', assinado, async (req, res) => {
+  const atividades = String(req.query.atividades ?? '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
+  if (!atividades.length) return res.status(400).json({ error: 'atividades precisa ser a lista de ids do EVO.' });
+  try {
+    // A grade do dia vem em cache (buscarGrade): dias em sequência, para não pedir em rajada.
+    const grades = [];
+    for (const data of proximosDias(new Date(), 14)) grades.push({ data, aulas: await buscarGrade({ date: data }) });
+    res.json({ aulas: aulasDaGrade(grades, atividades) });
+  } catch (err) {
+    logger.error('[acompanhamento] Grade ao Prescrev:', err.message);
     res.status(502).json({ error: `O EVO não respondeu: ${err.message}` });
   }
 });
