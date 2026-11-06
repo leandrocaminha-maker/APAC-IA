@@ -29,7 +29,7 @@ import {
 const CANAL = 'web-test';
 const ROTULO_CATEGORIA = {
   dor_ou_lesao: 'dor ou lesão', saude: 'saúde', ajuste_de_treino: 'ajuste de treino',
-  ausencia_ou_desanimo: 'ausência ou desânimo', pedido_do_aluno: 'pedido do aluno', outro: 'outro',
+  ausencia_ou_desanimo: 'ausência ou desânimo', pedido_do_aluno: 'pedido do aluno', remarcar_testes: 'remarcar os testes', outro: 'outro',
 };
 const ddmm = (iso) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
 

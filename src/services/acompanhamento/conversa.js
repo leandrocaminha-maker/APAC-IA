@@ -35,6 +35,16 @@ export const SENT_BY_LEIA = 'bot:acompanhamento:leia';
 const TRILHA = { adesao: 'adesão', motivacional: 'motivacional', tecnico: 'técnico', desafiador: 'desafiador' };
 const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const DIA_MS = 86_400_000;
+const SEMANA_LONGA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+/** A sessão de testes marcada (Prescrev 060), como entra no contexto: "quinta, 06/11, às 7h30, com Ana". null = sem marcação ou já passou. */
+export function testesNoContexto(testes, hoje) {
+  if (!testes?.dia || testes.dia < hoje) return null;
+  const semana = SEMANA_LONGA[new Date(testes.dia + 'T12:00:00Z').getUTCDay()];
+  const [h, m] = String(testes.hora ?? '').split(':');
+  const hora = h ? Number(h) + 'h' + (m && m !== '00' ? m : '') : '';
+  const quem = primeiroNome(testes.professor_nome ?? '');
+  return semana + ', ' + testes.dia.slice(8, 10) + '/' + testes.dia.slice(5, 7) + (hora ? ', às ' + hora : '') + (quem ? ', com ' + quem : '');
+}
 const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const somar = (dia, n) => new Date(Date.parse(`${dia}T12:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
 const diaDaSemana = (dia) => SEMANA[new Date(`${dia}T12:00:00Z`).getUTCDay()];
@@ -107,6 +117,7 @@ export function contextoDoAluno({
   const presencas = presencasRecentes(ficha, hoje);
   const proximas = proximasSessoes(ficha, hoje);
   const reav = ficha.proxima_avaliacao && ficha.proxima_avaliacao >= hoje ? ficha.proxima_avaliacao : null;
+  const testes = testesNoContexto(ficha.testes, hoje);
 
   const linhas = [
     '## O ALUNO',
@@ -114,6 +125,7 @@ export function contextoDoAluno({
     `- Professor: ${professor ? `${professor}${textoDoProfessorHoje(situacaoDoProfessor)}` : 'não definido — fale da "equipe", sem nome'}`,
     `- Combinado: ${[freq ? `${freq}× por semana` : null, modalidades || null].filter(Boolean).join(' — ') || 'não informado'}`,
     `- Trilha (decide o tom; nunca diga o nome): ${TRILHA[t.principal] ?? 'não informada'}${t.secundaria ? ` (2ª: ${TRILHA[t.secundaria]})` : ''}`,
+    testes ? `- Testes da avaliação marcados: ${testes} (quem aplica; pedido de mudar o horário vai a quem aplica — veja "A sessão de testes marcada")` : null,
     `- Próxima reavaliação: ${reav ? `${ddmm(reav)}/${reav.slice(0, 4)}` : 'sem data marcada'}`,
     `- Presenças nos últimos 14 dias: ${presencas ? (presencas.total ? `${presencas.total} (${presencas.texto})` : 'nenhuma') : 'sem agenda carregada — não afirme presença nem falta'}`,
     proximas.length ? `- Agendado nos próximos 7 dias: ${proximas.join('; ')}` : null,

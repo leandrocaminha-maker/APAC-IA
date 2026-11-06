@@ -52,6 +52,13 @@ const REAVALIACAO = {
   ficha: { proxima_avaliacao: somar(6) },
 };
 
+/** A véspera da sessão de testes (Prescrev 060): o lembrete e a marcação na ficha. */
+const TESTES = {
+  regua: 'Marta, amanhã às 7h30 você faz os testes da sua avaliação com Rogério, na sala de musculação. ' +
+    'Vem com roupa de treino. Se precisar mudar o horário, me conta por aqui.',
+  ficha: { testes: { inicio: somar(1) + 'T10:30:00.000Z', dia: somar(1), hora: '07:30', duracao_min: 50, professor_id: 'prof-rogerio', professor_nome: 'Rogério Alves' } },
+};
+
 /**
  * Cada caso: as mensagens do aluno, em ordem (cada uma é uma troca). Um caso
  * também pode ser `{ mensagens, regua, ficha }`: outra mensagem da régua e o
@@ -61,6 +68,9 @@ const CASOS = {
   reavaliacao_sim: { ...REAVALIACAO, mensagens: ['Sim, quero!', 'Quinta de manhã'] },
   reavaliacao_ja_diz: { ...REAVALIACAO, mensagens: ['Pode sim, de preferência terça à noite'] },
   reavaliacao_agora_nao: { ...REAVALIACAO, mensagens: ['Agora não, depois eu vejo'] },
+  testes_remarcar: { ...TESTES, mensagens: ['Não vou conseguir amanhã', 'Pode ser sexta à noite'] },
+  testes_remarcar_ja_diz: { ...TESTES, mensagens: ['Dá pra mudar pra segunda de manhã?'] },
+  testes_duvida: { ...TESTES, mensagens: ['Preciso levar alguma coisa?'] },
   treino_bom: ['Fiz meu treino ontem e foi ótimo! Consegui fazer tudo sem parar'],
   horario_hidro: ['Que horas tem hidro amanhã?'],
   dor_no_joelho: ['Estou com uma dor no joelho desde a hidro de ontem, dói quando subo escada'],

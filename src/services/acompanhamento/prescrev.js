@@ -93,6 +93,23 @@ export async function buscarAgendaDeTestes(dia = null) {
   return { dia: r.dia, marcacoes: r.marcacoes ?? [], migracao: r.migracao !== false };
 }
 
+/** A versão dos avisos da avaliação que este código sabe ler (AVISOS_AVALIACAO_VERSION do Prescrev). */
+export const AVISOS_AVALIACAO_VERSAO_LIDA = 1;
+
+/**
+ * Os avisos da avaliação à equipe (Prescrev 061): os testes finalizados por
+ * outra pessoa, ao avaliador, e o relatório completo gerado, ao profissional
+ * designado como responsável. Cada um com quem recebe e a chave.
+ * @returns {Promise<{finalizados: object[], relatorios: object[], migracao: boolean}>}
+ */
+export async function buscarAvisosDaAvaliacao() {
+  const r = await buscar('/api/acompanhamento/avisos-avaliacao');
+  if (r.versao > AVISOS_AVALIACAO_VERSAO_LIDA) {
+    throw new Error(`Avisos da avaliação na versão ${r.versao}, e este código lê até a ${AVISOS_AVALIACAO_VERSAO_LIDA}: atualize o APAC.`);
+  }
+  return { finalizados: r.finalizados ?? [], relatorios: r.relatorios_finais ?? [], migracao: r.migracao !== false };
+}
+
 /** Os modelos publicados. @returns {Promise<{versao: number, marcadores: object[], modelos: object[]}>} */
 export async function buscarModelos() {
   const r = await buscar('/api/acompanhamento/modelos');

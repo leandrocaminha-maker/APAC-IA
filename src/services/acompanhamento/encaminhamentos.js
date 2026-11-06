@@ -235,9 +235,16 @@ export async function registrarDaRegua({ ficha, avisos, treinos, hoje, equipe, a
   return novos;
 }
 
+/** Quem aplica a sessão de testes marcada, como destino do encaminhamento. PURA. */
+export function aplicadorDosTestes(testes, equipe = []) {
+  const m = equipe.find(x => x.profile_id === testes.professor_id);
+  return { profile_id: testes.professor_id, nome: m?.nome ?? String(testes.professor_nome ?? '').trim().split(/\s+/)[0], origem: 'aplicador_testes' };
+}
+
 const MOTIVO_DA_CATEGORIA = {
   dor_ou_lesao: 'dor ou lesão', saude: 'saúde', ajuste_de_treino: 'ajuste de treino',
-  ausencia_ou_desanimo: 'ausência ou desânimo', pedido_do_aluno: 'o aluno quer falar com você', outro: 'conversa com o aluno',
+  ausencia_ou_desanimo: 'ausência ou desânimo', pedido_do_aluno: 'o aluno quer falar com você',
+  remarcar_testes: 'remarcar a sessão de testes', outro: 'conversa com o aluno',
 };
 
 /**
@@ -250,7 +257,13 @@ const MOTIVO_DA_CATEGORIA = {
 export async function registrarDaLeia({ ficha, categoria, urgencia, resumo, phoneAluno, treinos = [], hoje }) {
   const [equipe, ativos] = await Promise.all([buscarEquipe(), equipeAtivada()]);
   const horarios = await horariosDaEquipe(equipe);
-  const professor = destinoDoAluno({ ficha, treinos, hoje, equipe });
+  // Remarcar os testes vai a quem aplica (Prescrev 060, decisão do responsável
+  // em 05/11/2026), e não ao professor do aluno nem ao consultor: é ele quem
+  // combina o horário novo e remarca na Agenda de testes. Sem marcação na
+  // ficha, segue o destino de sempre.
+  const professor = categoria === 'remarcar_testes' && ficha.testes?.professor_id
+    ? aplicadorDosTestes(ficha.testes, equipe)
+    : destinoDoAluno({ ficha, treinos, hoje, equipe });
   const rota = rotear({ urgencia, origem: 'leia', professorId: professor?.profile_id ?? null, ativos, horarios, agora: agora() });
   const motivo = MOTIVO_DA_CATEGORIA[categoria] ?? 'conversa com o aluno';
   // O número de quem está conversando com a Leia: é o da conversa.

@@ -78,3 +78,16 @@ test('a reavaliação confirmada vai ao consultor, com o pedido no motivo e sem 
   assert.ok(/Não ofereça horário/.test(secao) && /Nunca diga que está marcado/.test(secao), 'sem horário oferecido nem marcado');
   assert.ok(secao.includes('`consultor`'), 'o desfecho é consultor');
 });
+
+test('remarcar a sessão de testes vai a quem aplica, e não ao consultor', () => {
+  const prompt = limparPrompt(bruto);
+  const ini = prompt.indexOf('## A sessão de testes marcada: remarcar vai a quem aplica');
+  assert.ok(ini >= 0, 'falta a seção da sessão de testes');
+  const secao = prompt.slice(ini, prompt.indexOf('\n## ', ini + 10));
+  assert.ok(secao.includes('`encaminhar_ao_professor`') && secao.includes('`remarcar_testes`'), 'remarcar é encaminhamento com a categoria própria');
+  assert.ok(/Não use\s+`transferir_para_humano`/.test(secao), 'não vai ao consultor');
+  assert.ok(/Não ofereça horário/.test(secao) && /Nunca diga que está remarcado/.test(secao), 'sem horário oferecido nem remarcado');
+  assert.ok(secao.includes('Testes da avaliação marcados'), 'cita a linha do contexto');
+  const consultor = prompt.slice(prompt.indexOf('## Quando transferir para o consultor'));
+  assert.ok(/sessão de testes marcada, não/.test(consultor), 'a regra do consultor abre a exceção da sessão de testes');
+});

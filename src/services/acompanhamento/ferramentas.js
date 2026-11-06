@@ -19,7 +19,7 @@ import { toolDeclarations } from '../ai-tools.js';
 
 const transferir = toolDeclarations.find(t => t.name === 'transferir_para_humano');
 
-export const CATEGORIAS = ['dor_ou_lesao', 'saude', 'ajuste_de_treino', 'ausencia_ou_desanimo', 'pedido_do_aluno', 'outro'];
+export const CATEGORIAS = ['dor_ou_lesao', 'saude', 'ajuste_de_treino', 'ausencia_ou_desanimo', 'pedido_do_aluno', 'remarcar_testes', 'outro'];
 export const DESFECHOS = ['reforco', 'informacao', 'encaminhamento', 'pausa', 'consultor', 'outro'];
 
 export const FERRAMENTAS = [
@@ -43,7 +43,8 @@ export const FERRAMENTAS = [
     name: 'encaminhar_ao_professor',
     description: 'Avisa o professor do aluno pelo WhatsApp dele, para que ele fale com o aluno. Use para dor, lesão, sintoma, ' +
       'remédio, pedido de mudar o treino, desânimo, faltas seguidas, dúvida de execução, pedido do professor — e na terceira ' +
-      'troca. Um por motivo: se o contexto diz que já foi encaminhado pelo mesmo motivo, não chame de novo. Escreva a ' +
+      'troca. remarcar_testes é o pedido de mudar o horário da sessão de testes marcada: vai ao professor que aplica, e não ao ' +
+      'do aluno. Um por motivo: se o contexto diz que já foi encaminhado pelo mesmo motivo, não chame de novo. Escreva a ' +
       'resposta ao aluno normalmente, no mesmo turno.',
     input_schema: {
       type: 'object',
@@ -56,7 +57,7 @@ export const FERRAMENTAS = [
           description: '"hoje" SÓ para o que não pode esperar o próximo dia de trabalho do professor: sinal de alerta, ' +
             'dor forte ou que impede o movimento, lesão com queda ou pancada — é o que vai à coordenação quando o ' +
             'professor não trabalha mais hoje. Dor nova que não impede, desconforto, dúvida, desânimo, pedido: ' +
-            '"proximos_dias".',
+            '"proximos_dias". Remarcar os testes da sessão de hoje ou de amanhã também é "hoje".',
         },
         resumo_para_professor: {
           type: 'string',
