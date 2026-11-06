@@ -83,14 +83,14 @@ export const AGENDA_TESTES_VERSAO_LIDA = 1;
 /**
  * As sessões de aplicação dos testes do dia, canceladas inclusive (Prescrev
  * 060), para o aviso a cada professor. `dia` "AAAA-MM-DD"; sem ele, hoje.
- * @returns {Promise<{dia: string, marcacoes: object[], migracao: boolean}>}
+ * @returns {Promise<{dia: string, marcacoes: object[], mensagens: {vespera?: string}, migracao: boolean}>}
  */
 export async function buscarAgendaDeTestes(dia = null) {
   const r = await buscar(`/api/acompanhamento/agenda-testes${dia ? `?dia=${encodeURIComponent(dia)}` : ''}`);
   if (r.versao > AGENDA_TESTES_VERSAO_LIDA) {
     throw new Error(`Agenda dos testes na versão ${r.versao}, e este código lê até a ${AGENDA_TESTES_VERSAO_LIDA}: atualize o APAC.`);
   }
-  return { dia: r.dia, marcacoes: r.marcacoes ?? [], migracao: r.migracao !== false };
+  return { dia: r.dia, marcacoes: r.marcacoes ?? [], mensagens: r.mensagens ?? {}, migracao: r.migracao !== false };
 }
 
 /** A versão dos avisos da avaliação que este código sabe ler (AVISOS_AVALIACAO_VERSION do Prescrev). */
