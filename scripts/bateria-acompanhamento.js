@@ -16,6 +16,7 @@ import { processarAcompanhamento } from '../src/services/ai-agent.js';
 import { ehPedidoDeSaida, hojeSP } from '../src/services/campanhas.js';
 import { contextoDoAluno, ehPedidoDePausa, TEXTO_PAUSA } from '../src/services/acompanhamento/conversa.js';
 import { executorDeSimulacao } from '../src/services/acompanhamento/ferramentas.js';
+import { textoDaSessao } from '../src/services/acompanhamento/encontros.js';
 
 const hoje = hojeSP();
 const somar = (n) => new Date(Date.parse(`${hoje}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -59,6 +60,31 @@ const TESTES = {
   ficha: { testes: { inicio: somar(1) + 'T10:30:00.000Z', dia: somar(1), hora: '07:30', duracao_min: 50, professor_id: 'prof-rogerio', professor_nome: 'Rogério Alves' } },
 };
 
+/** O encontro de meta (Prescrev 063): o convite 3 dias antes, com horários fictícios no lugar da agenda. */
+const SEMANA_LONGA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+const extenso = (dia, hora, modalidade) => `${SEMANA_LONGA[new Date(`${dia}T12:00:00Z`).getUTCDay()]}, ${dia.slice(8, 10)}/${dia.slice(5, 7)}, ` +
+  `às ${Number(hora.slice(0, 2))}h${hora.slice(3) === '00' ? '' : hora.slice(3)}, na ${modalidade === 'natacao' ? 'natação' : 'musculação'}, com Rafael`;
+const util = (n) => { let d = somar(n); while ([0, 6].includes(new Date(`${d}T12:00:00Z`).getUTCDay())) d = somar(++n); return d; };
+const D1 = util(3), D2 = util(4), D3 = util(5);
+const vaga = (dia, hora, modalidade = 'musculacao') => ({ dia, hora, modalidade, texto: extenso(dia, hora, modalidade) });
+const HORARIOS_DO_ENCONTRO = {
+  success: true, professor: 'Rafael', marcado: null, periodo: `${D1.slice(8, 10)}/${D1.slice(5, 7)} a ${somar(9).slice(8, 10)}/${somar(9).slice(5, 7)}`,
+  na_semana_do_encontro: true,
+  sugestoes: [vaga(D1, '08:15'), vaga(D2, '08:15'), vaga(D3, '08:15')],
+  outros_horarios: [vaga(D1, '18:15'), vaga(D2, '18:45'), vaga(D3, '19:15'), vaga(D2, '17:45')],
+  mensagem: null,
+};
+const ENCONTRO = {
+  regua: `Marta, tá chegando o seu encontro de meta com Rafael: uma conversa rápida pra combinar o próximo passo. ` +
+    `Fica bom ${extenso(D1, '08:15', 'musculacao').split(', na')[0].replace(/, às/, ' às')}, na musculação? Já reservo a sessão, que dá pra treinar no mesmo horário.`,
+  ficha: { encontro: { semana: 4, de: D1, ate: somar(9), convite: hoje, marcado: null } },
+};
+const ENCONTRO_MARCADO = {
+  regua: 'Marta, amanhã às 8h15 tem o seu encontro de meta com Rafael, na musculação. A sessão já está reservada, ' +
+    'porque também vai ter treino. Se precisar mudar, me conta por aqui.',
+  ficha: { encontro: { semana: 4, de: D1, ate: somar(9), convite: somar(-3), marcado: { id: 'm1', inicio: `${somar(1)}T11:15:00.000Z`, dia: somar(1), hora: '08:15', modalidade: 'musculacao', professor_id: 'p', professor_nome: 'RAFAEL SOUZA' } } },
+};
+
 /**
  * Cada caso: as mensagens do aluno, em ordem (cada uma é uma troca). Um caso
  * também pode ser `{ mensagens, regua, ficha }`: outra mensagem da régua e o
@@ -71,6 +97,10 @@ const CASOS = {
   testes_remarcar: { ...TESTES, mensagens: ['Não vou conseguir amanhã', 'Pode ser sexta à noite'] },
   testes_remarcar_ja_diz: { ...TESTES, mensagens: ['Dá pra mudar pra segunda de manhã?'] },
   testes_duvida: { ...TESTES, mensagens: ['Preciso levar alguma coisa?'] },
+  encontro_aceita: { ...ENCONTRO, mensagens: ['Pode sim!'] },
+  encontro_outro: { ...ENCONTRO, mensagens: ['De manhã não dá, tem como à noite?', 'A segunda opção'] },
+  encontro_desmarcar: { ...ENCONTRO_MARCADO, mensagens: ['Vou ter que desmarcar, surgiu um compromisso amanhã', 'Agora não, depois eu vejo'] },
+  encontro_mudar: { ...ENCONTRO_MARCADO, mensagens: ['Dá pra mudar pra outro dia?'] },
   treino_bom: ['Fiz meu treino ontem e foi ótimo! Consegui fazer tudo sem parar'],
   horario_hidro: ['Que horas tem hidro amanhã?'],
   dor_no_joelho: ['Estou com uma dor no joelho desde a hidro de ontem, dói quando subo escada'],
@@ -95,7 +125,17 @@ const ROTULO = (t) => [
   ...t.encaminhamentos.map(e => `encaminhou: ${e.categoria} (${e.urgencia}) — ${e.resumo}`),
   t.pausa ? `pausa${t.pausa.ate ? ` até ${t.pausa.ate}` : ''}: ${t.pausa.motivo}` : null,
   t.handoff ? `consultor: ${t.handoff.motivo}` : null,
+  ...(t.encontros ?? []).map(e => `encontro: ${e.acao} ${JSON.stringify(e.args ?? {})}`),
 ].filter(Boolean).join('\n      ');
+
+/** Na bateria, os horários do encontro são os fictícios; marcar devolve o que o APAC devolveria. */
+const comEncontro = (exec) => async (nome, args) => {
+  if (nome === 'horarios_do_encontro') return HORARIOS_DO_ENCONTRO;
+  const r = await exec(nome, args);
+  if (nome === 'marcar_encontro') return { ...r, marcado: extenso(args.dia, args.hora, args.modalidade), sessao: 'reservada', mensagem: textoDaSessao('reservada') };
+  if (nome === 'desmarcar_encontro') return { ...r, desmarcados: [extenso(somar(1), '08:15', 'musculacao')], mensagem: 'Desmarcado, e a sessão reservada saiu do app. Ofereça outro horário com horarios_do_encontro, se ele quiser.' };
+  return r;
+};
 
 async function rodar(nome, caso) {
   const { mensagens, regua = REGUA, ficha: mudancas = {} } = Array.isArray(caso) ? { mensagens: caso } : caso;
@@ -121,7 +161,7 @@ async function rodar(nome, caso) {
     const turno = { desfecho: null, encaminhamentos: [], pausa: null, handoff: null };
     const inicio = Date.now();
     const r = await processarAcompanhamento({
-      mensagem, historico, contexto, executar: executorDeSimulacao(turno), origem: 'acompanhamento-bateria',
+      mensagem, historico, contexto, executar: comEncontro(executorDeSimulacao(turno)), origem: 'acompanhamento-bateria',
     });
     if (r.semResposta && !turno.desfecho) turno.desfecho = { tipo: 'outro', resumo: 'papo depois do limite: sem resposta' };
     const s = ((Date.now() - inicio) / 1000).toFixed(1);

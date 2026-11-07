@@ -366,6 +366,15 @@ export const config = {
       habilitado: env('ACOMPANHAMENTO_AGENDA_TESTES', 'true') === 'true',
     },
 
+    // Os encontros de meta pelo WhatsApp (06/11/2026, Prescrev 063): o convite
+    // 3 dias antes da semana do encontro, a marcação pela Leia (com a sessão
+    // reservada no EVO), a agenda do dia ao professor e o lembrete da véspera.
+    // Nasce DESLIGADO: liga com ACOMPANHAMENTO_ENCONTROS=true, depois de o
+    // responsável conferir as frases e a tabela de horários.
+    encontros: {
+      habilitado: env('ACOMPANHAMENTO_ENCONTROS', 'false') === 'true',
+    },
+
     prescrev: {
       url: env('PRESCREV_URL', 'https://prescrev.apacademia.com.br'),
       // O mesmo valor do ACOMPANHAMENTO_SECRET no .env do Prescrev.

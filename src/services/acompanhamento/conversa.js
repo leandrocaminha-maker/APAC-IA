@@ -46,6 +46,28 @@ export function testesNoContexto(testes, hoje) {
   return semana + ', ' + testes.dia.slice(8, 10) + '/' + testes.dia.slice(5, 7) + (hora ? ', às ' + hora : '') + (quem ? ', com ' + quem : '');
 }
 const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+
+const ATIVIDADE_DO_ENCONTRO = { musculacao: 'musculação', natacao: 'natação' };
+/**
+ * O encontro de meta (Prescrev 063), como entra no contexto: o marcado —
+ * "terça, 17/11, às 7h15, na musculação, com Rogério" — ou, da data do
+ * convite ao fim da semana do encontro, a semana a marcar. null fora disso.
+ */
+export function encontroNoContexto(encontro, hoje) {
+  const m = encontro?.marcado;
+  if (m?.dia && m.dia >= hoje) {
+    const semana = SEMANA_LONGA[new Date(m.dia + 'T12:00:00Z').getUTCDay()];
+    const [h, mi] = String(m.hora ?? '').split(':');
+    const hora = h ? Number(h) + 'h' + (mi && mi !== '00' ? mi : '') : '';
+    const quem = primeiroNome(m.professor_nome ?? '');
+    return `- Encontro de meta marcado: ${semana}, ${ddmm(m.dia)}${hora ? `, às ${hora}` : ''}, na ${ATIVIDADE_DO_ENCONTRO[m.modalidade] ?? m.modalidade}` +
+      `${quem ? `, com ${quem}` : ''} — mudar ou desmarcar: veja "O encontro de meta"`;
+  }
+  if (encontro?.convite && encontro.de && encontro.ate && hoje >= encontro.convite && hoje <= encontro.ate) {
+    return `- Encontro de meta a marcar: semana de ${ddmm(encontro.de)} a ${ddmm(encontro.ate)} — veja "O encontro de meta"`;
+  }
+  return null;
+}
 const somar = (dia, n) => new Date(Date.parse(`${dia}T12:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
 const diaDaSemana = (dia) => SEMANA[new Date(`${dia}T12:00:00Z`).getUTCDay()];
 
@@ -126,6 +148,7 @@ export function contextoDoAluno({
     `- Combinado: ${[freq ? `${freq}× por semana` : null, modalidades || null].filter(Boolean).join(' — ') || 'não informado'}`,
     `- Trilha (decide o tom; nunca diga o nome): ${TRILHA[t.principal] ?? 'não informada'}${t.secundaria ? ` (2ª: ${TRILHA[t.secundaria]})` : ''}`,
     testes ? `- Testes da avaliação marcados: ${testes} (quem aplica; pedido de mudar o horário vai a quem aplica — veja "A sessão de testes marcada")` : null,
+    encontroNoContexto(ficha.encontro, hoje),
     `- Próxima reavaliação: ${reav ? `${ddmm(reav)}/${reav.slice(0, 4)}` : 'sem data marcada'}`,
     `- Presenças nos últimos 14 dias: ${presencas ? (presencas.total ? `${presencas.total} (${presencas.texto})` : 'nenhuma') : 'sem agenda carregada — não afirme presença nem falta'}`,
     proximas.length ? `- Agendado nos próximos 7 dias: ${proximas.join('; ')}` : null,

@@ -32,6 +32,7 @@ import { inscricaoDoNumero } from './ativacao.js';
 import { CATEGORIAS, DESFECHOS } from './ferramentas.js';
 import { ABRE_RODADA, SENT_BY_LEIA, contextoDoAluno, trocaAtual } from './conversa.js';
 import { ponteParaALeia } from './ponte.js';
+import { ferramentaDoEncontro } from './encontros.js';
 
 const JANELA_DA_CONVERSA_MS = 7 * 86_400_000;
 const ABERTOS = ['simulado', 'na_fila', 'aguardando'];
@@ -117,6 +118,10 @@ function executorReal({ ficha, inscricao, phone, treinos, turno }) {
         turno.pausa = { ate, motivo };
         return { success: true };
       }
+      case 'horarios_do_encontro':
+      case 'marcar_encontro':
+      case 'desmarcar_encontro':
+        return ferramentaDoEncontro(nome, args, { ficha, clienteId: inscricao.cliente_id, turno });
       case 'transferir_para_humano':
         turno.handoff = { motivo: args.motivo, mensagem: args.mensagem };
         return { success: true, action: 'handoff', motivo: args.motivo, mensagem: args.mensagem };
@@ -160,7 +165,7 @@ export async function responderNoAcompanhamento({ phone, contact, conversation, 
     ponte: rota.ponte ?? null,
   });
 
-  const turno = { desfecho: null, encaminhamentos: [], pausa: null, handoff: null };
+  const turno = { desfecho: null, encaminhamentos: [], pausa: null, handoff: null, encontros: [] };
   const historico = await historicoDaConversa(conversation.id, { excludeMessageIds: savedIds });
   const r = await processarAcompanhamento({
     mensagem: content, historico, contexto, conversationId: conversation.id, origem: 'acompanhamento',
@@ -170,7 +175,8 @@ export async function responderNoAcompanhamento({ phone, contact, conversation, 
 
   const detalhes = {
     troca: troca.troca, limite: troca.limiteAtingido, semResposta: r.semResposta, desfecho: turno.desfecho,
-    encaminhamentos: turno.encaminhamentos, pausa: turno.pausa, handoff: turno.handoff, ferramentas: r.ferramentas,
+    encaminhamentos: turno.encaminhamentos, pausa: turno.pausa, handoff: turno.handoff, encontros: turno.encontros,
+    ferramentas: r.ferramentas,
   };
   if (r.semResposta && savedIds?.length) {
     // Nada sai; o desfecho fica na mensagem do aluno.

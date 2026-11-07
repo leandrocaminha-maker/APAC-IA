@@ -560,6 +560,35 @@ export async function reservarEmSessao({ idProspect, idMember, idConfiguration, 
   return evoFetch(`/api/v2/activities/booking${qs(params)}`, { method: 'POST' });
 }
 
+/**
+ * A origem que reserva com MAIS de 48 h de antecedência (testado em
+ * 06/11/2026 no cadastro 14622): de 0 a 5 o EVO recusa com "Activity out of
+ * booking hours", que é a janela do app; com 6, aceita — como os consultores
+ * fazem pelo sistema. É a dos encontros de meta (Prescrev 063).
+ */
+export const ORIGEM_RESERVA_ANTECIPADA = 6;
+
+/**
+ * Cancela a reserva de um membro numa sessão da grade.
+ *
+ * ⚠️ O EVO não tem "desmarcar": `change-status` com status 2 libera a vaga
+ * (a ocupação volta) e a reserva fica como "Falta" (statusID 1) nas sessões
+ * do membro — testado em 06/11/2026. O Prescrev guarda o que a Leia
+ * cancelou e não conta essa falta. `idActivitySession` vem da grade
+ * (`idAtividadeSessao`).
+ */
+export async function cancelarReservaEmSessao({ idMember, idConfiguration, data, idActivitySession }) {
+  const params = {
+    status: 2,
+    idMember,
+    idConfiguration,
+    activityDate: String(data).slice(0, 10),
+    idActivitySession,
+    idBranch: ID_BRANCH_PADRAO,
+  };
+  return evoFetch(`/api/v2/activities/booking/change-status${qs(params)}`, { method: 'POST' });
+}
+
 // ──────────────────────────────────────────────
 // Atividades e grade
 // ──────────────────────────────────────────────
@@ -863,6 +892,7 @@ export const evoClient = {
   // experimental e grade
   agendarAulaExperimental,
   reservarEmSessao,
+  cancelarReservaEmSessao,
   ehJaAgendado,
   sessoesDoProspect,
   sessoesDaPessoa,

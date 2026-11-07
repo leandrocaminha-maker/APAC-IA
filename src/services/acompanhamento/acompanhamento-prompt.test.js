@@ -91,3 +91,14 @@ test('remarcar a sessão de testes vai a quem aplica, e não ao consultor', () =
   const consultor = prompt.slice(prompt.indexOf('## Quando transferir para o consultor'));
   assert.ok(/sessão de testes marcada, não/.test(consultor), 'a regra do consultor abre a exceção da sessão de testes');
 });
+
+test('o encontro de meta: a Leia marca com as ferramentas, sem passar pelo professor nem pelo consultor', () => {
+  const prompt = limparPrompt(bruto);
+  const ini = prompt.indexOf('## O encontro de meta: você marca');
+  assert.ok(ini >= 0, 'falta a seção do encontro de meta');
+  const secao = prompt.slice(ini, prompt.indexOf('\n## ', ini + 5));
+  for (const f of ['`marcar_encontro`', '`horarios_do_encontro`', '`desmarcar_encontro`']) assert.ok(secao.includes(f), f);
+  assert.ok(/Nunca ofereça horário que a ferramenta não/.test(secao), 'só horário que a ferramenta devolveu');
+  assert.ok(secao.includes('a sessão no app vai junto'), 'a sessão vai junto do encontro');
+  assert.ok(secao.includes('Encontro de meta a marcar') && secao.includes('Encontro de meta marcado'), 'cita as linhas do contexto');
+});

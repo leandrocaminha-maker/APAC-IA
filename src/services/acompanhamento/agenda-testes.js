@@ -112,7 +112,7 @@ export function avisosDaAgenda({ marcacoes, marca, pessoas, dia, agora, url }) {
 }
 
 /** Quem ativou o EQUIPE e está no horário agora, com o nome e o horário da lista do Prescrev. */
-async function pessoasNoTurno(agora) {
+export async function pessoasNoTurno(agora) {
   const [ativados, equipe] = await Promise.all([equipeAtivada(), buscarEquipe()]);
   const daLista = new Map(equipe.map(m => [m.profile_id, m]));
   return ativados

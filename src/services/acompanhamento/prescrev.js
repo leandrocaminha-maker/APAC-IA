@@ -21,15 +21,16 @@ export const FICHA_VERSAO_LIDA = 4;
 /** 2 (M2 do PLANO_MODELOS): a rotina por degrau traz `degrau` e `fase`, e há situações novas. */
 export const MODELOS_VERSAO_LIDA = 3;
 
-async function buscar(caminho) {
+async function buscar(caminho, { metodo = 'GET', timeout = 20_000 } = {}) {
   const { url, segredo } = config.acompanhamento.prescrev;
   if (!url || !segredo) throw new Error('PRESCREV_URL ou ACOMPANHAMENTO_SECRET não definidos');
 
   const timestamp = String(Date.now());
   const assinatura = createHmac('sha256', segredo).update(`${timestamp}.${caminho}`).digest('hex');
   const r = await fetch(url.replace(/\/$/, '') + caminho, {
+    method: metodo,
     headers: { 'x-prescrev-timestamp': timestamp, 'x-prescrev-signature': assinatura },
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(timeout),
   });
   const corpo = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`Prescrev ${caminho}: HTTP ${r.status}${corpo.error ? ` — ${corpo.error}` : ''}`);
@@ -91,6 +92,59 @@ export async function buscarAgendaDeTestes(dia = null) {
     throw new Error(`Agenda dos testes na versão ${r.versao}, e este código lê até a ${AGENDA_TESTES_VERSAO_LIDA}: atualize o APAC.`);
   }
   return { dia: r.dia, marcacoes: r.marcacoes ?? [], mensagens: r.mensagens ?? {}, migracao: r.migracao !== false };
+}
+
+/* --- os encontros de meta (Prescrev 063) -------------------------------- */
+
+/** A versão dos encontros que este código sabe ler (ENCONTROS_VERSION do Prescrev). */
+export const ENCONTROS_VERSAO_LIDA = 1;
+
+function conferirVersaoDosEncontros(r) {
+  if (r.versao > ENCONTROS_VERSAO_LIDA) {
+    throw new Error(`Encontros na versão ${r.versao}, e este código lê até a ${ENCONTROS_VERSAO_LIDA}: atualize o APAC.`);
+  }
+  return r;
+}
+
+/**
+ * Quem recebe o convite do encontro de meta hoje: a semana do encontro começa
+ * em 3 dias ou menos e não há marcação. Com as sugestões e o texto preenchido.
+ * @returns {Promise<{dia: string, convites: object[], sem_vaga: object[], mensagens: object}>}
+ */
+export async function buscarConvitesDeEncontro(dia = null) {
+  // Lê as fichas da unidade e a grade do EVO (pelo APAC): mais demorada que as outras.
+  return conferirVersaoDosEncontros(await buscar(`/api/acompanhamento/encontros-aluno?tipo=convites${dia ? `&dia=${encodeURIComponent(dia)}` : ''}`, { timeout: 120_000 }));
+}
+
+/** Os horários que a Leia oferece ao aluno, com o marcado, se houver. */
+export async function buscarVagasDeEncontro(clienteId) {
+  return conferirVersaoDosEncontros(await buscar(`/api/acompanhamento/encontros-aluno?tipo=vagas&cliente=${encodeURIComponent(clienteId)}`, { timeout: 60_000 }));
+}
+
+/** Os encontros do dia, cancelados inclusive, e as frases (a da véspera). */
+export async function buscarAgendaDeEncontros(dia = null) {
+  const r = conferirVersaoDosEncontros(await buscar(`/api/acompanhamento/encontros-aluno?tipo=dia${dia ? `&dia=${encodeURIComponent(dia)}` : ''}`));
+  return { dia: r.dia, marcacoes: r.marcacoes ?? [], mensagens: r.mensagens ?? {} };
+}
+
+/** Marca o encontro (o Prescrev confere a vaga). @returns {Promise<{marcacao: object, anteriores: object[]}>} */
+export async function marcarEncontroNoPrescrev({ cliente, dia, hora, modalidade }) {
+  const q = new URLSearchParams({ acao: 'marcar', cliente, dia, hora, modalidade });
+  return buscar(`/api/acompanhamento/encontros-aluno?${q}`, { metodo: 'POST', timeout: 60_000 });
+}
+
+/** Desmarca os encontros do aluno que ainda não passaram. @returns {Promise<{canceladas: object[]}>} */
+export async function desmarcarEncontroNoPrescrev(cliente) {
+  const q = new URLSearchParams({ acao: 'desmarcar', cliente });
+  return buscar(`/api/acompanhamento/encontros-aluno?${q}`, { metodo: 'POST' });
+}
+
+/** Registra no Prescrev a sessão do EVO de um encontro: reservada (com o idConfiguration) ou cancelada. */
+export async function registrarSessaoDoEncontro({ id, reservada = null, cancelada = false }) {
+  const q = new URLSearchParams({ acao: 'evo', id });
+  if (reservada) q.set('reservada', String(reservada));
+  if (cancelada) q.set('cancelada', '1');
+  return buscar(`/api/acompanhamento/encontros-aluno?${q}`, { metodo: 'POST' });
 }
 
 /** A versão dos avisos da avaliação que este código sabe ler (AVISOS_AVALIACAO_VERSION do Prescrev). */

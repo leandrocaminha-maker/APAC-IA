@@ -32,6 +32,7 @@ import { processarEncaminhamentos } from '../services/acompanhamento/encaminhame
 import { processarPontes } from '../services/acompanhamento/ponte.js';
 import { conferirSessoesDaSemana } from '../services/acompanhamento/aviso-sessoes.js';
 import { avisarAgendaDeTestes, avisarDaAvaliacao, lembrarVesperaDosTestes } from '../services/acompanhamento/agenda-testes.js';
+import { avisarAgendaDeEncontros, convidarParaEncontros, lembrarVesperaDosEncontros } from '../services/acompanhamento/encontros.js';
 
 let rodando = false;
 
@@ -84,6 +85,12 @@ async function cicloDosEncaminhamentos() {
     // Os avisos da avaliação (Prescrev 061): testes finalizados por outra pessoa, ao
     // avaliador; relatório completo gerado, ao profissional designado.
     await avisarDaAvaliacao();
+    // Os encontros de meta (Prescrev 063): o convite 3 dias antes da semana do
+    // encontro, a agenda do dia a cada professor e o lembrete da véspera.
+    // Desligados até ACOMPANHAMENTO_ENCONTROS=true.
+    await convidarParaEncontros();
+    await avisarAgendaDeEncontros();
+    await lembrarVesperaDosEncontros();
     await processarEncaminhamentos();
     // A ponte (A5d): o que o aluno mandou fora do turno do professor sai no
     // começo do turno, e a ponte sem mensagem há 72 h fecha.

@@ -81,7 +81,8 @@ test('PAUSAR ACOMPANHAMENTO é comando só sozinho', () => {
 
 test('as ferramentas: lista fixa, e a simulação só registra', async () => {
   assert.deepEqual(FERRAMENTAS.map(f => f?.name),
-    ['registrar_desfecho', 'encaminhar_ao_professor', 'pausar_acompanhamento', 'transferir_para_humano']);
+    ['registrar_desfecho', 'encaminhar_ao_professor', 'pausar_acompanhamento',
+      'horarios_do_encontro', 'marcar_encontro', 'desmarcar_encontro', 'transferir_para_humano']);
   const turno = { desfecho: null, encaminhamentos: [], pausa: null, handoff: null };
   const exec = executorDeSimulacao(turno);
   await exec('registrar_desfecho', { tipo: 'encaminhamento', resumo: 'dor no joelho na hidro' });

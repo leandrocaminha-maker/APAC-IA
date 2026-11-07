@@ -82,6 +82,35 @@ export const FERRAMENTAS = [
       required: ['motivo'],
     },
   },
+  // Os encontros de meta (Prescrev 063): a Leia marca sozinha, sem passar
+  // pelo professor, e reserva a sessão no EVO (encontros.js).
+  {
+    name: 'horarios_do_encontro',
+    description: 'Lista os horários livres para o encontro de meta do aluno com o professor responsável, com os que ele ' +
+      'costuma treinar primeiro (sugestoes), e o encontro já marcado, se houver. Chame antes de oferecer outro horário.',
+    input_schema: { type: 'object', additionalProperties: false, properties: {} },
+  },
+  {
+    name: 'marcar_encontro',
+    description: 'Marca o encontro de meta num horário de horarios_do_encontro (ou o da mensagem do convite) e reserva a ' +
+      'sessão no app. Remarcar é marcar outro: o anterior sai sozinho. Só com o aluno de acordo com o dia e a hora.',
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        dia: { type: 'string', description: 'AAAA-MM-DD' },
+        hora: { type: 'string', description: 'HH:MM, o início da sessão' },
+        modalidade: { type: 'string', enum: ['musculacao', 'natacao'] },
+      },
+      required: ['dia', 'hora', 'modalidade'],
+    },
+  },
+  {
+    name: 'desmarcar_encontro',
+    description: 'Desmarca o encontro de meta marcado e a sessão que foi reservada para ele no app. Use quando o aluno ' +
+      'pede para desmarcar e não quer outro horário agora.',
+    input_schema: { type: 'object', additionalProperties: false, properties: {} },
+  },
   transferir,
 ];
 
@@ -106,6 +135,13 @@ export function executorDeSimulacao(turno) {
       case 'pausar_acompanhamento':
         turno.pausa = { ate: args.ate || null, motivo: String(args.motivo ?? '') };
         return { success: true, simulado: true };
+      case 'horarios_do_encontro':
+        return { success: true, simulado: true, professor: null, marcado: null, sugestoes: [], outros_horarios: [],
+          mensagem: 'Simulação: a agenda dos encontros não é lida no painel.' };
+      case 'marcar_encontro':
+      case 'desmarcar_encontro':
+        (turno.encontros ??= []).push({ acao: nome === 'marcar_encontro' ? 'marcar' : 'desmarcar', args });
+        return { success: true, simulado: true, mensagem: 'Simulação: nada foi marcado.' };
       case 'transferir_para_humano':
         turno.handoff = { motivo: args.motivo, mensagem: args.mensagem };
         return { success: true, action: 'handoff', motivo: args.motivo, mensagem: args.mensagem };
