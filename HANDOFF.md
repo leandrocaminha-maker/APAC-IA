@@ -1,10 +1,51 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 29/10/2026: o acompanhamento saiu do ensaio (envio real).**
+> **Snapshot de 07/11/2026: os encontros de meta pelo WhatsApp no ar e ligados** (o acompanhamento saiu do ensaio em 29/10/2026).
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## Os encontros de meta pelo WhatsApp (06–07/11/2026) — no ar e ligados
+
+Decisões do responsável (Prescrev 062 e 063): o encontro de meta é uma
+conversa de 10 minutos com o professor responsável, durante a sessão de
+musculação ou de natação adulto, e se marca aqui, sem passar pelo professor.
+
+- **A grade** (`grade-sessoes.js`, rota assinada `/acompanhamento/grade`): a
+  agenda do EVO das próximas duas semanas, de segunda a sexta, uma aula por
+  dia da semana e início, com capacidade e instrutor. O Prescrev monta dela a
+  tabela "Horários de encontro de meta", em que a coordenação diz quais
+  horários podem ter encontro e com quem.
+- **O convite** (`encontros.js`, `convidarParaEncontros`): 3 dias antes da
+  semana do encontro, uma vez por aluno e semana, só inscrição ativa, na
+  janela de contato e com cota no teto. O texto vem pronto do Prescrev
+  (`/api/acompanhamento/encontros-aluno?tipo=convites`, lida no máximo uma vez
+  por hora), com o horário em que o aluno costuma treinar. Sai como
+  `bot:acompanhamento`: a resposta vai à Leia.
+- **A Leia marca** (`horarios_do_encontro`, `marcar_encontro`,
+  `desmarcar_encontro` em `ferramentas.js`, executadas por
+  `ferramentaDoEncontro`): o Prescrev confere a vaga e grava; depois a sessão
+  do EVO se reserva com `reservarEmSessao(..., origem: 6)`. A origem 6 é a
+  única que passa da janela de 48 h do app (testado em 06/11 no cadastro
+  14622: de 0 a 5, "Activity out of booking hours"). Remarcar cancela no EVO
+  a sessão da marcação anterior; a sessão que o aluno já tinha marcado
+  sozinho não se reserva nem se cancela. A cópia da ficha passa a dizer o
+  marcado até o próximo carregamento. Seção "O encontro de meta: você marca"
+  no prompt.
+- **Cancelar no EVO** (`cancelarReservaEmSessao`): `change-status` com status
+  2 libera a vaga, mas a reserva fica como "Falta" nas sessões do membro. O
+  Prescrev registra o cancelamento (`acao=evo`) e não conta essa falta.
+- **O professor** (`avisarAgendaDeEncontros`): os encontros do dia no começo
+  do turno, e o que entrou ou saiu depois, como a agenda de testes
+  (`bot:agenda_encontros`). **A véspera** (`lembrarVesperaDosEncontros`): o
+  lembrete ao aluno.
+
+Liga e desliga com `ACOMPANHAMENTO_ENCONTROS` (padrão `false`; `true` no `.env`
+do VPS desde 07/11/2026). Testes: `encontros.test.js` e `grade-sessoes.test.js`
+(343 no total); casos `encontro_*` na `scripts/bateria-acompanhamento.js`,
+rodados com o modelo em 06/11. Formato da rota do Prescrev:
+`ENCONTROS_VERSAO_LIDA` (1), junto com `ENCONTROS_VERSION` de lá.
 
 ## Os avisos da avaliação física (03/11/2026) — em simulação
 
