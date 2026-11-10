@@ -142,3 +142,127 @@ export function instanteDaVenda(detalhe, evento) {
 
 /** Começo da nota que o aviso de "aula sem reserva" põe na próxima ação. */
 export const NOTA_SEM_RESERVA = 'Aula experimental vendida no EVO';
+
+// ──────────────────────────────────────────────
+// A aula que o lead conhece ainda está de pé?
+// ──────────────────────────────────────────────
+
+/** ISO → 'AAAA-MM-DD HH:mm' da academia (a forma de `dataHoraDaSessao`). */
+export function dataHoraSP(data) {
+  const d = dataDoEvo(data);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(d.getTime() + OFFSET_SP_MS).toISOString().slice(0, 16).replace('T', ' ');
+}
+
+/**
+ * O lead tem aula por vir? A data no futuro não basta: a aula cancelada no
+ * EVO guarda a data, com `experimental_status = 'cancelada'`.
+ */
+export function temAulaPorVir(lead, agora = Date.now()) {
+  if (lead?.experimental_status === 'cancelada') return false;
+  const quando = Date.parse(lead?.experimental_at || '');
+  return Number.isFinite(quando) && quando > (agora instanceof Date ? agora.getTime() : agora);
+}
+
+/**
+ * O que aconteceu com a aula que o lead conhece, pelas sessões da pessoa no
+ * EVO (do dia da aula em diante).
+ *
+ * Conferido em quatro momentos (10/11/2026, decisão do responsável): antes
+ * do lembrete, antes da conversa pós-aula, no horário da aula e antes de
+ * qualquer aviso à equipe. Remarcar no balcão é só reservar outra sessão, e
+ * reserva não tem webhook: a Gabrielly faltou em 31/10, foi remarcada para
+ * 14/11 no mesmo dia, e o lead seguiu com 31/10 — o gerente recebeu "aula
+ * feita sem desfecho".
+ *
+ *  - `mantida`   — a sessão continua na agenda. Se ela já passou e há outra
+ *                  por vir (a segunda experimental do Guilherme, Funcional
+ *                  Kids no dia seguinte à natação), a régua passa para a
+ *                  próxima: `remarcada`.
+ *  - `remarcada` — a sessão sumiu (ou foi desfeita) e há outra do dia dela
+ *                  em diante: a mais próxima por vir, ou a mais recente.
+ *  - `cancelada` — a sessão sumiu ou foi desfeita, e não há outra.
+ *
+ * Falta lançada ANTES de a aula começar é reserva desfeita, não ausência:
+ * é como o EVO mostra a reserva cancelada (`change-status` 2). Depois do
+ * início, falta é falta — a aula está mantida, e a pessoa não veio.
+ *
+ * @param {object[]} sessoes   de `/api/v2/activities/member/sessions`
+ * @param {object}   p
+ * @param {string}   p.conhecida  'AAAA-MM-DD HH:mm' da aula do lead
+ * @param {Date}     [p.agora]
+ * @returns {{ situacao: 'mantida' } | { situacao: 'cancelada' } |
+ *           { situacao: 'remarcada', sessao: object, dataHora: string, futura: boolean }}
+ */
+export function situacaoDaAula(sessoes, { conhecida, agora = new Date() }) {
+  const t = agora.getTime();
+  const diaMinimo = String(conhecida || '').slice(0, 10);
+
+  const lista = (Array.isArray(sessoes) ? sessoes : [])
+    .map(sessao => ({ sessao, dataHora: dataHoraDaSessao(sessao) }))
+    .filter(x => x.dataHora && x.dataHora.slice(0, 10) >= diaMinimo)
+    .map(x => ({ ...x, em: instanteDaAula(x.dataHora).getTime() }))
+    .filter(x => Number.isFinite(x.em));
+
+  const desfeita = (x) => x.sessao?.falta === true && x.em > t;
+  const corte = t - HORA_MS;
+  const marcada = lista.find(x => x.dataHora === conhecida);
+  const outras = lista.filter(x => x !== marcada && !desfeita(x));
+  const futuras = outras.filter(x => x.em >= corte).sort((a, b) => a.em - b.em);
+  const para = (x) => ({ situacao: 'remarcada', sessao: x.sessao, dataHora: x.dataHora, futura: x.em >= corte });
+
+  if (marcada && !desfeita(marcada)) {
+    return marcada.em < corte && futuras.length ? para(futuras[0]) : { situacao: 'mantida', sessao: marcada.sessao };
+  }
+  if (futuras.length) return para(futuras[0]);
+
+  const passadas = outras.filter(x => x.em < corte).sort((a, b) => b.em - a.em);
+  return passadas.length ? para(passadas[0]) : { situacao: 'cancelada' };
+}
+
+// ──────────────────────────────────────────────
+// A pessoa veio à aula?
+// ──────────────────────────────────────────────
+
+/**
+ * Hora de São Paulo a partir da qual a finalização da aula pode ser a
+ * automática do EVO, na virada do dia.
+ */
+export const HORA_LIMITE_FINALIZACAO = 22;
+
+/** O instante das 22h do dia da sessão. */
+export function limiteDaFinalizacao(sessao) {
+  const dia = String(dataHoraDaSessao(sessao) || '').slice(0, 10);
+  return instanteDaAula(`${dia} ${String(HORA_LIMITE_FINALIZACAO).padStart(2, '0')}:00`);
+}
+
+/**
+ * O que a sessão diz da presença, vista em `agora`.
+ *
+ * Regras do responsável (10/11/2026). Quem faz a chamada é o professor, que
+ * em dia movimentado deixa de finalizar; na virada do dia o EVO finaliza
+ * sozinho e dá falta a toda oportunidade, porque ela não passa pela
+ * catraca. A API não diz QUANDO a aula foi finalizada — a prova é o
+ * momento em que o sistema viu:
+ *
+ *  - presença em aula finalizada, à mão ou
+ *    na finalização automática              → `presente` (a qualquer hora)
+ *  - falta em aula finalizada, vista antes
+ *    das 22h do dia da aula                 → `falta`
+ *  - falta em aula finalizada, vista depois → `indeterminada`
+ *  - falta justificada em aula finalizada   → `falta_justificada` (só gente
+ *    justifica, então vale a qualquer hora)
+ *  - aula ainda não finalizada              → `aberta` — o "Presente" de
+ *    sessão aberta é só o padrão do EVO
+ *
+ * @returns {'presente'|'falta'|'falta_justificada'|'indeterminada'|'aberta'|null}
+ */
+export function presencaNaSessao(sessao, agora = new Date()) {
+  if (!sessao) return null;
+  if (sessao.isFinalized !== true) return 'aberta';
+  if (sessao.faltaJustificada === true) return 'falta_justificada';
+  if (sessao.falta === true) {
+    return agora.getTime() < limiteDaFinalizacao(sessao).getTime() ? 'falta' : 'indeterminada';
+  }
+  return sessao.presenca === true ? 'presente' : 'indeterminada';
+}

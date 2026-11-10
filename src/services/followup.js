@@ -16,6 +16,7 @@ import {
 } from './funil.js';
 // Sem ciclo: `evolution.js` só importa config e logger.
 import { telefoneValido } from './evolution.js';
+import { temAulaPorVir } from './aula-regras.js';
 import { evoClient } from './evo-client.js';
 import { ehFeriado } from '../lib/feriados.js';
 
@@ -339,24 +340,48 @@ export function horarioDoPosAula(aula) {
  *  - **na manhã seguinte** (`horarioDoPosAula`): conversar de acordo com a
  *    presença que o EVO avisou durante a madrugada.
  */
+/**
+ * O lembrete da aula vale a pena? `lembrete` é o horário já ajustado
+ * (`horarioDoLembrete`), `aula` o da aula, e `agora` a hora em que ela foi
+ * marcada.
+ *
+ *  - Perto demais (menos de 30 min): chegaria depois da aula, ou junto com
+ *    a confirmação que a pessoa acabou de receber. A conta é sobre o horário
+ *    ajustado, porque é ele que sai — o recuo para sábado pode deixá-lo no
+ *    passado quando a aula de segunda é marcada no próprio domingo.
+ *  - Lembrete no mesmo dia da marcação: a confirmação acabou de sair, e
+ *    "lembrar" horas depois é repetir. Vale para a aula de hoje e para a
+ *    de amanhã cujo lembrete cairia ainda hoje. Decisão do responsável em
+ *    10/11/2026, pelo caso da Joyce: a Leia marcou às 7h25 o Boxe Fitness
+ *    das 19h15, e o lembrete saiu às 9h08, na abertura da janela. Outros
+ *    cinco tinham saído assim para aula do dia seguinte (marcada às 14h38,
+ *    lembrete às 19h45 do mesmo dia).
+ */
+export function lembreteNecessario(lembrete, agora = new Date()) {
+  if (!(lembrete.getTime() > agora.getTime() + 30 * 60 * 1000)) return false;
+  const l = partesSP(lembrete);
+  const a = partesSP(agora);
+  return !(l.ano === a.ano && l.mes === a.mes && l.dia === a.dia);
+}
+
 export async function aoAgendarExperimental(lead, { dataHora, atividade }) {
   const aula = new Date(String(dataHora).replace(' ', 'T') + ':00-03:00');
   if (Number.isNaN(aula.getTime())) return;
 
   const contexto = { aula: aula.toISOString(), atividade: atividade || null };
 
+  // Aula nova: a régua da anterior sai. Sem isto, o lembrete da aula velha
+  // seguia pendente quando a nova não ganhava lembrete, e a sondagem de
+  // "o que falta decidir" saía com outra aula marcada.
+  await cancelar(lead.id, ['ae_lembrete_24h', 'ae_pos_aula', 'sondagem_1', 'sondagem_2'], 'aula nova marcada');
+
   // 24h antes, exceto quando isso cai em domingo — ver `horarioDoLembrete`.
   const lembrete = horarioDoLembrete(aula);
 
-  // Aula perto demais não recebe lembrete: ele chegaria depois da aula, ou
-  // junto com a confirmação que a pessoa acabou de receber. A conta é feita
-  // sobre o horário já ajustado, e não sobre as 24h cruas, porque é o
-  // ajustado que vai sair — o recuo para sábado pode deixá-lo no passado
-  // quando a aula de segunda é marcada no próprio domingo.
-  if (lembrete.getTime() > Date.now() + 30 * 60 * 1000) {
+  if (lembreteNecessario(lembrete)) {
     await agendar(lead.id, 'ae_lembrete_24h', lembrete, contexto);
   } else {
-    logger.info(`[followup] Lead ${lead.id}: aula perto demais (ou lembrete no passado), sem lembrete`);
+    logger.info(`[followup] Lead ${lead.id}: lembrete cairia no dia da marcação (ou perto demais da aula) — sem lembrete`);
   }
 
   await agendar(lead.id, 'ae_pos_aula', horarioDoPosAula(aula), contexto);
@@ -682,7 +707,7 @@ export async function varrerSilenciosos(opcoes = {}) {
   // fora da janela, e o `break` do lote não pode deixá-los para trás.
   const { data: leads, error } = await supabase
     .from('crm_leads')
-    .select('id, full_name, phone, stage, contact_id, last_activity_at, evo_id_member, evo_id_prospect, experimental_at, metadata')
+    .select('id, full_name, phone, stage, contact_id, last_activity_at, evo_id_member, evo_id_prospect, experimental_at, experimental_status, metadata')
     // A régua é de VENDA, e agora existe onde perguntar isso.
     //
     // Antes a única defesa era `situacaoComercial`, no fim do laço, e ela
@@ -763,7 +788,7 @@ export async function varrerSilenciosos(opcoes = {}) {
     // aula. Até 29/10/2026 a régua não olhava isso, e a Amanda recebeu o
     // "tudo bem se não for o momento" três dias antes da aula da Emily.
     // Os dois sinais daqui são de graça; o EVO é perguntado mais abaixo.
-    if (Date.parse(lead.experimental_at || '') > agora) {
+    if (temAulaPorVir(lead, agora)) {
       ignorados.com_aula = (ignorados.com_aula || 0) + 1;
       continue;
     }
@@ -1157,7 +1182,7 @@ export async function vencidos(limite = 20) {
       id, tipo, scheduled_for, contexto, tentativas,
       lead:crm_leads (
         id, full_name, phone, stage, trilha, contact_id, interest,
-        evo_id_prospect, evo_id_member, experimental_at, experimental_activity, metadata
+        evo_id_prospect, evo_id_member, experimental_at, experimental_activity, experimental_status, metadata
       )
     `)
     .eq('status', 'pendente')
@@ -1221,7 +1246,7 @@ export async function registrarNoFunil(leadId, tipo, resumo, payload = {}) {
 }
 
 export const followup = {
-  JANELA, JANELAS, janelaDoDia, dentroDaJanela, estaNaJanela, horarioDoLembrete, horarioDoPosAula,
+  JANELA, JANELAS, janelaDoDia, dentroDaJanela, estaNaJanela, horarioDoLembrete, horarioDoPosAula, lembreteNecessario,
   TIPOS_SILENCIO, TIPOS_REGUA, TETO_SILENCIO, rodadaDeSilencio,
   agendar, cancelar, aoAgendarExperimental, proximaSondagem, varrerSilenciosos,
   retomarHandoffsMudos,

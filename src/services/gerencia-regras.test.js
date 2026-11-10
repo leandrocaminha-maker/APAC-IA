@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import {
   normalizarConfig, telefoneDaEquipe, dentroDoHorario, idadeNaData, ehCortesia,
   alertasDe, regraCasa, eventosValendo, avisosDeAula, mensagemDoCiclo, CONFIG_PADRAO,
-  aplicarBaixas, chaveDeAlertaValida,
+  aplicarBaixas, chaveDeAlertaValida, TIPOS_ALERTA,
 } from './gerencia-regras.js';
 
 const sp = (s) => new Date(`${s}-03:00`);
@@ -94,8 +94,32 @@ test('cortesia e número que não é número não viram alerta', () => {
 test('aula vendida sem horário e aula feita sem desfecho', () => {
   const vendida = lead({ id: 2, metadata: { aula_vendida: { vendida_em: '2026-10-27T19:14:53Z' } } });
   const feita = lead({ id: 3, stage: 'experimental_agendada', experimental_at: '2026-10-24T13:30:00Z', experimental_activity: 'Natação Bebê 1 e 2' });
-  const tipos = alertasDe([vendida, feita], CONFIG_PADRAO, AGORA).map(a => a.tipo);
-  assert.deepEqual(tipos, ['aula_sem_reserva', 'aula_sem_desfecho']);
+  const alertas = alertasDe([vendida, feita], CONFIG_PADRAO, AGORA);
+  assert.deepEqual(alertas.map(a => a.tipo), ['aula_sem_reserva', 'aula_sem_desfecho']);
+  assert.match(alertas[1].detalhe, /presença não confirmada$/);
+});
+
+test('Gabrielly, 03/11: aula que passou sem presença não é "aula feita"', () => {
+  const faltou = lead({ id: 4, stage: 'experimental_agendada', experimental_status: 'agendada', experimental_at: '2026-10-24T14:00:00Z' });
+  const veio = lead({ id: 5, stage: 'experimental_realizada', experimental_status: 'realizada', experimental_at: '2026-10-24T14:00:00Z' });
+  const [a, b] = alertasDe([faltou, veio], CONFIG_PADRAO, AGORA);
+  assert.match(a.detalhe, /presença não confirmada/);
+  assert.match(b.detalhe, /— presença registrada$/);
+  assert.equal(TIPOS_ALERTA.aula_sem_desfecho.rotulo, 'Aula passou sem desfecho');
+});
+
+test('falta vista antes das 22h aparece como falta registrada', () => {
+  const faltou = lead({ id: 7, stage: 'experimental_agendada', experimental_status: 'faltou', experimental_at: '2026-10-24T14:00:00Z' });
+  const [a] = alertasDe([faltou], CONFIG_PADRAO, AGORA);
+  assert.match(a.detalhe, /— falta registrada$/);
+});
+
+test('aula cancelada no EVO não vira alerta nem aviso de aula', () => {
+  const cancelada = lead({ id: 6, stage: 'experimental_agendada', experimental_status: 'cancelada', experimental_at: '2026-10-24T14:00:00Z' });
+  assert.deepEqual(alertasDe([cancelada], CONFIG_PADRAO, AGORA).filter(a => a.tipo === 'aula_sem_desfecho'), []);
+  const futura = { experimental_at: '2026-10-30T22:00:00Z', experimental_status: 'cancelada', stage: 'experimental_agendada' };
+  assert.deepEqual(eventosValendo(futura, sp('2026-10-29T16:00:00')), []);
+  assert.deepEqual(eventosValendo({ ...futura, experimental_status: 'agendada' }, sp('2026-10-29T16:00:00')), ['agendada', 'vespera']);
 });
 
 test('baixa é do fato: mensagem nova do cliente traz o alerta de volta', () => {

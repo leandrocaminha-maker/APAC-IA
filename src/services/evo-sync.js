@@ -26,7 +26,7 @@ import { registrarVendaDoEvo, vincularVendaAoLead } from './vendas.js';
 import { normalizePhone } from './evolution.js';
 import {
   escolherSessao, vinculoDoProspect, proximoPassoDaAulaVendida, instanteDaVenda, diaSP,
-  NOTA_SEM_RESERVA,
+  NOTA_SEM_RESERVA, situacaoDaAula, dataHoraSP, temAulaPorVir, presencaNaSessao, instanteDaAula,
 } from './aula-regras.js';
 import { aoAvisoDaAutomacao, aoVenderAvaliacao } from './avaliacao-avisos.js';
 
@@ -607,8 +607,8 @@ function jaSabeDeAulaFutura(lead) {
   if (ETAPAS_ENCERRADAS.has(lead.stage)) return true;
   if (!ETAPAS_COM_AULA.has(lead.stage)) return false;
 
-  const quando = Date.parse(lead.experimental_at || '');
-  return Number.isFinite(quando) && quando > Date.now();
+  // A aula cancelada no EVO guarda a data: venda nova é aula nova.
+  return temAulaPorVir(lead);
 }
 
 /**
@@ -1144,6 +1144,302 @@ export async function conferirAulaNoEvo(lead, {
     actor, payload: { origem: 'conferencia' },
   });
   return { dataHora: melhor.dataHora, futura: melhor.futura, nova, lead: atualizado || lead };
+}
+
+/** Os follow-ups que pertencem a uma aula: saem quando ela muda ou cai. */
+const REGUA_DA_AULA = ['ae_lembrete_24h', 'ae_pos_aula', 'sondagem_1', 'sondagem_2'];
+
+/** As sessões do EVO de uma lista de cadastros, entre `de` e `ate`. */
+async function sessoesDosCadastros(pessoas, { de, ate, leadId }) {
+  const sessoes = [];
+  let falhou = false;
+  for (const pessoa of pessoas) {
+    try {
+      sessoes.push(...await evoClient.sessoesDaPessoa({ ...pessoa, de, ate }));
+    } catch (err) {
+      falhou = true;
+      logger.warn(`[evo-sync] Lead ${leadId}: sessões não lidas (${err.message})`);
+    }
+  }
+  return { sessoes, falhou };
+}
+
+/**
+ * Os outros cadastros do celular do lead (os três mais recentes). A aula do
+ * filho marcada no balcão fica no cadastro dele, não no da mãe que conversou
+ * com a Leia — e sem olhar ali a aula pareceria cancelada.
+ */
+async function cadastrosDoCelular(lead) {
+  if (!lead.phone) return { pessoas: [], falhou: false };
+  try {
+    const { cellphone } = evoClient.separarDdi(lead.phone);
+    const doCelular = await evoClient.buscarProspects({ phone: cellphone, take: 50 });
+    const pessoas = doCelular
+      .filter(p => p?.idProspect && Number(p.idProspect) !== Number(lead.evo_id_prospect))
+      .sort((a, b) => String(b.registerDate || '').localeCompare(String(a.registerDate || '')))
+      .slice(0, 3)
+      .map(p => ({ idProspect: Number(p.idProspect) }));
+    return { pessoas, falhou: false };
+  } catch (err) {
+    logger.warn(`[evo-sync] Lead ${lead.id}: cadastros do celular não lidos (${err.message})`);
+    return { pessoas: [], falhou: true };
+  }
+}
+
+/**
+ * Grava o que a sessão finalizada disse da presença (`presencaNaSessao`).
+ *
+ *  - `presente` → etapa "Experimental realizada", como o aviso da automação
+ *    do EVO, e o evento `experimental_realizada` que a conversa pós-aula lê.
+ *  - `falta` (vista antes das 22h) e `falta_justificada` →
+ *    `experimental_status = 'faltou'` e o evento `experimental_falta`.
+ *  - `indeterminada` e `aberta` → nada: a pós-aula pergunta em vez de afirmar.
+ *
+ * Presença já registrada não é rebaixada para falta: a do aviso da
+ * automação e a de um professor que corrigiu valem mais.
+ *
+ * @returns {Promise<object|null>} o lead atualizado, ou `null` se nada mudou
+ */
+async function registrarPresencaVista(lead, presenca, { agora = new Date(), actor = 'sistema', momento = '' } = {}) {
+  const vista = curtaSP(agora);
+
+  if (presenca === 'presente' && lead.experimental_status !== 'realizada') {
+    const atualizado = await mudarEtapa(lead, 'experimental_realizada', {
+      actor,
+      somenteAvanco: true,
+      motivo: 'Presença lançada na aula finalizada no EVO',
+      campos: { experimental_status: 'realizada' },
+    });
+    await registrarEvento(lead.id, {
+      type: 'experimental_realizada',
+      actor,
+      summary: `Presença lançada na aula finalizada no EVO (vista em ${vista})`,
+      payload: { momento, aula: lead.experimental_at },
+    });
+    logger.info(`[evo-sync] Lead ${lead.id}: presença na aula de ${curtaSP(lead.experimental_at)} (${momento})`);
+    return atualizado || { ...lead, experimental_status: 'realizada' };
+  }
+
+  if ((presenca === 'falta' || presenca === 'falta_justificada')
+    && !['realizada', 'faltou'].includes(lead.experimental_status)) {
+    await supabase.from('crm_leads').update({ experimental_status: 'faltou' }).eq('id', lead.id);
+    await registrarEvento(lead.id, {
+      type: 'experimental_falta',
+      actor,
+      summary: presenca === 'falta_justificada'
+        ? `Falta justificada lançada na aula finalizada no EVO (vista em ${vista})`
+        : `Falta lançada na aula finalizada no EVO, vista em ${vista} — antes das 22h, então foi gente`,
+      payload: { momento, aula: lead.experimental_at, presenca },
+    });
+    logger.info(`[evo-sync] Lead ${lead.id}: falta na aula de ${curtaSP(lead.experimental_at)} (${momento})`);
+    return { ...lead, experimental_status: 'faltou' };
+  }
+
+  return null;
+}
+
+/**
+ * A aula que o lead conhece continua de pé no EVO?
+ *
+ * Remarcar no balcão é só reservar outra sessão — a aula já foi vendida —,
+ * e reserva não tem webhook. Por isso a aula é conferida nos momentos em
+ * que ela importa, e só neles (decisão do responsável em 10/11/2026): antes
+ * do lembrete e da conversa pós-aula (followup-worker), no horário da aula
+ * (`conferirAulasNaHora`) e antes de qualquer aviso à equipe (gerencia.js).
+ * Uma consulta por cadastro do lead; a busca pelo celular só antes de dar a
+ * aula por cancelada.
+ *
+ * O caso de partida: a Gabrielly (lead 1268) faltou em 31/10, a Catia
+ * remarcou para 14/11 no mesmo dia, e o lead seguiu com 31/10 — o gerente
+ * recebeu "aula feita sem desfecho" em 03/11.
+ *
+ *  - `remarcada` → a régua da aula velha sai, a nova é registrada e ganha a
+ *    régua dela (`registrarAulaDoBalcao`).
+ *  - `cancelada` → a régua sai, a aula fica `cancelada`, e o consultor
+ *    recebe a próxima ação de combinar outra data.
+ *  - `mantida`, `indefinido` (EVO fora), `sem_aula` → nada muda.
+ *
+ * @returns {Promise<{ situacao: string, dataHora?: string, futura?: boolean, lead: object|null }>}
+ */
+export async function conferirAulaMarcada(leadOuId, { agora = new Date(), actor = 'sistema', momento = '' } = {}) {
+  const lead = await lerLead(typeof leadOuId === 'object' ? leadOuId.id : leadOuId);
+  if (!lead?.experimental_at || ETAPAS_ENCERRADAS.has(lead.stage) || lead.experimental_status === 'cancelada') {
+    return { situacao: 'sem_aula', lead };
+  }
+
+  const conhecida = dataHoraSP(lead.experimental_at);
+  const periodo = {
+    de: conhecida.slice(0, 10),
+    ate: diaSP(new Date(agora.getTime() + 60 * 24 * 60 * 60 * 1000)),
+    leadId: lead.id,
+  };
+
+  const proprios = [];
+  if (Number(lead.evo_id_member) > 0) proprios.push({ idMember: Number(lead.evo_id_member) });
+  if (Number(lead.evo_id_prospect) > 0) proprios.push({ idProspect: Number(lead.evo_id_prospect) });
+
+  let { sessoes, falhou } = await sessoesDosCadastros(proprios, periodo);
+  let r = situacaoDaAula(sessoes, { conhecida, agora });
+
+  if (r.situacao === 'cancelada') {
+    const celular = await cadastrosDoCelular(lead);
+    const extra = await sessoesDosCadastros(celular.pessoas, periodo);
+    falhou = falhou || celular.falhou || extra.falhou;
+    sessoes = [...sessoes, ...extra.sessoes];
+    r = situacaoDaAula(sessoes, { conhecida, agora });
+  }
+
+  if (r.situacao === 'mantida') {
+    // A aula está de pé; se já foi finalizada, a sessão diz se a pessoa veio.
+    const presenca = presencaNaSessao(r.sessao, agora);
+    const comPresenca = await registrarPresencaVista(lead, presenca, { agora, actor, momento });
+    return { situacao: 'mantida', sessao: r.sessao, presenca, lead: comPresenca || lead };
+  }
+  // Sem ler todos os cadastros, "sumiu" pode ser só a leitura que falhou.
+  if (falhou) return { situacao: 'indefinido', lead };
+
+  const quando = curtaSP(lead.experimental_at);
+  const { followup } = await import('./followup.js');
+
+  if (r.situacao === 'remarcada') {
+    await followup.cancelar(lead.id, REGUA_DA_AULA, `aula de ${quando} remarcada no EVO para ${r.dataHora}`);
+    const { lead: atualizado } = await registrarAulaDoBalcao(lead, r, {
+      actor, payload: { origem: 'conferencia', momento, aulaAnterior: lead.experimental_at },
+    });
+    logger.info(`[evo-sync] Lead ${lead.id}: aula de ${quando} remarcada no EVO para ${r.dataHora} (${momento || 'conferência'})`);
+    return { situacao: 'remarcada', dataHora: r.dataHora, futura: r.futura, lead: atualizado || lead };
+  }
+
+  // Cancelada: a régua sai, e o consultor fica com a próxima ação — sem
+  // passar por cima de uma que ele mesmo marcou para o futuro.
+  await followup.cancelar(lead.id, REGUA_DA_AULA, `aula de ${quando} cancelada no EVO`);
+  const nota = `Aula experimental de ${lead.experimental_activity || 'atividade'} em ${quando} não está mais ` +
+    'na agenda do EVO. Combinar outra data com a pessoa.';
+  const proxima = Date.parse(lead.next_action_at || '');
+  const ocupada = Number.isFinite(proxima) && proxima > agora.getTime();
+  await supabase
+    .from('crm_leads')
+    .update({
+      experimental_status: 'cancelada',
+      ...(ocupada ? {} : { next_action_at: agora.toISOString(), next_action_note: nota }),
+    })
+    .eq('id', lead.id);
+  await registrarEvento(lead.id, {
+    type: 'experimental_cancelada',
+    actor,
+    summary: nota,
+    payload: { momento, aula: lead.experimental_at },
+  });
+  logger.info(`[evo-sync] Lead ${lead.id}: aula de ${quando} cancelada no EVO (${momento || 'conferência'})`);
+  return { situacao: 'cancelada', lead: { ...lead, experimental_status: 'cancelada' } };
+}
+
+/** As aulas já conferidas no horário (memória do processo), por lead e data. */
+const conferidasNaHora = new Set();
+
+/**
+ * Confere no EVO as aulas que estão começando: das que começam nos próximos
+ * 20 minutos às que começaram há 30. O ciclo do follow-up é de 10 minutos,
+ * então quase toda aula é conferida ANTES de começar — e aí falta lançada é
+ * reserva desfeita. Cada aula uma vez só.
+ */
+export async function conferirAulasNaHora({ agora = new Date() } = {}) {
+  const resumo = { conferidas: 0, remarcadas: 0, canceladas: 0 };
+  const t = agora.getTime();
+
+  const { data, error } = await supabase
+    .from('crm_leads')
+    .select('id, experimental_at, experimental_status, stage')
+    .in('stage', [...ETAPAS_COM_AULA])
+    .gte('experimental_at', new Date(t - 30 * 60 * 1000).toISOString())
+    .lte('experimental_at', new Date(t + 20 * 60 * 1000).toISOString());
+
+  if (error) {
+    logger.warn(`[evo-sync] Não deu para ler as aulas desta hora: ${error.message}`);
+    return resumo;
+  }
+
+  for (const l of data || []) {
+    if (l.experimental_status === 'cancelada') continue;
+    const chave = `${l.id}:${l.experimental_at}`;
+    if (conferidasNaHora.has(chave)) continue;
+
+    const r = await conferirAulaMarcada(l, { agora, actor: 'evo-poll', momento: 'horario_da_aula' })
+      .catch(err => {
+        logger.warn(`[evo-sync] Lead ${l.id}: aula da hora não conferida (${err.message})`);
+        return { situacao: 'indefinido' };
+      });
+    if (r.situacao === 'indefinido') continue;   // EVO fora: tenta no próximo ciclo
+
+    if (conferidasNaHora.size > 5000) conferidasNaHora.clear();
+    conferidasNaHora.add(chave);
+    resumo.conferidas++;
+    if (r.situacao === 'remarcada') resumo.remarcadas++;
+    if (r.situacao === 'cancelada') resumo.canceladas++;
+  }
+
+  return resumo;
+}
+
+/** Quando cada aula de hoje foi olhada pela última vez (memória do processo). */
+const presencaOlhadaEm = new Map();
+
+/** Intervalo entre duas olhadas na mesma aula. */
+const INTERVALO_PRESENCA_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Observa as aulas de hoje até as 22h, para pegar a finalização do
+ * professor antes da automática da virada do dia (`presencaNaSessao`).
+ *
+ * A API não diz quando a aula foi finalizada; a falta só vale como "não
+ * veio" se o sistema viu a aula finalizada antes das 22h. Então olha: a
+ * primeira vez 50 minutos depois do início, depois a cada 2 horas, e uma
+ * última a partir das 21h. Achou presença ou falta, grava, e a aula sai da
+ * observação. A mesma conferência acerta remarcação e cancelamento.
+ */
+export async function observarPresencas({ agora = new Date() } = {}) {
+  const resumo = { olhadas: 0, presentes: 0, faltas: 0 };
+  const t = agora.getTime();
+  const hoje = diaSP(agora);
+  const limite = instanteDaAula(`${hoje} 22:00`).getTime();
+  const ultimaRodada = instanteDaAula(`${hoje} 21:00`).getTime();
+  if (t >= limite) return resumo;
+
+  const { data, error } = await supabase
+    .from('crm_leads')
+    .select('id, experimental_at, experimental_status, stage')
+    .in('stage', [...ETAPAS_COM_AULA])
+    .gte('experimental_at', instanteDaAula(`${hoje} 00:00`).toISOString())
+    .lte('experimental_at', new Date(t - 50 * 60 * 1000).toISOString());
+
+  if (error) {
+    logger.warn(`[evo-sync] Não deu para ler as aulas de hoje: ${error.message}`);
+    return resumo;
+  }
+
+  for (const l of data || []) {
+    if (['realizada', 'faltou', 'cancelada'].includes(l.experimental_status)) continue;
+
+    const chave = `${l.id}:${l.experimental_at}`;
+    const ultima = presencaOlhadaEm.get(chave);
+    const devida = ultima == null || t - ultima >= INTERVALO_PRESENCA_MS || (t >= ultimaRodada && ultima < ultimaRodada);
+    if (!devida) continue;
+
+    const r = await conferirAulaMarcada(l, { agora, actor: 'evo-poll', momento: 'presenca' })
+      .catch(err => {
+        logger.warn(`[evo-sync] Lead ${l.id}: presença não lida (${err.message})`);
+        return { situacao: 'indefinido' };
+      });
+    if (r.situacao === 'indefinido') continue;   // EVO fora: tenta no próximo ciclo
+
+    if (presencaOlhadaEm.size > 5000) presencaOlhadaEm.clear();
+    presencaOlhadaEm.set(chave, t);
+    resumo.olhadas++;
+    if (r.presenca === 'presente') resumo.presentes++;
+    if (r.presenca === 'falta' || r.presenca === 'falta_justificada') resumo.faltas++;
+  }
+
+  return resumo;
 }
 
 // ──────────────────────────────────────────────
@@ -1805,5 +2101,5 @@ export async function registrarWebhooks({ urlBase = config.crm.urlPublica } = {}
 export const evoSync = {
   cadastrarProspect, agendarExperimental, registrarVenda, lancarFollowUp,
   guardarEventoWebhook, processarEventoWebhook, reprocessarPendentes,
-  sincronizarProspects, registrarWebhooks, procurarAulasVendidas, conferirAulaNoEvo,
+  sincronizarProspects, registrarWebhooks, procurarAulasVendidas, conferirAulaNoEvo, conferirAulaMarcada, conferirAulasNaHora, observarPresencas,
 };

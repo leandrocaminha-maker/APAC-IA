@@ -29,6 +29,7 @@ import { saveMessage } from '../services/contacts.js';
 import { sendText, telefoneValido, numeroExiste } from '../services/evolution.js';
 import { limiteEnvio } from '../services/limite-envio.js';
 import { evoSync } from '../services/evo-sync.js';
+import { temAulaPorVir } from '../services/aula-regras.js';
 import { esperar } from '../lib/ritmo.js';
 
 let rodando = false;
@@ -37,16 +38,18 @@ let rodando = false;
 const ETAPAS_MORTAS = new Set(['ganho', 'perdido', 'finalizado']);
 
 /**
- * A pessoa foi à aula? Responde pelo aviso que o EVO já mandou.
+ * A pessoa foi à aula? Responde pelo que já foi gravado no lead.
  *
- * A automação "aula experimental realizada" do CRM do EVO avisa de
- * madrugada quem esteve presente, e o aviso vira um evento
- * `experimental_realizada` no razão do lead (evo-sync.js). Aqui só se lê.
- *
- * Sem aviso, a resposta é `desconhecida`, nunca `falta`: os consultores
- * fecham as aulas, então quase sempre a ausência do aviso é falta — mas
- * "você não veio" para quem veio não tem conserto, e a mensagem de
- * `desconhecida` funciona nos dois casos.
+ *  - `presente`: o evento `experimental_realizada` — do aviso da automação
+ *    do CRM do EVO, de madrugada, ou da presença lançada na aula finalizada
+ *    (`registrarPresencaVista`, em evo-sync.js).
+ *  - `falta`: `experimental_status = 'faltou'` — falta vista na aula
+ *    finalizada antes das 22h, ou falta justificada.
+ *  - `desconhecida`: o resto. Falta vista depois das 22h é a da finalização
+ *    automática da virada do dia, que o EVO dá a toda oportunidade (ela não
+ *    passa pela catraca) — regra do responsável em 10/11/2026. "Você não
+ *    veio" para quem veio não tem conserto, e a mensagem de `desconhecida`
+ *    funciona nos dois casos.
  *
  * A margem de 6h antes da aula cobre aviso de aula que começou mais cedo do
  * que o horário anotado.
@@ -65,9 +68,11 @@ async function presencaAvisada(lead, aula) {
     .gte('occurred_at', desde)
     .limit(1);
   if (error) logger.warn(`[followup] Lead ${lead.id}: não deu para ler o aviso de presença: ${error.message}`);
-  return data?.length
-    ? { resultado: 'presente', motivo: `aviso do EVO em ${data[0].occurred_at}` }
-    : { resultado: 'desconhecida', motivo: 'o EVO não avisou presença' };
+  if (data?.length) return { resultado: 'presente', motivo: `presença registrada em ${data[0].occurred_at}` };
+  if (lead.experimental_status === 'faltou') {
+    return { resultado: 'falta', motivo: 'falta lançada na aula finalizada antes das 22h' };
+  }
+  return { resultado: 'desconhecida', motivo: 'aula não finalizada por ninguém até as 22h' };
 }
 
 /**
@@ -198,11 +203,14 @@ function instrucao(tipo, { lead, presenca, contexto }) {
  */
 async function sugerirAoConsultor(lead, { presenca, conversa }) {
   const dica = presenca === 'presente'
-    ? 'A pessoa compareceu (o EVO avisou: aula experimental realizada) — ' +
+    ? 'A pessoa compareceu (presença registrada no EVO) — ' +
       'é o melhor momento para entrar com proposta fechada.'
-    : 'O EVO não avisou presença até a manhã seguinte — provavelmente ela não veio. ' +
-      'Antes de vender, entender o motivo (horário, insegurança, desistência) e oferecer remarcar. ' +
-      'Se ela veio e a aula não foi fechada com presença no EVO, vale corrigir lá.';
+    : presenca === 'falta'
+      ? 'A pessoa faltou (falta lançada na aula finalizada antes das 22h). ' +
+        'Antes de vender, entender o motivo (horário, insegurança, desistência) e oferecer remarcar.'
+      : 'Presença indeterminada: ninguém finalizou a aula no EVO até as 22h, e na virada do dia o EVO ' +
+        'dá falta a toda oportunidade. A Leia perguntou se ela conseguiu vir; confirme com o professor ' +
+        'antes de abordar, e peça para finalizar a chamada no dia.';
 
   await funil.registrarEvento(lead.id, {
     type: 'sugestao_consultor',
@@ -250,7 +258,7 @@ async function enviarUm(item) {
   // webhook do EVO, ou pela busca da reserva. Quem tem aula marcada não
   // está sumido, e a régua da aula já cuida da próxima conversa.
   if (followup.TIPOS_SILENCIO.includes(item.tipo)
-    && (Date.parse(lead.experimental_at || '') > Date.now() || lead.metadata?.aula_vendida)) {
+    && (temAulaPorVir(lead) || lead.metadata?.aula_vendida)) {
     await followup.cancelar(lead.id, [item.tipo], 'lead tem aula experimental marcada');
     return;
   }
@@ -292,12 +300,32 @@ async function enviarUm(item) {
     return;
   }
 
+  // A aula ainda está de pé? Remarcar no balcão não tem webhook, então o
+  // EVO é perguntado aqui, antes de falar da aula. Remarcada, a régua da
+  // aula nova já foi armada e esta mensagem sai do caminho; cancelada, a
+  // régua inteira sai. EVO fora: segue, como era antes.
+  let aula = null;
+  if (['ae_lembrete_24h', 'ae_pos_aula'].includes(item.tipo)) {
+    aula = await evoSync.conferirAulaMarcada(lead, { actor: 'sistema', momento: item.tipo })
+      .catch(err => {
+        logger.warn(`[followup] Lead ${lead.id}: aula no EVO não conferida (${err.message})`);
+        return { situacao: 'indefinido' };
+      });
+    if (aula.situacao === 'remarcada' || aula.situacao === 'cancelada') {
+      // `conferirAulaMarcada` já cancelou o pendente; isto só garante.
+      await followup.cancelar(lead.id, [item.tipo], `aula ${aula.situacao} no EVO`);
+      logger.info(`[followup] Lead ${lead.id}: ${item.tipo} não enviado — aula ${aula.situacao} no EVO`);
+      return;
+    }
+  }
+
   // 2. O fato que só o EVO sabe — e que ele já avisou.
   let presenca = null;
   let leitura = null;
 
   if (item.tipo === 'ae_pos_aula') {
-    leitura = await presencaAvisada(lead, item.contexto?.aula || lead.experimental_at);
+    // A conferência acima já gravou o que a sessão finalizada disse.
+    leitura = await presencaAvisada({ ...lead, ...(aula?.lead || {}) }, item.contexto?.aula || lead.experimental_at);
     presenca = leitura.resultado;
     logger.info(`[followup] Lead ${lead.id}: presença "${presenca}" — ${leitura.motivo}`);
   }
@@ -471,7 +499,7 @@ async function encerrarSemResposta() {
     .from('crm_followups')
     .select(
       'id, lead_id, tipo, sent_at, lead:crm_leads!inner ( id, stage, trilha, contact_id, phone, ' +
-      'evo_id_member, evo_id_prospect, experimental_at, metadata )'
+      'evo_id_member, evo_id_prospect, experimental_at, experimental_status, metadata )'
     )
     .in('tipo', ['sondagem_2', 'silencio_2'])
     .eq('status', 'enviado')
@@ -532,7 +560,7 @@ async function encerrarSemResposta() {
     // EVO é perguntado uma vez por lead: achando a aula, ela é registrada
     // (e o primeiro sinal resolve dali em diante); não achando, o lead
     // fecha e sai desta consulta.
-    if (Date.parse(lead.experimental_at || '') > Date.parse(f.sent_at)) continue;
+    if (lead.experimental_status !== 'cancelada' && Date.parse(lead.experimental_at || '') > Date.parse(f.sent_at)) continue;
     if (lead.metadata?.aula_vendida) continue;
 
     const aula = await evoSync.conferirAulaNoEvo(lead, { desde: new Date(f.sent_at), actor: 'sistema' })
@@ -616,6 +644,26 @@ async function ciclo() {
   rodando = true;
 
   try {
+    // A aula que está começando ainda está na agenda do EVO? Fora da janela
+    // de contato também — é leitura, não mensagem, e há aula às 6h10.
+    const naHora = await evoSync.conferirAulasNaHora().catch(err => {
+      logger.warn('[followup] Conferência das aulas desta hora falhou:', err.message);
+      return null;
+    });
+    if (naHora?.remarcadas || naHora?.canceladas) {
+      logger.info(`[followup] Aulas desta hora: ${naHora.remarcadas} remarcada(s), ${naHora.canceladas} cancelada(s) no EVO`);
+    }
+
+    // A chamada do professor nas aulas de hoje, até as 22h: depois disso a
+    // falta pode ser a da finalização automática.
+    const presencas = await evoSync.observarPresencas().catch(err => {
+      logger.warn('[followup] Observação de presença falhou:', err.message);
+      return null;
+    });
+    if (presencas?.presentes || presencas?.faltas) {
+      logger.info(`[followup] Presença das aulas de hoje: ${presencas.presentes} presente(s), ${presencas.faltas} falta(s)`);
+    }
+
     // Ordem importa: varrer ANTES de ler a fila faz a cutucada recém-agendada
     // que já caiu na janela sair neste mesmo ciclo, em vez de esperar o
     // próximo. Como `agendar` é idempotente e a varredura só olha o que já

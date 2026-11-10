@@ -290,7 +290,8 @@ export async function painel({ dias = 30, agora = new Date() } = {}) {
   const t = agora.getTime();
   const comRegras = (a) => ({ ...a, regras: regrasQueCasam(a, config) });
   const proximas = dados.aulas
-    .filter(a => new Date(a.experimental_at).getTime() >= t - 2 * HORA_MS && !['perdido', 'finalizado'].includes(a.stage))
+    .filter(a => new Date(a.experimental_at).getTime() >= t - 2 * HORA_MS && !['perdido', 'finalizado'].includes(a.stage)
+      && a.experimental_status !== 'cancelada')
     .sort((a, b) => new Date(a.experimental_at) - new Date(b.experimental_at)).map(comRegras);
   const recentes = dados.aulas
     .filter(a => {
@@ -412,6 +413,32 @@ async function completarIdades(aulas, config, limite = 8) {
 }
 
 /**
+ * Os leads cuja aula mudou no EVO, entre os avisos de aula prestes a sair.
+ * EVO fora do ar não segura o aviso: ele sai como sairia antes.
+ */
+async function aulasQueMudaram(pacotes, agora) {
+  const leads = new Set();
+  for (const p of pacotes) {
+    for (const a of p.alertas) if (a.tipo === 'aula_sem_desfecho') leads.add(a.leadId);
+    for (const a of p.aulas) leads.add(a.aula.leadId);
+  }
+
+  const mudaram = new Set();
+  if (!leads.size) return mudaram;
+  const { evoSync } = await import('./evo-sync.js');
+  for (const leadId of leads) {
+    const r = await evoSync.conferirAulaMarcada(leadId, { agora, actor: 'sistema', momento: 'aviso_equipe' })
+      .catch(err => {
+        logger.warn(`[gerencia] Aula do lead ${leadId} não conferida no EVO: ${err.message}`);
+        return { situacao: 'indefinido' };
+      });
+    if (r.situacao === 'remarcada' || r.situacao === 'cancelada') mudaram.add(leadId);
+  }
+  if (mudaram.size) logger.info(`[gerencia] ${mudaram.size} aula(s) mudaram no EVO — avisos dessas aulas fora do ciclo`);
+  return mudaram;
+}
+
+/**
  * Um ciclo de avisos: o que é novo desde o último, uma mensagem por pessoa.
  *
  * Alerta com mais de `AVISO_ATE_DIAS` aparece no painel e não vira
@@ -438,7 +465,21 @@ export async function avisar({ agora = new Date() } = {}) {
   const pacotes = [
     { telefones: gerente, alertas, aulas: aulas.filter(a => a.destino !== 'coordenacao') },
     { telefones: coordenacao, alertas: [], aulas: aulas.filter(a => a.destino !== 'gerente') },
-  ];
+  ].filter(p => p.telefones.length);
+
+  // Antes de avisar a equipe de uma aula, o EVO confirma que ela segue de
+  // pé. A Gabrielly foi dada ao gerente como "aula feita sem desfecho" em
+  // 03/11/2026 com a aula remarcada para 14/11 desde 31/10. Remarcada ou
+  // cancelada, a conferência já ajustou o lead, e o aviso desta aula sai do
+  // ciclo: o próximo ciclo calcula de novo com a aula certa. Só as aulas que
+  // vão mesmo para alguém, uma consulta por lead.
+  const mudaram = await aulasQueMudaram(pacotes, agora);
+  if (mudaram.size) {
+    for (const p of pacotes) {
+      p.alertas = p.alertas.filter(a => !(a.tipo === 'aula_sem_desfecho' && mudaram.has(a.leadId)));
+      p.aulas = p.aulas.filter(a => !mudaram.has(a.aula.leadId));
+    }
+  }
 
   const link = `${configApp.crm.urlPublica.replace(/\/$/, '')}/crm`;
   let enviados = 0;

@@ -45,8 +45,8 @@ export const TIPOS_ALERTA = {
     ativo: true,
   },
   aula_sem_desfecho: {
-    rotulo: 'Aula feita sem desfecho',
-    descricao: 'A aula experimental já passou e o atendimento não virou venda nem perda.',
+    rotulo: 'Aula passou sem desfecho',
+    descricao: 'A data da aula experimental já passou e o atendimento não virou venda nem perda. Diz se o EVO registrou presença.',
     limite: { campo: 'dias', rotulo: 'depois de (dias)', padrao: 3, min: 1, max: 30 },
     ativo: true,
   },
@@ -70,7 +70,7 @@ export const EVENTOS_AULA = {
   vespera: 'Na véspera da aula',
   dia: 'No dia da aula (antes do horário)',
   sem_presenca: 'Sem presença registrada no dia seguinte',
-  sem_desfecho: 'Aula feita e sem desfecho depois de N dias',
+  sem_desfecho: 'Aula passou e sem desfecho depois de N dias',
 };
 
 export const DESTINOS = {
@@ -279,6 +279,17 @@ export function telefoneLegivel(p) {
 const ABERTAS_COM_AULA = new Set(['experimental_agendada', 'experimental_realizada']);
 
 /**
+ * O que se sabe da presença numa aula que já passou. A falta só conta se a
+ * aula foi finalizada antes das 22h; a da virada do dia, o EVO dá a toda
+ * oportunidade (ver `presencaNaSessao` em aula-regras.js).
+ */
+export function presencaDaAula(l) {
+  if (l.experimental_status === 'realizada' || l.stage === 'experimental_realizada') return 'presença registrada';
+  if (l.experimental_status === 'faltou') return 'falta registrada';
+  return 'presença não confirmada';
+}
+
+/**
  * As situações que pedem o gerente, a partir dos atendimentos de venda
  * abertos já lidos.
  *
@@ -337,12 +348,17 @@ export function alertasDe(leads, config, agora = new Date()) {
       }
     }
 
-    if (cfg.aula_sem_desfecho.ativo && ABERTAS_COM_AULA.has(l.stage) && l.experimental_at) {
+    if (cfg.aula_sem_desfecho.ativo && ABERTAS_COM_AULA.has(l.stage) && l.experimental_at
+      && l.experimental_status !== 'cancelada') {
       const depois = t - new Date(l.experimental_at).getTime();
       if (depois >= cfg.aula_sem_desfecho.dias * DIA_MS) {
+        // "Aula feita" só com presença avisada pelo EVO. Sem ela a pessoa pode
+        // ter faltado, ou a aula ter sido remarcada no balcão — a Gabrielly
+        // (03/11/2026) apareceu como "aula feita" com falta no EVO.
         alertas.push({
           tipo: 'aula_sem_desfecho', chave: `asd:${l.id}:${l.experimental_at}`, ...base(l), desde: l.experimental_at,
-          detalhe: `${l.experimental_activity || 'Aula experimental'} em ${quandoSP(l.experimental_at)}`,
+          detalhe: `${l.experimental_activity || 'Aula experimental'} em ${quandoSP(l.experimental_at)} — ` +
+            presencaDaAula(l),
           gravidade: depois >= 7 * DIA_MS ? 'alta' : 'media',
         });
       }
@@ -434,7 +450,8 @@ const ENCERRADAS = new Set(['ganho', 'perdido', 'finalizado']);
  *    atendimento ainda aberto.
  */
 export function eventosValendo(aula, agora = new Date(), { diasSemDesfecho = 3 } = {}) {
-  if (!aula.experimental_at) return [];
+  // Aula cancelada no EVO guarda a data, e não vira aviso nenhum.
+  if (!aula.experimental_at || aula.experimental_status === 'cancelada') return [];
   const t = agora.getTime();
   const quando = new Date(aula.experimental_at).getTime();
   const hoje = partesSP(agora).dia;
@@ -499,16 +516,17 @@ const ROTULO_EVENTO = {
   vespera: '⏰ Aula experimental amanhã',
   dia: '📍 Aula experimental hoje',
   sem_presenca: '❔ Aula sem presença registrada',
-  sem_desfecho: '📌 Aula feita, sem desfecho',
+  sem_desfecho: '📌 Aula passou, sem desfecho',
 };
 
 function linhaDaAula(aviso) {
   const a = aviso.aula;
   const idade = a.idade != null ? ` (${a.idade} ${a.idade === 1 ? 'ano' : 'anos'})` : '';
+  const presenca = ['sem_presenca', 'sem_desfecho'].includes(aviso.evento) ? ` (${presencaDaAula(a)})` : '';
   return [
     `${ROTULO_EVENTO[aviso.evento]}`,
     `*${a.nome}*${idade}`,
-    `${a.atividade || 'Atividade não informada'} — ${quandoSP(a.experimental_at)}`,
+    `${a.atividade || 'Atividade não informada'} — ${quandoSP(a.experimental_at)}${presenca}`,
     `Contato: ${telefoneLegivel(a.telefone)}${a.consultor ? ` · ${a.consultor}` : ''}`,
     `_Regra: ${aviso.regra.nome}_`,
   ].join('\n');

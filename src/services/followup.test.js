@@ -8,7 +8,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { horarioDoPosAula, estaNaJanela, rodadaDeSilencio, silencioEncerrado } from './followup.js';
+import {
+  horarioDoPosAula, estaNaJanela, rodadaDeSilencio, silencioEncerrado, horarioDoLembrete, lembreteNecessario,
+} from './followup.js';
 
 // Horário de São Paulo é UTC-3: 10h em SP são 13h UTC.
 
@@ -94,4 +96,33 @@ test('pendente ou régua pós-aula: a régua de silêncio não mexe', () => {
 test('duas falhas da primeira na rodada passam para a segunda', () => {
   const falha = { tipo: 'silencio_1', status: 'falhou', created_at: '2026-10-20T12:00:00Z' };
   assert.equal(rodadaDeSilencio([falha, falha], { respondeuEm: '2026-10-18T12:00:00Z' }), 'silencio_2');
+});
+
+// ── Lembrete da aula ─────────────────────────
+
+test('Joyce, 09/11: aula marcada às 7h25 para as 19h15 do mesmo dia não tem lembrete', () => {
+  const marcada = sp('2026-11-09T07:25:00');
+  const lembrete = horarioDoLembrete(sp('2026-11-09T19:15:00'));
+  assert.equal(lembrete.toISOString(), sp('2026-11-09T09:00:00').toISOString());   // o que saiu
+  assert.equal(lembreteNecessario(lembrete, marcada), false);
+});
+
+test('aula de amanhã com lembrete ainda hoje também não tem lembrete', () => {
+  // 06/10: marcada às 14h38 para amanhã às 19h45 — o lembrete saiu às 19h45 de hoje.
+  const lembrete = horarioDoLembrete(sp('2026-10-07T19:45:00'));
+  assert.equal(lembrete.toISOString(), sp('2026-10-06T19:45:00').toISOString());
+  assert.equal(lembreteNecessario(lembrete, sp('2026-10-06T14:38:00')), false);
+});
+
+test('lembrete em outro dia que o da marcação continua', () => {
+  // Luciana: marcada 30/10 para terça 03/11.
+  assert.equal(lembreteNecessario(horarioDoLembrete(sp('2026-11-03T15:45:00')), sp('2026-10-30T09:02:00')), true);
+  // Marcada às 20h para amanhã às 21h: o lembrete cai amanhã.
+  assert.equal(lembreteNecessario(sp('2026-11-11T20:00:00'), sp('2026-11-10T20:00:00')), true);
+});
+
+test('lembrete a menos de 30 min, ou no passado, não sai', () => {
+  const agora = sp('2026-11-10T08:50:00');
+  assert.equal(lembreteNecessario(sp('2026-11-10T09:10:00'), agora), false);
+  assert.equal(lembreteNecessario(sp('2026-11-09T19:15:00'), agora), false);
 });

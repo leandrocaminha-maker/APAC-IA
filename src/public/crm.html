@@ -2169,7 +2169,7 @@ function renderGerCartoes() {
   $('#ger-cartoes').innerHTML = [
     cartao('Precisa de atenção', ativos.length, `${graves} há mais tempo`, graves ? 'ruim' : ativos.length ? 'atencao' : 'bom'),
     cartao('Aulas hoje', aulasHoje, `${aulas7} nos próximos 7 dias`),
-    cartao('Aulas sem desfecho', semDesfecho, 'aula feita, sem venda nem perda', semDesfecho ? 'atencao' : ''),
+    cartao('Aulas sem desfecho', semDesfecho, 'aula passou, sem venda nem perda', semDesfecho ? 'atencao' : ''),
     cartao('Aula → venda', f.conversao == null ? '—' : f.conversao + '%', `${f.ganhas} de ${f.aulas} aulas em ${d.dias} dias`, f.conversao ? 'bom' : ''),
     cartao('Atendimentos abertos', d.abertos, 'venda, sem os encerrados'),
   ].join('');
@@ -2278,7 +2278,10 @@ function renderGerAulas() {
 
   $('#ger-recentes').innerHTML = recentes.length ? recentes.map(a => {
     const presenca = a.experimental_status === 'realizada'
-      ? '<span class="selo ok">presença registrada</span>' : '<span class="selo">sem presença registrada</span>';
+      ? '<span class="selo ok">presença registrada</span>'
+      : a.experimental_status === 'cancelada' ? '<span class="selo">cancelada no EVO</span>'
+      : a.experimental_status === 'faltou' ? '<span class="selo">faltou</span>'
+      : '<span class="selo">presença não confirmada</span>';
     const desfecho = a.stage === 'ganho' ? '<span class="selo ok">virou venda</span>'
       : a.stage === 'perdido' ? `<span class="selo alta" title="${esc(a.lost_reason || '')}">perdido</span>`
       : a.stage === 'finalizado' ? '<span class="selo">finalizado</span>'
