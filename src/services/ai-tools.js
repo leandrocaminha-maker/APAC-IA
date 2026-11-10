@@ -24,6 +24,7 @@ import { evoClient } from './evo-client.js';
 import { evoSync } from './evo-sync.js';
 import { funil } from './funil.js';
 import { MODULOS } from './knowledge.js';
+import { atendimento } from './atendimento.js';
 
 // ──────────────────────────────────────────────
 // Tools pausadas
@@ -104,7 +105,9 @@ const allToolDeclarations = [
       'Agenda a aula experimental na agenda da academia e registra o serviço de aula experimental. ' +
       'Use SÓ depois de a pessoa ter cadastro (encontrado por `buscar_cadastro` ou criado por `cadastrar_prospect`) ' +
       'e de ter escolhido atividade e horário existentes na GRADE HORÁRIA da base de conhecimento. ' +
-      'Nunca invente horário: se o que a pessoa quer não está na grade, ofereça os que estão.',
+      'Nunca invente horário: se o que a pessoa quer não está na grade, ofereça os que estão. ' +
+      'Marcada a aula, o sistema repassa a um consultor, que confirma com a pessoa e segue a venda; ' +
+      'você continua respondendo até ele falar. Não chame `transferir_para_humano` por isso.',
     input_schema: {
       type: 'object',
       properties: {
@@ -116,8 +119,14 @@ const allToolDeclarations = [
           type: 'string',
           description: 'Nome da atividade como aparece na grade horária (ex.: "NATAÇÃO ADULTO", "MUSCULAÇÃO").',
         },
+        resumo_para_consultor: {
+          type: 'string',
+          description: 'Para o consultor que vai confirmar a aula e seguir a venda — a pessoa não lê. ' +
+            'Em 2 ou 3 frases: objetivo, o que treina hoje, plano e valor que interessaram ou que ela ' +
+            'escolheu, objeções e o que ficou em aberto.',
+        },
       },
-      required: ['data_hora', 'atividade'],
+      required: ['data_hora', 'atividade', 'resumo_para_consultor'],
     },
   },
   {
@@ -638,11 +647,24 @@ const handlers = {
         };
       }
 
+      // A aula vai a um consultor, que confirma e segue a venda. A conversa
+      // não pausa: a Leia fica na cobertura (ver `repasse-regras.js`).
+      await atendimento.repassarExperimental({
+        conversationId: contexto.conversationId,
+        contactId: contexto.contactId,
+        atividade: args.atividade,
+        dataHora,
+        resumo: args.resumo_para_consultor,
+        dryRun: r.dryRun === true,
+      });
+
       return {
         success: true,
         dryRun: r.dryRun,
-        mensagem: `Aula de ${args.atividade} agendada para ${dataHora}. ` +
-          'Confirme com a pessoa, diga o que levar e lembre de chegar 15 minutos antes.',
+        mensagem: `Aula de ${args.atividade} agendada para ${dataHora}, e um consultor foi avisado para ` +
+          'confirmar com a pessoa e seguir a venda. Confirme a aula, diga o que levar, lembre de chegar ' +
+          '15 minutos antes e avise que alguém da equipe vai falar com ela por aqui para confirmar. ' +
+          'Não chame `transferir_para_humano`: você segue respondendo até o consultor falar.',
       };
     } catch (err) {
       logger.error('[ai-tools] agendar_aula_experimental:', err.message);

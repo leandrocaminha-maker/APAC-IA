@@ -287,6 +287,17 @@ router.get('/api/atendimento/pendencias', rota(async (req, res) => {
   });
 }));
 
+/**
+ * A aula que a Leia marcou foi confirmada por outro canal (ligação, balcão).
+ * Escrever na conversa já tira da fila sozinho; isto é para o resto.
+ */
+router.post('/api/atendimento/repasses/:id/resolver', rota(async (req, res) => {
+  const ok = await atendimento.resolverRepasse(parseInt(req.params.id, 10));
+  if (!ok) return res.status(404).json({ erro: 'Repasse não encontrado' });
+  logger.info(`[crm] ${req.usuario.nome} deu o repasse ${req.params.id} por confirmado`);
+  res.json({ ok: true });
+}));
+
 router.get('/api/leads/:id', rota(async (req, res) => {
   const ficha = await funil.fichaDoLead(parseInt(req.params.id, 10));
   if (!ficha) return res.status(404).json({ erro: 'Lead não encontrado' });

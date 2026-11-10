@@ -1246,6 +1246,14 @@ const FILAS = {
     cheia: 'cliente falou por último',
     vazia: 'ninguém no vácuo',
   },
+  // A Leia marcou a aula e segue respondendo; falta o consultor confirmar e
+  // seguir a venda. Sai sozinho quando alguém escreve na conversa.
+  experimental: {
+    campo: 'experimentalParaConfirmar',
+    rotulo: 'Experimental — falta o consultor',
+    cheia: 'a Leia marcou, ninguém confirmou',
+    vazia: 'nenhuma aula esperando',
+  },
 };
 
 async function carregarPendencias() {
@@ -1260,6 +1268,8 @@ async function carregarPendencias() {
 function cartaoPendencia(chave, dado) {
   const { rotulo, cheia, vazia } = FILAS[chave];
   const total = dado?.total || 0;
+  // `null` é leitura que falhou no servidor, não fila vazia.
+  const semLeitura = dado === null;
   const esperaMs = dado?.maisAntigoEm ? Date.now() - new Date(dado.maisAntigoEm).getTime() : 0;
 
   const classes = ['cartao'];
@@ -1272,7 +1282,7 @@ function cartaoPendencia(chave, dado) {
       <div class="valor">${total}</div>
       <div class="nota">${total
         ? `${cheia} · mais antigo há ${desde(dado.maisAntigoEm).texto}`
-        : vazia}</div>
+        : semLeitura ? 'não deu para ler agora' : vazia}</div>
     </div>`;
 }
 
@@ -1325,7 +1335,8 @@ function desenharPendencias() {
 
   $('#pendencias').innerHTML =
     cartaoPendencia('consultor', p.aguardandoConsultor)
-    + cartaoPendencia('resposta', p.aguardandoResposta);
+    + cartaoPendencia('resposta', p.aguardandoResposta)
+    + cartaoPendencia('experimental', p.experimentalParaConfirmar);
 
   $$('#pendencias .clicavel').forEach(c => c.addEventListener('click', () => {
     estado.filaAberta = estado.filaAberta === c.dataset.fila ? null : c.dataset.fila;
@@ -1352,7 +1363,8 @@ function desenharFila() {
 
   cx.innerHTML = dado.itens.map(i => {
     const espera = desde(i.desde);
-    const alvo = chave === 'consultor'
+    // O handoff de quem já passou da etapa pode não ter lead: aí abre a conversa.
+    const alvo = chave === 'consultor' && i.leadId
       ? `data-lead="${i.leadId}"`
       : `data-conversa="${i.conversaId}"`;
     // A fila de handoff é uma só para as duas trilhas — o fornecedor
@@ -1360,17 +1372,26 @@ function desenharFila() {
     // escolher por onde começar.
     const naoEhVenda = i.tipo && i.tipo !== 'lead'
       ? (estado.tipos[i.tipo]?.rotulo || i.tipo) : null;
+    const aula = i.aula
+      ? `aula ${dataHora(i.aula)}${i.atividade ? ' · ' + i.atividade.toLowerCase() : ''}`
+      : null;
     const detalhe = chave === 'consultor'
       ? [telefoneBonito(i.telefone), naoEhVenda].filter(Boolean).join(' · ')
-      : [telefoneBonito(i.telefone), i.consultor ? 'com ' + i.consultor : null, i.previa]
-          .filter(Boolean).join(' · ');
+      : chave === 'experimental'
+        ? [telefoneBonito(i.telefone), aula].filter(Boolean).join(' · ')
+        : [telefoneBonito(i.telefone), i.consultor ? 'com ' + i.consultor : null, i.previa]
+            .filter(Boolean).join(' · ');
+    // Confirmou por ligação ou no balcão: tira da fila sem escrever na conversa.
+    const feito = chave === 'experimental'
+      ? `<button class="btn pequeno" data-repasse="${i.repasseId}" title="Confirmei por outro canal">Já confirmei</button>`
+      : '';
 
     return `<div class="linha" ${alvo}>
         <span class="quem-espera">
           <b>${esc(i.nome || 'Sem nome')}</b>
           <small>${esc(detalhe)}</small>
         </span>
-        <span class="espera ${espera.classe}">há ${espera.texto}</span>
+        <span class="espera ${espera.classe}">${feito} há ${espera.texto}</span>
       </div>`;
   }).join('')
     + (restantes > 0 ? `<div class="resto">…e mais ${restantes} na fila.</div>` : '');
@@ -1379,6 +1400,20 @@ function desenharFila() {
     el.addEventListener('click', () => abrirFicha(el.dataset.lead)));
   $$('#fila-pendencia [data-conversa]').forEach(el =>
     el.addEventListener('click', () => irParaConversa(el.dataset.conversa)));
+  $$('#fila-pendencia [data-repasse]').forEach(el =>
+    el.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      el.disabled = true;
+      try {
+        await api(`/atendimento/repasses/${el.dataset.repasse}/resolver`, { corpo: {} });
+      } catch (err) {
+        el.disabled = false;
+        toast(`Não deu para tirar da fila: ${err.message}`, 'erro');
+        return;
+      }
+      toast('Tirado da fila.');
+      await carregarPendencias();
+    }));
 }
 
 /** Da fila direto para a conversa, sem passar pela lista à mão. */
