@@ -1,10 +1,117 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 07/11/2026: os encontros de meta pelo WhatsApp no ar e ligados** (o acompanhamento saiu do ensaio em 29/10/2026).
+> **Snapshot de 10/11/2026: no ar o repasse da experimental marcada pela Leia e a aula conferida no EVO** (deploy de `7e2ef12` às 9h54; os encontros de meta seguem no ar desde 07/11).
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## O repasse da experimental marcada pela Leia (10/11/2026)
+
+Decisão do responsável: todo agendamento da Leia passa a um consultor, que
+confirma a aula e segue a venda; a Leia fica na cobertura. Até aqui ela marcava
+e não repassava (o prompt dizia "não transfere"): de 10/09 a 10/11, 41 pessoas
+com experimental marcada por ela, 23 sem consultor antes da aula, 13 sem
+mensagem de gente nenhuma. Caso de partida: Luciana, (11) 95438-1997, 30/10 —
+escolheu a Assinatura, ganhou aula na terça, não veio, e a primeira mensagem
+de consultor saiu em 09/11.
+
+- **Não é handoff comum.** `transferir_para_humano` cala a Leia, e conversa
+  calada perde a régua da aula (lembrete e pós-aula). O repasse é uma linha em
+  `wa_human_handoffs` com prefixo `[experimental]` e a conversa **ativa**:
+  a Leia segue respondendo até um consultor falar.
+- **Onde nasce:** `agendar_aula_experimental` (`ai-tools.js`), depois de o EVO
+  aceitar, por `atendimento.repassarExperimental`. A tool ganhou o argumento
+  obrigatório `resumo_para_consultor`, que vai no briefing. Aula que "já
+  estava" não repassa de novo; aula remarcada substitui o repasse anterior.
+- **Onde aparece:** terceiro cartão do painel, "Experimental — falta o
+  consultor" (`experimentaisParaConfirmar`), e o briefing no fio da conversa.
+  Sai sozinho quando um consultor escreve na conversa (painel ou aparelho) ou
+  o lead fecha; o botão "Já confirmei" tira quem foi confirmado por ligação ou
+  no balcão (`POST /crm/api/atendimento/repasses/:id/resolver`). Janela de 14
+  dias. Regras puras em `repasse-regras.js` (10 testes; 353 no total).
+- **Achado no caminho, corrigido junto:** handoff de quem já passou de
+  "Aguardando consultor" (com experimental marcada, ou "Com consultor")
+  **não aparecia em cartão nenhum** — `aoAbrirHandoff` só avança a etapa, e a
+  fila é pela etapa. 35 casos desde 10/09 só com aula marcada (cancelar,
+  remarcar, "URGENTE, aula é hoje"), 10 sem resposta. `filaDeConsultor` agora
+  soma os handoffs abertos com a conversa calada e sem fala de consultor
+  depois (`handoffsSemConsultor`). No dia da mudança, 2 apareceram: o recado
+  do festival da natação infantil (07/11) e a Nilza procurando a Shirlei.
+- **Prompt:** `vendas.md`, seções "Próximo passo" e "Agendamento de aula
+  experimental" — a Leia avisa que alguém da equipe vai falar para confirmar e
+  não chama `transferir_para_humano` por isso.
+
+**No ar desde 10/11/2026:** deploy de `7e2ef12` às 9h54 e prompt publicado às
+9h55 (backup em `data/backups/prompt-vendas-2026-11-10T12-55-50-013Z.md`). O
+banco tinha exatamente a versão de 25/10 antes. Sem migration. O alerta de gerência `handoff_parado` continua pela etapa: não
+avisa repasse parado nem os handoffs que só agora aparecem no cartão.
+
+### Aula remarcada no balcão e lembrete da aula de hoje (10/11/2026)
+
+- **Remarcação que o sistema não via.** A Gabrielly ((11) 99375-3764, lead
+  1268) faltou à experimental de 31/10 — "Falta" no EVO —, e a Catia remarcou
+  para 14/11 no mesmo dia. Remarcar é só reservar outra sessão (a aula já foi
+  vendida), e reserva não tem webhook (`ActivityEnroll` nunca chegou, e a
+  remarcação não gera `NewSale`): o lead ficou com 31/10, e o gerente recebeu
+  "Aula feita sem desfecho" em 03/11.
+- **A aula é conferida no EVO nos momentos em que importa** (decisão do
+  responsável, no lugar de uma varredura periódica):
+  `evoSync.conferirAulaMarcada`, regra pura `situacaoDaAula` em
+  `aula-regras.js`.
+  - antes do lembrete e da conversa pós-aula (`followup-worker.js`,
+    `enviarUm`);
+  - no horário da aula (`conferirAulasNaHora`, no ciclo de 10 min do
+    follow-up, das que começam em 20 min às que começaram há 30, uma vez
+    cada; fora da janela de contato também — é leitura);
+  - antes de qualquer aviso de aula à equipe (`gerencia.avisar`: o alerta
+    "aula passou sem desfecho" e os avisos de aula, só os que vão mesmo para
+    alguém).
+  Uma chamada `GET /api/v2/activities/member/sessions` por cadastro do lead;
+  a busca pelo celular (até 3 cadastros) só antes de dar a aula por
+  cancelada — a aula do filho fica no cadastro dele. EVO fora: tudo segue
+  como antes.
+  - **mantida** → nada. Se a aula já passou e há outra marcada depois, a
+    régua passa para a próxima (a segunda experimental).
+  - **remarcada** → a régua da aula velha sai, a nova é registrada com a
+    régua dela, e o aviso daquela aula não sai.
+  - **cancelada** (a sessão sumiu, ou levou falta antes de começar — é como
+    o EVO mostra a reserva desfeita) → a régua sai,
+    `experimental_status = 'cancelada'` (sem migration: a coluna é texto e
+    já previa o valor), evento `experimental_cancelada`, e a próxima ação do
+    consultor vira "combinar outra data". Aula cancelada não conta como
+    "tem aula por vir" (`temAulaPorVir`) e não gera alerta nem aviso.
+  - Registrar aula nova (`aoAgendarExperimental`) passou a cancelar a régua
+    da anterior — lembrete velho e sondagem de "o que falta decidir".
+  Conferido só lendo em 10/11, com as 22 aulas de ±14 dias: 20 mantidas, 2
+  remarcadas (a Gabrielly para 14/11 11h e o Guilherme, lead 1168, para
+  Funcional Kids 10/11 16h25), nenhum cancelamento falso. **Os dois não
+  foram corrigidos à mão** (a gravação foi bloqueada). O do Guilherme acertou
+  sozinho às 10h04 de 10/11, na conferência antes do aviso à equipe: o lead
+  passou para Funcional Kids 10/11 16h25, a pós-aula da natação foi
+  cancelada, a nova ficou para 11/11 10h, e nada foi enviado a ele. A
+  Gabrielly não tem mais nenhum momento pendente (régua da aula de 31/10
+  encerrada, avisos já dados): o lead dela só muda com uma conferência à mão
+  (`conferirAulaMarcada(1268)`) — daqui para a frente, a pós-aula ou o aviso
+  de "sem presença" pegariam a remarcação.
+- **A presença voltou a ser lida da sessão do EVO**, com as regras do
+  responsável: presença em aula finalizada (à mão ou automática) = veio;
+  falta vista antes das 22h = não veio; falta vista depois = indeterminado
+  (a virada do dia dá falta a toda oportunidade). Ver "A presença da aula
+  experimental", mais abaixo. A conversa pós-aula usa o roteiro de falta
+  ("ofereça remarcar") quando a falta foi vista a tempo.
+- **O alerta não diz mais "aula feita" sem presença.** "Aula feita sem
+  desfecho" virou "Aula passou sem desfecho", e o detalhe diz "presença
+  registrada", "falta registrada" ou "presença não confirmada"
+  (`presencaDaAula`); os avisos de aula `sem_presenca` e `sem_desfecho` da
+  coordenação idem, e o painel ganhou os selos "faltou" e "cancelada no EVO".
+- **Lembrete não sai no mesmo dia da marcação** (`lembreteNecessario` em
+  `followup.js`) — nem para a aula de hoje, nem para a de amanhã cujo
+  lembrete cairia ainda hoje. Seis casos no histórico: a Joyce (lead 1421),
+  marcada às 7h25 para as 19h15, recebeu o lembrete às 9h08; os outros cinco
+  eram aula do dia seguinte (ex.: marcada às 14h38, lembrete às 19h45 do
+  mesmo dia). Os 4 lembretes pendentes em 10/11 caem em outro dia e não
+  mudam. Testes: 375 no total.
 
 ## Os encontros de meta pelo WhatsApp (06–07/11/2026) — no ar e ligados
 
@@ -1653,32 +1760,47 @@ Registrar os webhooks: Ajustes → Webhooks do EVO → **Registrar**. É idempot
 Depende de `EVO_WEBHOOK_SECRET` estar no `.env` — sem ele `/webhook/evo` responde
 503 (fail-closed, porque o endpoint escreve no funil).
 
-### ⚠️ "Presente" é o valor PADRÃO do EVO, não uma afirmação
+### ⚠️ A presença da aula experimental: quem veio, quem não veio, quem não se sabe
 
-Todo participante de uma sessão nasce com `status: 0` (Attending). Ler isso como
-presença confirmada faz a Leia perguntar "como foi a aula?" para quem não
-apareceu — e não existe desfazer para essa mensagem.
+**Regras do responsável, 10/11/2026** (`presencaNaSessao` em `aula-regras.js`).
+Quem faz a chamada é o professor, que em dia movimentado deixa de finalizar a
+aula. Na virada do dia o EVO finaliza sozinho e dá **falta a toda oportunidade**,
+porque ela não passa pela catraca. E "Presente" numa sessão **aberta** é só o
+padrão do EVO (`status: 0`), não presença.
 
-O que é evidência de verdade:
+| Sinal na sessão | Resultado |
+|---|---|
+| presença em aula finalizada, à mão ou automática | **veio** (a qualquer hora) |
+| falta em aula finalizada, vista **antes das 22h** do dia da aula | **não veio** |
+| falta em aula finalizada, vista às 22h ou depois | **indeterminado** |
+| falta justificada em aula finalizada | **não veio** (só gente justifica) |
+| aula não finalizada | ainda aberta — nada a concluir |
 
-| Sinal | Confiável? | Por quê |
-|---|---|---|
-| `falta` / `faltaJustificada` | **Sim, sempre** | Ninguém cai em falta: alguém marcou |
-| `presente` + sessão finalizada **antes das 22h** | **Sim** | Quem fechou foi gente |
-| `presente` + sessão **não** finalizada | Não | É só o default |
-| `presente` + finalizada, observada **depois das 22h** | Não | Pode ter sido a finalização automática da meia-noite |
+⚠️ **A API não expõe quando a aula foi finalizada** — existe só `isFinalized`.
+A prova é **o momento em que o sistema viu**: por isso `observarPresencas`, no
+ciclo de 10 min do follow-up, olha as aulas de hoje 50 min depois do início, a
+cada 2 h e uma última vez a partir das 21h, até as 22h. Toda conferência da aula
+(`conferirAulaMarcada`: lembrete, horário da aula, pós-aula, aviso à equipe,
+observação) grava o que viu:
 
-⚠️ **A API não expõe timestamp de finalização** — conferido no swagger e nos
-payloads, existe só `status: 6 / Finalized`. Então a evidência é **o momento em
-que observamos**: ver "Finalized" enquanto ainda são menos de 22h do dia da aula
-prova que alguém fechou antes do processo automático.
+- veio → etapa "Experimental realizada" e evento `experimental_realizada` (o
+  mesmo do aviso da automação "aula experimental realizada");
+- não veio → `experimental_status = 'faltou'` e evento `experimental_falta`;
+- indeterminado → nada: a Leia pergunta "você conseguiu vir?" em vez de
+  afirmar, e o consultor recebe "presença indeterminada — confirmar com o
+  professor".
 
-É por isso que o worker de follow-up reconsulta de 3 em 3 horas enquanto a
-sessão estiver aberta, e desiste às 22h — depois disso a finalização deixa de
-significar presença. Sem evidência, a Leia pergunta em vez de afirmar.
+Presença já registrada não é rebaixada para falta.
 
-Isso também cobre a cautela com prospect: sem finalização humana, um prospect
-"presente" volta como `desconhecida`.
+**Histórico.** Até 26/10/2026 havia uma regra parecida (reconsulta de 3 em 3 h,
+desistência às 22h), que tratava a falta como sempre confiável e a presença como
+duvidosa. Ela saiu no commit `9aea124` porque a consulta mandava os dois números
+da pessoa juntos (o EVO recusava com 400 — nenhuma presença lida em 28 aulas), e
+a presença passou a vir só do aviso da automação. De 26/10 a 10/11, a falta
+lançada no EVO não era usada. Conferido em 10/11 nas 22 aulas de ±14 dias: as
+passadas tinham "Falta" finalizada, vista agora depois das 22h — indeterminado;
+a da Joyce (09/11) estava finalizada com presença — veio; a da Melissa (27/10)
+com falta justificada — não veio.
 
 ### ⚠️ Permissões do token do EVO — três escritas estão bloqueadas
 
