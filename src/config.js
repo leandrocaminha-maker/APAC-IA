@@ -385,6 +385,13 @@ export const config = {
   // Os avisos da avaliação física (03/11/2026, `avaliacao-avisos.js`): o
   // link do questionário e o preparo na compra do "AF E CONSULTORIA", e o
   // lembrete 3 dias antes e na véspera, pelas automações do CRM do EVO.
+  // A carteira de treinos de musculação (migration 023): o worker lê o
+  // treino de cada aluno da segmentação do EVO, uma vez por dia. 0 desliga.
+  carteiraTreinos: {
+    minutos: parseInt(env('CARTEIRA_TREINOS_MINUTOS', '30'), 10),
+    porCiclo: parseInt(env('CARTEIRA_TREINOS_POR_CICLO', '120'), 10),
+  },
+
   avaliacao: {
     // Com false nada é registrado: a venda e a automação passam como antes.
     habilitado: env('AVALIACAO_AVISOS_HABILITADO', 'true') === 'true',

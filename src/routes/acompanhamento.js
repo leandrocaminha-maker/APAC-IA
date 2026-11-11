@@ -24,6 +24,11 @@
  *       no Prescrev comparar a validade com o ciclo prescrito. Lê o EVO na
  *       hora, um aluno por chamada.
  *
+ *   GET  /acompanhamento/carteira-treinos
+ *       os alunos ativos com treino de musculação no EVO (segmentação do CRM,
+ *       migration 023) e o resumo dos treinos de cada um, lido uma vez por
+ *       dia — o painel "Treinos no EVO" do Prescrev.
+ *
  *   GET  /acompanhamento/grade?atividades=18,41,54
  *       a grade de sessões da agenda do EVO daquelas atividades, de segunda
  *       a sexta, nas próximas duas semanas (`aulasDaGrade`): os horários de
@@ -51,6 +56,7 @@ import { conversaDoEncaminhamento } from '../services/acompanhamento/ponte.js';
 import { resumirTreinos } from '../services/acompanhamento/regua.js';
 import { buscarGrade, treinosDoAluno } from '../services/evo-client.js';
 import { aulasDaGrade, proximosDias } from '../services/acompanhamento/grade-sessoes.js';
+import { lerCarteira } from '../services/acompanhamento/carteira-treinos.js';
 
 const JANELA_MS = 5 * 60_000;
 const router = Router();
@@ -128,6 +134,15 @@ router.get('/treinos', assinado, async (req, res) => {
   } catch (err) {
     logger.error('[acompanhamento] Treinos ao Prescrev:', err.message);
     res.status(502).json({ error: `O EVO não respondeu: ${err.message}` });
+  }
+});
+
+router.get('/carteira-treinos', assinado, async (req, res) => {
+  try {
+    res.json({ alunos: await lerCarteira() });
+  } catch (err) {
+    logger.error('[acompanhamento] Carteira de treinos ao Prescrev:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

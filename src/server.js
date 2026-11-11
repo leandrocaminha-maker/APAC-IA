@@ -26,6 +26,7 @@ import { startCampanhaWorker } from './workers/campanha-worker.js';
 import { startAcompanhamentoWorker } from './workers/acompanhamento-worker.js';
 import { startGerenciaWorker } from './workers/gerencia-worker.js';
 import { startAvaliacaoWorker } from './workers/avaliacao-worker.js';
+import { startCarteiraTreinosWorker } from './workers/carteira-treinos-worker.js';
 
 const app = express();
 
@@ -171,6 +172,10 @@ app.listen(config.port, () => {
   // Avisos da avaliação física (compra, 3 dias antes, véspera): simulam
   // até AVALIACAO_AVISOS_ENVIO=true, ver config.avaliacao
   startAvaliacaoWorker();
+
+  // A carteira de treinos de musculação: só lê o EVO, para o painel do
+  // Prescrev. Nada sai ao WhatsApp.
+  startCarteiraTreinosWorker();
 });
 
 /**

@@ -19,6 +19,7 @@ import { equipeAcompanhamento } from '../services/acompanhamento/equipe.js';
 import * as ponteAcompanhamento from '../services/acompanhamento/ponte.js';
 import { SENT_BY_PONTE, idDaCitacao, textoDeEspera } from '../services/acompanhamento/ponte-regras.js';
 import { transcreverAudio } from '../services/transcricao.js';
+import { ehSegmentacaoDaCarteira, registrarNaCarteira } from '../services/acompanhamento/carteira-treinos.js';
 import { numeroAlternativo } from '../services/numero-alternativo.js';
 import { pesquisa } from '../services/pesquisa.js';
 import { dormir } from '../lib/ritmo.js';
@@ -177,6 +178,13 @@ router.post('/evo', async (req, res) => {
       // Não passa pelo `processarEventoWebhook` — aquele switch é do
       // webhook da API, trabalha com ApiCallback e não tem o que fazer
       // aqui, porque este payload já vem completo.
+      // A carteira de treinos (023): a segmentação SEM a descrição da
+      // comunicação é a dos alunos ativos com treino de musculação — vai à
+      // carteira, e não à campanha (que exige a descrição e a recusaria).
+      if (ehSegmentacaoDaCarteira(envelope)) {
+        await registrarNaCarteira(envelope);
+        continue;
+      }
       if (String(tipoDe(envelope)).startsWith('crm.segmentation')) {
         const r = await campanhas.absorverSegmentacao(envelope);
         if (r.ok && r.alvoId) {
