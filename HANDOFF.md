@@ -1,10 +1,78 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 10/11/2026: no ar o repasse da experimental marcada pela Leia e a aula conferida no EVO** (deploy de `7e2ef12` às 9h54; os encontros de meta seguem no ar desde 07/11).
+> **Snapshot de 14/11/2026: a Evolution roda numa imagem própria, com a stanza `<status>` confirmada** (deploy de `d72e2bf` às 11h54). Antes disso, em 10/11: o repasse da experimental marcada pela Leia e a aula conferida no EVO (deploy de `7e2ef12`).
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## A queda da Evolution a cada 50 min (14/11/2026)
+
+**Sintoma.** Instância `open` no painel, mas a cada 50 min e ~1 s a Evolution
+caía e reconectava sozinha (`stream errored out`), sem QR. As recebidas só
+chegavam ao backend numa rajada logo depois de cada reconexão, e nenhuma
+enviada ganhava `SERVER_ACK` desde 13/11 de manhã. Foi o que aconteceu em
+06/11 e em 12–13/11; parear de novo pareceu resolver da primeira vez, mas não
+resolve.
+
+**Causa.** O WhatsApp passou a mandar o status (story) dos contatos como uma
+stanza `<status>` de primeiro nível. O Baileys 7.0.0-rc.9 da Evolution 2.3.7
+não tem tratador para ela e nunca a confirma. O servidor segura tudo o que
+viria depois e, 50 min após a conexão, derruba o stream com
+`<stream:error><ack class="status" type="media|text" id=…/></stream:error>`.
+Os ids se repetiam de uma queda para outra: era o mesmo status reentregue.
+Bug conhecido: Baileys #2858 (PR #2866) e evolution-api #2778 (PR #2785),
+ambos abertos e sem imagem oficial com a correção em 14/11.
+
+**Correção.** `docker/evolution/`: a mesma 2.3.7 que rodava, fixada pelo
+digest, mais `patch-status-ack.cjs`, que registra `ws.on('CB:status')` e
+responde com o ack simples (`sendMessageAck`, sem código de erro), como no PR
+upstream. O compose deixou de usar `evoapicloud/evolution-api:latest`, que já
+aponta para outra versão: um `pull` trocaria a Evolution sem ninguém decidir.
+
+- **Para atualizar a Evolution:** troque o digest no Dockerfile e rode
+  `docker compose build evolution`. O patch confere a versão do Baileys e
+  **derruba o build** se ela mudou. Aí, veja se a versão nova já trata
+  `CB:status`: se tratar, apague o patch; se não, ajuste a âncora.
+- **`Bad MAC` em massa** (3.091 linhas em 30 h) cai nos minutos de reconexão:
+  é efeito da reentrega, não uma segunda falha.
+
+**A fila acumulada.** Na primeira conexão com o patch (11h54), o servidor
+soltou o que segurava desde 13/11 ~15h30: 69 recebidas em 1 min, várias de
+ontem ("boa tarde" ao meio-dia), e a Leia respondeu ~20 delas em 30 s. O
+webhook não guarda o `messageTimestamp` do WhatsApp, então ela não sabe que a
+mensagem é velha. Depois, a fila offline andou a **1 mensagem por minuto**:
+cada mensagem de grupo que falha ao decifrar ("No session found") trava 60 s
+(o timeout de query do Baileys), e enquanto a fila não esvazia nada chega ao
+vivo nem os acks das enviadas. Ligado `groupsIgnore=true` na instância às
+12h01 (`POST /settings/set/apacademia`): o backend já descartava `@g.us`
+(`webhook.js`), e a Evolution passa a recusar grupo sem tentar decifrar.
+
+**🚨 12h03: o aparelho foi removido.** A fila destravou (25 recebidas em
+1 min) e as falhas de decifrar subiram de ~1/min para 74 em 40 s — cada uma
+manda pedido de reenvio ao remetente e ao celular. Às 12h03:20 o servidor
+mandou `stream:error code=401 conflict type=device_removed`, e a instância
+foi a `close`. Daqui não dá para saber se foi alguém no celular ("Aparelhos
+conectados" → desconectar, como em 06/11) ou o WhatsApp derrubando o aparelho
+depois da rajada. Saíram só ~6 respostas da Leia nesses 20 s, então não foi
+rajada de envio. A fila de envio (`wa_message_queue`) estava vazia; 9
+conversas viraram handoff por "Falha técnica" no instante da queda.
+
+**Para voltar:** parear pelo QR do painel com o celular do número. Pareamento
+novo começa com sessões Signal limpas (as antigas estavam corrompidas: os
+`Bad MAC` incluíam mensagens sincronizadas do próprio celular) e sem a fila
+offline de 20 h, que fica só no celular, como em 06/11. Antes, conferir no
+celular se a conta não está **restrita** (14/10). Depois de parear, a prova
+de que o patch resolveu é passar dos 50 min sem `stream errored out`:
+`docker logs -f evolution-api | grep "stream errored"`.
+
+**Pendências.**
+
+- O `whatsapp-monitor.js` só olha `state` e não vê este caso. Sinal barato:
+  `connection.update` indo a `connecting` e voltando a `open` mais de uma vez
+  em 2 h, ou enviada da Leia sem `SERVER_ACK` depois de alguns minutos.
+- Ao atualizar o Baileys de verdade (rc13+), conferir se o upstream já
+  incorporou a correção e tirar o patch.
 
 ## O repasse da experimental marcada pela Leia (10/11/2026)
 
