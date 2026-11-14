@@ -3,7 +3,13 @@ services:
   # Evolution API (WhatsApp)
   # ─────────────────────────────────────
   evolution:
-    image: evoapicloud/evolution-api:latest
+    # Imagem própria: a 2.3.7 oficial (fixada pelo digest) com um patch no
+    # Baileys que confirma a stanza <status>. Sem ele o WhatsApp derruba a
+    # conexão a cada 50 min e segura as mensagens recebidas até a reconexão
+    # (11/2026). Detalhes em docker/evolution/. Depois de mudar algo lá:
+    #   docker compose build evolution && docker compose up -d evolution
+    build: ./docker/evolution
+    image: apac-evolution-api:2.3.7-status-ack
     container_name: evolution-api
     restart: unless-stopped
     ports:
