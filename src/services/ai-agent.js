@@ -36,6 +36,7 @@ import {
   detectarModulos, montarNucleo, montarOpcionais, indiceDeModulos, invalidarKnowledge,
 } from './knowledge.js';
 import { aiUsage } from './ai-usage.js';
+import { contextoDoAtraso } from './resposta-regras.js';
 import { carregarPromptEBase, SEM_RESPOSTA } from './acompanhamento/prompt.js';
 import { FERRAMENTAS } from './acompanhamento/ferramentas.js';
 
@@ -507,6 +508,7 @@ export async function processMessage({
   origem = 'webhook',
   campanha = null,
   alunoAcompanhamento = null,
+  atraso = null,
 }) {
   // Camada 1: Prompt base do banco
   const systemPrompt = await loadPrompt(promptSlug);
@@ -554,6 +556,15 @@ export async function processMessage({
         'não como lead: nada de oferta de plano nem de aula experimental, a não ser que ela peça.',
       'Dor, treino ou saúde: diga que vai avisar a equipe e use `transferir_para_humano`.',
     ].join(SEPARADOR);
+  }
+
+  // A mensagem foi escrita há horas e só chegou agora (a sessão do WhatsApp
+  // voltou de uma falha). Sem isto a Leia responde como se a pessoa tivesse
+  // acabado de escrever: devolve o "boa tarde" de ontem e oferece a aula de
+  // um dia que já passou. `atraso.enviadaEm` vem do webhook, que é quem lê a
+  // hora do WhatsApp. Camada 3, por turno.
+  if (atraso?.enviadaEm) {
+    dynamicContext += SEPARADOR + contextoDoAtraso({ enviadaEm: atraso.enviadaEm }).join(SEPARADOR);
   }
 
   // Camadas 1 + 2, com o breakpoint de cache.

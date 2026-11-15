@@ -25,6 +25,11 @@ import { pesquisa } from '../services/pesquisa.js';
 import { dormir } from '../lib/ritmo.js';
 import { gerencia } from '../services/gerencia.js';
 import { quemResponde, emailDoConsultor } from '../services/consultor-regras.js';
+import {
+  instanteDaMensagem, atrasoEmMinutos, ehAtrasada, motivoParaSegurar, haQuantoTempo,
+} from '../services/resposta-regras.js';
+import { criarFilaEspacada } from '../lib/fila-espacada.js';
+import { conexaoWhatsapp } from '../services/whatsapp-monitor.js';
 
 const router = Router();
 
@@ -99,7 +104,7 @@ router.post('/evolution', async (req, res) => {
             logger.error('[webhook] Mensagem por identificador oculto falhou:', err.message));
           return;
         }
-        await handleIncomingMessage(event);
+        await tratarSemPrenderAEvolution(event);
         break;
 
       case 'messages.update':
@@ -257,6 +262,43 @@ async function tratarIdentificadorOculto(event) {
   await handleIncomingMessage(event);
 }
 
+// Quanto o tratamento de uma mensagem pode segurar a resposta à Evolution.
+// Ela desiste da chamada em 30 s e REENTREGA o evento (até 10 vezes).
+const ESPERA_WEBHOOK_MS = 20_000;
+
+/**
+ * Trata a mensagem e responde à Evolution quando acabar — ou em 20 s, o que
+ * vier primeiro.
+ *
+ * As respostas fixas (SAIR, ATIVAR, "não consegui ouvir o áudio") são
+ * enviadas dentro do tratamento, e desde 15/11/2026 todo envio espera a vez
+ * na pista do número. Num dia normal são segundos; numa rajada, a espera
+ * passaria do prazo da Evolution e o evento voltaria, duplicado.
+ *
+ * O normal continua sendo esperar: é o que mantém as mensagens de uma mesma
+ * pessoa em ordem e não cria dois contatos para quem manda dois balões de
+ * estreia. Só o que demora segue sozinho.
+ */
+async function tratarSemPrenderAEvolution(event) {
+  let erro = null;
+  const fim = handleIncomingMessage(event).then(
+    () => 'fim',
+    (err) => { erro = err; return 'erro'; },
+  );
+
+  let relogio;
+  const prazo = new Promise(r => { relogio = setTimeout(() => r('prazo'), ESPERA_WEBHOOK_MS); });
+  const quem = await Promise.race([fim, prazo]);
+  clearTimeout(relogio);
+
+  if (quem === 'erro') throw erro;
+  if (quem === 'prazo') {
+    fim.then(resultado => {
+      if (resultado === 'erro') logger.error('[webhook] Mensagem falhou depois da resposta à Evolution:', erro);
+    });
+  }
+}
+
 /**
  * Processa mensagem recebida do WhatsApp.
  */
@@ -266,6 +308,13 @@ async function handleIncomingMessage(event) {
   // Extrai dados da mensagem
   const messageData = data.message || data;
   const key = data.key || messageData.key || {};
+
+  // A hora em que a pessoa MANDOU, que não é a hora em que chegou aqui: na
+  // volta de uma falha o WhatsApp entrega de uma vez o que ficou represado.
+  // Ver `resposta-regras.js`.
+  const enviadaEm = instanteDaMensagem(data.messageTimestamp ?? messageData.messageTimestamp);
+  const atrasoMin = atrasoEmMinutos(enviadaEm);
+  const atrasada = ehAtrasada(atrasoMin, config.agente.atrasoMin);
 
   // Ignora mensagens de grupo (por enquanto)
   if (key.remoteJid?.includes('@g.us')) {
@@ -337,7 +386,10 @@ async function handleIncomingMessage(event) {
     return;
   }
 
-  logger.info(`[webhook] 📩 ${phone} (${pushName || '?'}): ${content.slice(0, 100)}`);
+  logger.info(
+    `[webhook] 📩 ${phone} (${pushName || '?'})` +
+    `${atrasada ? ` [atrasada: escrita ${haQuantoTempo(atrasoMin)}]` : ''}: ${content.slice(0, 100)}`
+  );
 
   // Busca ou cria contato e conversa
   const contact = await getOrCreateContact(phone, pushName);
@@ -352,7 +404,14 @@ async function handleIncomingMessage(event) {
     contentType,
     sentBy: 'client',
     evolutionMsgId: key.id || null,
-    metadata: { pushName, remoteJid, ...(citada ? { citada } : {}) },
+    // `enviada_em` é a hora do WhatsApp; `created_at` é a hora em que chegou
+    // aqui. Diferem quando a entrega atrasou, e só assim dá para saber.
+    metadata: {
+      pushName,
+      remoteJid,
+      ...(citada ? { citada } : {}),
+      ...(enviadaEm ? { enviada_em: enviadaEm.toISOString() } : {}),
+    },
     status: 'delivered',
   });
 
@@ -550,7 +609,7 @@ async function handleIncomingMessage(event) {
 
   // Não responde agora: enfileira e espera os próximos balões. Ver
   // `agendarResposta`.
-  agendarResposta({ phone, contact, conversation, savedMessage, content });
+  agendarResposta({ phone, contact, conversation, savedMessage, content, atrasada, enviadaEm });
 }
 
 const VEZ_DO_CONSULTOR_HORAS = config.agente.vezDoConsultorHoras;
@@ -673,23 +732,26 @@ const REARME_MS = 2_000;
 /**
  * Acumula a mensagem e (re)arma o cronômetro da resposta.
  */
-function agendarResposta({ phone, contact, conversation, savedMessage, content }) {
+function agendarResposta({ phone, contact, conversation, savedMessage, content, atrasada = false, enviadaEm = null }) {
   const chave = conversation.id;
   const agora = Date.now();
 
   let buf = buffers.get(chave);
   if (!buf) {
-    buf = { mensagens: [], primeiroEm: agora, timer: null };
+    buf = { mensagens: [], primeiroEm: agora, timer: null, atrasada: true, enviadaEm: null };
     buffers.set(chave, buf);
   }
+
+  // O turno só é "atrasado" se TODOS os balões chegaram atrasados. Um balão
+  // escrito agora basta: a pessoa está ali, e a resposta é para já.
+  buf.atrasada = buf.atrasada && atrasada;
+  if (atrasada && enviadaEm && (!buf.enviadaEm || enviadaEm < buf.enviadaEm)) buf.enviadaEm = enviadaEm;
 
   // Sempre os dados mais recentes: o `pushName` pode ter chegado só agora.
   buf.phone = phone;
   buf.contact = contact;
   buf.conversation = conversation;
   buf.mensagens.push({ id: savedMessage?.id ?? null, content });
-
-  if (buf.timer) clearTimeout(buf.timer);
 
   const restanteDoTeto = DEBOUNCE_TETO_MS - (agora - buf.primeiroEm);
   const espera = Math.max(0, Math.min(DEBOUNCE_MS, restanteDoTeto));
@@ -698,17 +760,55 @@ function agendarResposta({ phone, contact, conversation, savedMessage, content }
     logger.debug(`[webhook] Agrupando (${buf.mensagens.length} msgs), respondendo em ${espera}ms`);
   }
 
+  armarCronometro(chave, buf, espera);
+}
+
+/**
+ * (Re)arma o cronômetro do buffer. `buf.timer` fica nulo depois de disparar:
+ * é assim que a fila espaçada sabe se o agrupamento ainda está correndo.
+ */
+function armarCronometro(chave, buf, ms) {
+  if (buf.timer) clearTimeout(buf.timer);
+
   buf.timer = setTimeout(() => {
+    buf.timer = null;
     responderBuffer(chave).catch(err =>
       logger.error('[webhook] Falha ao responder o buffer:', err));
-  }, espera);
+  }, ms);
 
   // Não segura o processo no shutdown.
   buf.timer.unref?.();
 }
 
+// ──────────────────────────────────────────────
+// A fila espaçada: turnos que não saem na hora
+//
+// Resposta a mensagem que chegou atrasada, e o excedente de uma rajada. As
+// regras e o porquê estão em `resposta-regras.js`; a mecânica, em
+// `lib/fila-espacada.js`. Aqui só a ligação com os buffers.
+// ──────────────────────────────────────────────
+
+// Quando os últimos turnos da Leia começaram (ms). É o que mede a rajada.
+let iniciosDeTurno = [];
+
+// O estado que a própria Evolution avisou por `connection.update`. O monitor
+// sonda de 2 em 2 minutos; este chega no segundo em que a sessão cai.
+let conexaoAvisada = null;
+
+const FORA_DO_AR = ['close', 'connecting'];
+
+const filaEspacada = criarFilaEspacada({
+  espacamentoSeg: () => config.agente.retomadaEspacamentoSeg,
+  // Com a sessão fora do ar o envio falharia e o turno viraria handoff por
+  // falha de envio. A fila espera a sessão voltar.
+  podeRodar: () => !FORA_DO_AR.includes(conexaoAvisada) && !FORA_DO_AR.includes(conexaoWhatsapp().estado),
+  aoFalhar: (chave, err) =>
+    logger.error(`[webhook] Turno da fila espaçada falhou (conversa ${chave}):`, err),
+});
+
 /**
- * Dispara o turno do agente com tudo o que se acumulou.
+ * Dispara o turno do agente com tudo o que se acumulou — agora, ou pela
+ * fila espaçada.
  */
 async function responderBuffer(chave) {
   const buf = buffers.get(chave);
@@ -723,12 +823,51 @@ async function responderBuffer(chave) {
   // turno atual terminar, a mensagem nova entra num turno próprio, já com a
   // resposta anterior no histórico.
   if (emAtendimento.has(chave)) {
-    buf.timer = setTimeout(() => {
-      responderBuffer(chave).catch(err =>
-        logger.error('[webhook] Falha ao responder o buffer:', err));
-    }, REARME_MS);
-    buf.timer.unref?.();
+    armarCronometro(chave, buf, REARME_MS);
     return;
+  }
+
+  const motivo = motivoParaSegurar({
+    atrasada: buf.atrasada,
+    iniciosRecentes: iniciosDeTurno,
+    agora: Date.now(),
+    rajadaMax: config.agente.rajadaMax,
+  });
+
+  if (motivo) {
+    if (filaEspacada.entrar(chave, () => rodarTurno(chave, { daFila: true }))) {
+      const porque = motivo === 'atrasada'
+        ? `mensagem escrita ${haQuantoTempo(atrasoEmMinutos(buf.enviadaEm))}`
+        : `mais de ${config.agente.rajadaMax} turnos num minuto`;
+      logger.info(
+        `[webhook] Resposta a ${buf.phone} vai pela fila espaçada (${porque}) — ` +
+        `${filaEspacada.tamanho()} na fila, ~${config.agente.retomadaEspacamentoSeg}s entre uma e outra`
+      );
+    }
+    return;
+  }
+
+  // Estava na fila e a pessoa escreveu de novo agora: não espera mais.
+  filaEspacada.sair(chave);
+  await rodarTurno(chave);
+}
+
+/**
+ * Roda o turno de uma conversa com o que o buffer juntou.
+ *
+ * @returns {Promise<boolean>} true se o turno foi ao agente (e, portanto,
+ *   pode ter saído mensagem). É o que a fila espaçada usa para cobrar o
+ *   intervalo antes do próximo.
+ */
+async function rodarTurno(chave, { daFila = false } = {}) {
+  const buf = buffers.get(chave);
+  if (!buf) return false;
+
+  // Chegou a vez na fila, mas o agrupamento ainda está correndo (a pessoa
+  // está escrevendo agora) ou há um turno em voo: quem decide é o cronômetro.
+  if (daFila && (buf.timer || emAtendimento.has(chave))) {
+    if (!buf.timer) armarCronometro(chave, buf, REARME_MS);
+    return false;
   }
 
   buffers.delete(chave);
@@ -746,15 +885,24 @@ async function responderBuffer(chave) {
       .single();
 
     if (atual?.status === 'human') {
-      logger.info('[webhook] Conversa passou a modo humano durante o agrupamento — sem resposta IA');
-      return;
+      logger.info(
+        `[webhook] Conversa passou a modo humano durante ${daFila ? 'a espera na fila' : 'o agrupamento'} — sem resposta IA`
+      );
+      return false;
     }
+
+    const agora = Date.now();
+    iniciosDeTurno = [...iniciosDeTurno.filter(t => agora - t < 60_000), agora];
 
     // Um turno só, na ordem em que a pessoa escreveu.
     const content = mensagens.map(m => m.content).join('\n');
     const savedIds = mensagens.map(m => m.id).filter(Boolean);
 
-    await responderTurno({ phone, contact, conversation, content, savedIds });
+    // A Leia fica sabendo quando está respondendo tarde.
+    const atraso = buf.atrasada && buf.enviadaEm ? { enviadaEm: buf.enviadaEm } : null;
+
+    await responderTurno({ phone, contact, conversation, content, savedIds, atraso });
+    return true;
   } finally {
     emAtendimento.delete(chave);
   }
@@ -763,7 +911,7 @@ async function responderBuffer(chave) {
 /**
  * Um turno do agente: chama a IA, trata handoff e envia a resposta.
  */
-async function responderTurno({ phone, contact, conversation, content, savedIds }) {
+async function responderTurno({ phone, contact, conversation, content, savedIds, atraso = null }) {
   try {
     // Aluno do acompanhamento (§6.1 do plano do Prescrev): a conversa do
     // acompanhamento vai à Leia dele; fora dela, a de vendas fica sabendo que
@@ -809,6 +957,7 @@ async function responderTurno({ phone, contact, conversation, content, savedIds 
       origem: 'webhook',
       campanha,
       alunoAcompanhamento: rotaAcomp?.aluno ?? null,
+      atraso,
     });
 
     // Se IA solicitou handoff
@@ -838,6 +987,24 @@ async function responderTurno({ phone, contact, conversation, content, savedIds 
       );
     }
   } catch (err) {
+    // A resposta existia e foi o ENVIO que falhou (sessão caída, Evolution
+    // fora do ar). Vira handoff, e mais nada: a frase de desculpas lá embaixo
+    // seria um segundo envio logo depois de um que falhou, pela mesma sessão
+    // e para a mesma pessoa. Em 14/11/2026, com a sessão caindo, foi isso que
+    // dobrou as tentativas: 38 em um minuto.
+    if (err?.falhaDeEnvio) {
+      logger.error(`[webhook] A resposta a ${phone} não saiu:`, err.message);
+      const motivo = `A resposta da Leia não saiu pelo WhatsApp (${err?.message?.slice(0, 120) || 'erro desconhecido'}). ` +
+        'O cliente escreveu e ficou sem resposta — retomar a conversa do ponto em que parou.';
+      try {
+        await handoffToHuman(conversation.id, contact.id, motivo);
+        await moverFunil(() => funil.aoAbrirHandoff(contact, motivo));
+      } catch (e2) {
+        logger.error('[webhook] Falha ao registrar o handoff de emergência:', e2.message);
+      }
+      return;
+    }
+
     logger.error(`[webhook] Erro no processamento IA para ${phone}:`, err);
 
     // Falha da IA vira HANDOFF, não só uma frase de espera.
@@ -1140,7 +1307,15 @@ async function registrarMensagemDeSaida({ phone, content, contentType, evolution
  * ponto da conversa ele aconteceu.
  */
 async function sendAndSave(phone, text, conversationId, contactId, metadata = {}, sentBy = 'bot') {
-  const result = await sendText(phone, text);
+  let result;
+  try {
+    result = await sendText(phone, text);
+  } catch (err) {
+    // Quem chamou precisa distinguir "não consegui enviar" de qualquer
+    // outra falha do turno. Ver o `catch` de `responderTurno`.
+    err.falhaDeEnvio = true;
+    throw err;
+  }
 
   await saveMessage({
     conversationId,
@@ -1190,6 +1365,7 @@ function handleConnectionUpdate(event) {
   const data = event.data || event;
   const state = data.state || data.status;
   logger.info(`[webhook] 📡 Status da conexão: ${state}`);
+  if (state) conexaoAvisada = state;
 }
 
 export default router;

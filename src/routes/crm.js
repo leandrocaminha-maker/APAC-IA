@@ -755,7 +755,9 @@ router.post('/api/conversas/:id/responder', rota(async (req, res) => {
 
   let evolutionMsgId = null;
   try {
-    const r = await sendText(conversa.contato.phone, enviado);
+    // O consultor está olhando a tela: passa na frente do que espera na
+    // pista do número (ver `lib/pista-envio.js`).
+    const r = await sendText(conversa.contato.phone, enviado, { prioridade: 'alta' });
     evolutionMsgId = r?.key?.id || null;
   } catch (err) {
     logger.error('[crm] Falha ao enviar pelo WhatsApp:', err.message);

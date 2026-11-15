@@ -6,6 +6,7 @@
  */
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+import { criarPista } from '../lib/pista-envio.js';
 
 const { url, apiKey, instance } = config.evolution;
 
@@ -111,6 +112,53 @@ export async function restartInstance() {
 // Envio de Mensagens
 // ──────────────────────────────────────────────
 
+// Uma pista por instância: o número principal e o alternativo são contas
+// diferentes para a Meta, e um não espera o outro.
+const pistas = new Map();
+
+function pistaDe(instancia) {
+  if (!pistas.has(instancia)) {
+    pistas.set(instancia, criarPista({
+      intervaloSeg: () => config.envio.pistaIntervaloSeg,
+      maxPorMinuto: () => config.envio.pistaMaxPorMinuto,
+    }));
+  }
+  return pistas.get(instancia);
+}
+
+// Quanto a chamada à Evolution pode levar além do "digitando". Sem prazo,
+// uma Evolution travada seguraria a pista — e com ela todo envio do número.
+const FOLGA_DO_ENVIO_MS = 60_000;
+
+/**
+ * Todo envio de mensagem sai por aqui: entra na pista da instância e só
+ * chama a Evolution quando chega a vez (ver `lib/pista-envio.js`).
+ *
+ * O log do envio é escrito na SAÍDA, e não na entrada da pista: é a hora em
+ * que a mensagem vai ao WhatsApp, e é por ela que se mede ritmo.
+ *
+ * @param {object} p
+ * @param {string} p.instancia
+ * @param {string} p.caminho - Rota da Evolution, sem a instância.
+ * @param {object} p.corpo
+ * @param {string} p.descricao - Para o log.
+ * @param {'alta'|'normal'} [p.prioridade]
+ */
+function enviarPelaPista({ instancia, caminho, corpo, descricao, prioridade = 'normal' }) {
+  return pistaDe(instancia).passar(({ esperouMs, naFila }) => {
+    const espera = esperouMs >= 3000
+      ? ` — esperou ${Math.round(esperouMs / 1000)}s na pista, ${naFila} atrás`
+      : '';
+    logger.info(`[evolution] ${descricao}${instancia === instance ? '' : ` [${instancia}]`}${espera}`);
+
+    return evoFetch(`${caminho}/${instancia}`, {
+      method: 'POST',
+      body: JSON.stringify(corpo),
+      signal: AbortSignal.timeout((corpo.delay || 0) + FOLGA_DO_ENVIO_MS),
+    });
+  }, { prioridade });
+}
+
 /**
  * Normaliza o número para o formato JID do WhatsApp.
  * Ex.: "11999999999" → "5511999999999"
@@ -194,19 +242,20 @@ export function tempoDeDigitacao(texto) {
  * @param {object} [opts]
  * @param {number} [opts.delayMs] - Sobrescreve o tempo de digitação.
  * @param {string} [opts.instancia] - Por qual número sai. Padrão: o principal.
+ * @param {'alta'|'normal'} [opts.prioridade] - `alta` passa na frente de
+ *   quem espera na pista. É o consultor escrevendo pelo painel.
  * @returns {Promise<object>} Resposta da Evolution API
  */
-export async function sendText(phone, text, { delayMs, instancia = instance } = {}) {
+export async function sendText(phone, text, { delayMs, instancia = instance, prioridade } = {}) {
   const number = normalizePhone(phone);
   const delay = delayMs ?? tempoDeDigitacao(text);
-  logger.info(
-    `[evolution] sendText → ${number} (${text.length} chars, ${delay}ms digitando)` +
-    `${instancia === instance ? '' : ` [${instancia}]`}`
-  );
 
-  return evoFetch(`/message/sendText/${instancia}`, {
-    method: 'POST',
-    body: JSON.stringify({ number, text, delay }),
+  return enviarPelaPista({
+    instancia,
+    caminho: '/message/sendText',
+    corpo: { number, text, delay },
+    descricao: `sendText → ${number} (${text.length} chars, ${delay}ms digitando)`,
+    prioridade,
   });
 }
 
@@ -257,17 +306,12 @@ export async function numeroExiste(phone) {
 export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'image') {
   const number = normalizePhone(phone);
   const delay = tempoDeDigitacao(caption);
-  logger.info(`[evolution] sendMedia → ${number} (${mediatype}, ${delay}ms digitando)`);
 
-  return evoFetch(`/message/sendMedia/${instance}`, {
-    method: 'POST',
-    body: JSON.stringify({
-      number,
-      mediatype,
-      media: mediaUrl,
-      caption,
-      delay,
-    }),
+  return enviarPelaPista({
+    instancia: instance,
+    caminho: '/message/sendMedia',
+    corpo: { number, mediatype, media: mediaUrl, caption, delay },
+    descricao: `sendMedia → ${number} (${mediatype}, ${delay}ms digitando)`,
   });
 }
 
@@ -280,10 +324,11 @@ export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'imag
  */
 export async function sendMediaBase64(phone, { base64, mimetype, fileName, caption = '', mediatype }) {
   const number = normalizePhone(phone);
-  logger.info(`[evolution] sendMedia (base64) → ${number} (${mediatype})`);
-  return evoFetch(`/message/sendMedia/${instance}`, {
-    method: 'POST',
-    body: JSON.stringify({ number, mediatype, mimetype, media: base64, fileName, caption, delay: 1200 }),
+  return enviarPelaPista({
+    instancia: instance,
+    caminho: '/message/sendMedia',
+    corpo: { number, mediatype, mimetype, media: base64, fileName, caption, delay: 1200 },
+    descricao: `sendMedia (base64) → ${number} (${mediatype})`,
   });
 }
 
@@ -295,10 +340,11 @@ export async function sendMediaBase64(phone, { base64, mimetype, fileName, capti
  */
 export async function sendAudio(phone, audio) {
   const number = normalizePhone(phone);
-  logger.info(`[evolution] sendWhatsAppAudio → ${number}`);
-  return evoFetch(`/message/sendWhatsAppAudio/${instance}`, {
-    method: 'POST',
-    body: JSON.stringify({ number, audio, delay: 1200 }),
+  return enviarPelaPista({
+    instancia: instance,
+    caminho: '/message/sendWhatsAppAudio',
+    corpo: { number, audio, delay: 1200 },
+    descricao: `sendWhatsAppAudio → ${number}`,
   });
 }
 
@@ -324,16 +370,12 @@ export async function sendReaction({ remoteJid, id, fromMe = false }, reaction) 
  */
 export async function sendButtons(phone, title, description, buttons) {
   const number = normalizePhone(phone);
-  logger.info(`[evolution] sendButtons → ${number} (${buttons.length} buttons)`);
-
-  return evoFetch(`/message/sendButtons/${instance}`, {
-    method: 'POST',
-    body: JSON.stringify({
-      number,
-      title,
-      description,
-      buttons: buttons.slice(0, 3), // WhatsApp limita a 3
-    }),
+  return enviarPelaPista({
+    instancia: instance,
+    caminho: '/message/sendButtons',
+    // WhatsApp limita a 3
+    corpo: { number, title, description, buttons: buttons.slice(0, 3) },
+    descricao: `sendButtons → ${number} (${buttons.length} buttons)`,
   });
 }
 
@@ -342,17 +384,11 @@ export async function sendButtons(phone, title, description, buttons) {
  */
 export async function sendList(phone, title, description, buttonText, sections) {
   const number = normalizePhone(phone);
-  logger.info(`[evolution] sendList → ${number}`);
-
-  return evoFetch(`/message/sendList/${instance}`, {
-    method: 'POST',
-    body: JSON.stringify({
-      number,
-      title,
-      description,
-      buttonText,
-      sections,
-    }),
+  return enviarPelaPista({
+    instancia: instance,
+    caminho: '/message/sendList',
+    corpo: { number, title, description, buttonText, sections },
+    descricao: `sendList → ${number}`,
   });
 }
 

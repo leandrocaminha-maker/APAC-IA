@@ -1,10 +1,77 @@
 # Estado do projeto — handoff
 
-> **Snapshot de 14/11/2026: a Evolution roda numa imagem própria, com a stanza `<status>` confirmada** (deploy de `d72e2bf` às 11h54). Antes disso, em 10/11: o repasse da experimental marcada pela Leia e a aula conferida no EVO (deploy de `7e2ef12`).
+> **Snapshot de 15/11/2026: número principal restringido pela Meta em 14/11; todo envio passa pela pista do número e resposta a mensagem atrasada sai espaçada.** Em 14/11: a Evolution roda numa imagem própria, com a stanza `<status>` confirmada (deploy de `d72e2bf` às 11h54). Antes disso, em 10/11: o repasse da experimental marcada pela Leia e a aula conferida no EVO (deploy de `7e2ef12`).
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## A rajada de respostas na reconexão, e a pista do número (15/11/2026)
+
+**O que aconteceu em 14/11.** A Meta restringiu o número principal. Na
+reconexão das 11h54 o WhatsApp entregou 104 mensagens represadas, escritas de
+16 a 28 horas antes, e a Leia respondeu **23 conversas em 36 segundos**
+(11h55:13–11h55:49), com 20 chats "digitando" ao mesmo tempo. Em 30 dias de
+operação normal o máximo tinha sido 6 respostas num minuto e 20 em dez.
+
+**Por que as proteções não seguraram.** Nenhuma estava no caminho:
+
+| Proteção | Onde mora | Vale para a resposta da Leia? |
+| --- | --- | --- |
+| Teto diário (`limite-envio.js`) | fila, follow-up, acompanhamento | não, de propósito ("responder segue liberado") |
+| Espaçamento de 75 s | dentro do laço de cada worker | não |
+| Janela de contato, atraso máximo de abertura | fila e follow-up | não |
+| "Digitando" proporcional ao texto | `sendText` | sim, mas por mensagem: 20 chats digitavam juntos |
+| Agrupamento de 12 s | webhook, **por conversa** | sim, e é só isso: cada conversa respondia sem saber das outras |
+
+E duas coisas faltavam: o webhook não lia o `messageTimestamp` (toda mensagem
+era tratada como escrita naquele segundo), e a falha de envio caía no mesmo
+`catch` da falha da IA, que manda uma frase de desculpas — um segundo envio
+por cima do que falhou (38 tentativas num minuto às 12h03, com a sessão
+caindo).
+
+**O que mudou.** Três camadas, da mais geral para a mais específica:
+
+1. **A pista do número** (`lib/pista-envio.js`, ligada em `evolution.js`).
+   Todo envio — Leia, follow-up, fila, painel, ponte — sai **um de cada vez**,
+   com piso de ~4 s entre um e outro e teto de 6 por minuto
+   (`ENVIO_PISTA_INTERVALO_SEG`, `ENVIO_PISTA_MAX_POR_MINUTO`). Fica no único
+   ponto por onde todo envio passa, pela mesma lição da cota do EVO: throttle
+   por chamador não sabe do outro. O consultor pelo painel tem prioridade.
+   A chamada à Evolution ganhou prazo (digitando + 60 s), para uma Evolution
+   travada não segurar a pista.
+2. **Mensagem atrasada** (`resposta-regras.js`). O webhook lê a hora do
+   WhatsApp e grava em `metadata.enviada_em`. Escrita há mais de
+   `AGENTE_ATRASO_MIN` (10) minutos é atrasada: o turno entra na **fila
+   espaçada** (`lib/fila-espacada.js`), uma resposta a cada
+   `AGENTE_RETOMADA_ESPACAMENTO_SEG` (60 s ±40%), e a Leia recebe no contexto
+   "MENSAGEM QUE CHEGOU ATRASADA" (pede desculpas, não devolve o "boa tarde"
+   de ontem, confere datas). O que se segura é o **turno**, não a mensagem
+   pronta: na vez dela a conversa é relida, e se um consultor assumiu, a Leia
+   não responde. Quem escreve de novo agora sai da fila e é respondido já. A
+   fila para enquanto a sessão estiver `close`/`connecting`.
+3. **Rajada de mensagens novas.** Mais de `AGENTE_RAJADA_MAX` (6) turnos
+   começando no mesmo minuto: o excedente vai para a mesma fila.
+
+E a falha de **envio** virou handoff sem segundo envio ("A resposta da Leia
+não saiu pelo WhatsApp…").
+
+Com isto, os 23 turnos de 14/11 levariam ~30 min em vez de 36 s. Testes:
+`pista-envio.test.js`, `fila-espacada.test.js`, `resposta-regras.test.js`.
+
+**Limites conhecidos.**
+
+- Pista e fila vivem em memória, como os buffers: um restart perde as
+  respostas que esperavam (as mensagens recebidas ficam gravadas, sem
+  handoff). Com fila grande, não faça deploy; o log diz o tamanho
+  (`vai pela fila espaçada … N na fila`).
+- As respostas fixas do webhook (SAIR, ATIVAR, "não consegui ouvir o áudio",
+  o "sim" da campanha) não passam pela fila espaçada, só pela pista: no pior
+  caso saem a 6 por minuto.
+- A Leia do acompanhamento não recebe o aviso de atraso (o turno é espaçado
+  do mesmo jeito).
+- O webhook responde à Evolution em no máximo 20 s e segue tratando
+  (`tratarSemPrenderAEvolution`): ela desiste em 30 s e reentrega.
 
 ## A queda da Evolution a cada 50 min (14/11/2026)
 
@@ -52,11 +119,12 @@ vivo nem os acks das enviadas. Ligado `groupsIgnore=true` na instância às
 1 min) e as falhas de decifrar subiram de ~1/min para 74 em 40 s — cada uma
 manda pedido de reenvio ao remetente e ao celular. Às 12h03:20 o servidor
 mandou `stream:error code=401 conflict type=device_removed`, e a instância
-foi a `close`. Daqui não dá para saber se foi alguém no celular ("Aparelhos
-conectados" → desconectar, como em 06/11) ou o WhatsApp derrubando o aparelho
-depois da rajada. Saíram só ~6 respostas da Leia nesses 20 s, então não foi
-rajada de envio. A fila de envio (`wa_message_queue`) estava vazia; 9
-conversas viraram handoff por "Falha técnica" no instante da queda.
+foi a `close`. **Era a Meta restringindo o número** (confirmado pelo
+responsável em 15/11). O que ela viu antes disso: as 23 respostas da Leia em
+36 s às 11h55 e a rajada de pedidos de reenvio. A fila de envio
+(`wa_message_queue`) estava vazia; 9 conversas viraram handoff por "Falha
+técnica" no instante da queda. A correção do lado do envio está na seção
+acima.
 
 **Para voltar:** parear pelo QR do painel com o celular do número. Pareamento
 novo começa com sessões Signal limpas (as antigas estavam corrompidas: os

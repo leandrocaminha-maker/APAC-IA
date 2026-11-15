@@ -68,6 +68,18 @@ export const config = {
     // o que a fila fazia.
     espacamentoSeg: parseInt(env('ENVIO_ESPACAMENTO_SEG', '75'), 10),
 
+    // A PISTA do número (`lib/pista-envio.js`): todo envio, de qualquer
+    // origem, sai um de cada vez por ela. Vale inclusive para a resposta a
+    // quem escreveu, que não entra no teto diário nem no espaçamento acima.
+    //
+    // Existe desde 15/11/2026: na reconexão de 14/11 o WhatsApp entregou
+    // 104 mensagens represadas e a Leia respondeu 23 conversas em 36 s. Em
+    // 30 dias de operação normal o máximo tinha sido 6 respostas num minuto
+    // — é daí que sai o teto. O piso é curto porque o "digitando" (até 15 s,
+    // já serializado) é o que espaça de verdade. 0 desliga cada um.
+    pistaIntervaloSeg: parseFloat(env('ENVIO_PISTA_INTERVALO_SEG', '4')),
+    pistaMaxPorMinuto: parseInt(env('ENVIO_PISTA_MAX_POR_MINUTO', '6'), 10),
+
     // Confere no WhatsApp se o número existe antes de gerar e enviar.
     //
     // Duas coisas de uma vez: número morto é sinal pesado no detector de
@@ -459,6 +471,19 @@ export const config = {
     debounceSegundos: parseInt(env('AGENTE_DEBOUNCE_SEGUNDOS', '12'), 10),
     debounceTetoSegundos: parseInt(env('AGENTE_DEBOUNCE_TETO_SEGUNDOS', '45'), 10),
     vezDoConsultorHoras: parseFloat(env('AGENTE_VEZ_DO_CONSULTOR_HORAS', '6')),
+
+    // Mensagem que chega ATRASADA: escrita há mais de `atrasoMin` minutos.
+    // É o que o WhatsApp entrega de uma vez quando a sessão volta de uma
+    // falha. A Leia responde, mas sabendo do atraso, e uma conversa de cada
+    // vez: `retomadaEspacamentoSeg` (±40%) entre uma resposta e a próxima.
+    // 0 em `atrasoMin` desliga (toda mensagem é tratada como nova).
+    //
+    // `rajadaMax`: quantos turnos da Leia podem COMEÇAR num mesmo minuto. O
+    // que passar disso entra na mesma fila espaçada, mesmo sendo mensagem
+    // nova. 0 desliga. Ver `resposta-regras.js`.
+    atrasoMin: parseFloat(env('AGENTE_ATRASO_MIN', '10')),
+    retomadaEspacamentoSeg: parseFloat(env('AGENTE_RETOMADA_ESPACAMENTO_SEG', '60')),
+    rajadaMax: parseInt(env('AGENTE_RAJADA_MAX', '6'), 10),
   },
 
   // Follow-up de venda — a régua que recupera quem some.
