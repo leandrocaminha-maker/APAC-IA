@@ -28,6 +28,8 @@ import { quemResponde, emailDoConsultor } from '../services/consultor-regras.js'
 import {
   instanteDaMensagem, atrasoEmMinutos, ehAtrasada, motivoParaSegurar, haQuantoTempo,
 } from '../services/resposta-regras.js';
+import { lerMensagem, textoDescrito, TIPOS_QUE_ABREM_TURNO } from '../services/mensagem-regras.js';
+import { descreverImagem } from '../services/descricao-imagem.js';
 import { criarFilaEspacada } from '../lib/fila-espacada.js';
 import { conexaoWhatsapp } from '../services/whatsapp-monitor.js';
 
@@ -331,48 +333,23 @@ async function handleIncomingMessage(event) {
     return;
   }
 
-  // Extrai conteúdo da mensagem
-  const msg = messageData.message || messageData;
-  let content = '';
-  let contentType = 'text';
-  let mediaUrl = null;
+  // O que é a mensagem: texto, mídia, reação, figurinha… Ver
+  // `mensagem-regras.js`. `null` é o que não é mensagem (edição que não dá
+  // para ler, fixar, voto de enquete, reação retirada): não grava nem responde.
+  const lida = lerMensagem(messageData.message || messageData);
 
-  if (msg.conversation) {
-    content = msg.conversation;
-  } else if (msg.extendedTextMessage?.text) {
-    content = msg.extendedTextMessage.text;
-  } else if (msg.imageMessage) {
-    content = msg.imageMessage.caption || '[imagem]';
-    contentType = 'image';
-  } else if (msg.documentMessage) {
-    content = msg.documentMessage.fileName || '[documento]';
-    contentType = 'document';
-  } else if (msg.audioMessage) {
-    content = '[áudio]';
-    contentType = 'audio';
-  } else if (msg.videoMessage) {
-    content = msg.videoMessage.caption || '[vídeo]';
-    contentType = 'video';
-  } else if (msg.buttonsResponseMessage) {
-    content = msg.buttonsResponseMessage.selectedDisplayText || msg.buttonsResponseMessage.selectedButtonId || '';
-  } else if (msg.listResponseMessage) {
-    content = msg.listResponseMessage.title || msg.listResponseMessage.singleSelectReply?.selectedRowId || '';
-  } else {
-    // Tipo de mensagem não suportado
-    content = '[mensagem não suportada]';
-    contentType = 'unknown';
-  }
-
-  if (!content) {
-    logger.debug('[webhook] Mensagem sem conteúdo extraível');
+  if (!lida || !lida.content) {
+    logger.debug('[webhook] Evento sem mensagem para gravar');
     return;
   }
+
+  let { content, contentType } = lida;
 
   // A ponte do acompanhamento (A5d) precisa de duas coisas que o resto não
   // usa: o tipo como chegou — o áudio vira texto na transcrição abaixo, e a
   // ponte repassa o áudio como áudio — e a mensagem citada, que é o endereço
-  // de quem responde pela ponte.
-  const tipoRecebido = contentType;
+  // de quem responde pela ponte. O GIF é um vídeo, e a ponte o repassa assim.
+  const tipoRecebido = contentType === 'gif' ? 'video' : contentType;
   const citada = idDaCitacao(data);
 
   // Extrai nome do contato (push name do WhatsApp)
@@ -414,6 +391,13 @@ async function handleIncomingMessage(event) {
     },
     status: 'delivered',
   });
+
+  // Imagem e figurinha: a descrição entra no histórico, por fora. Ninguém
+  // espera por ela — imagem não abre turno da Leia, e a Evolution não pode
+  // ficar presa enquanto o modelo olha a foto.
+  if (lida.descritivel && savedMessage?.id) {
+    descreverEGravar({ savedMessage, contentType, legenda: lida.legenda, conversationId: conversation.id, phone });
+  }
 
   // Áudio: transcreve e segue como se fosse texto.
   //
@@ -598,18 +582,50 @@ async function handleIncomingMessage(event) {
     return;
   }
 
+  // Reação (❤️, 👍) não pede resposta de ninguém: fica gravada e acabou. Sem
+  // isto ela passava pela regra abaixo como se fosse uma fala, e um joinha
+  // para o consultor devolvia a conversa ao cartão "aguardando resposta".
+  if (contentType === 'reaction') return;
+
   // Devolvida à Leia, mas o cliente está respondendo ao consultor: a vez é
   // dele. Vem antes do filtro de mídia porque o comprovante que o cliente
   // manda logo depois do consultor é para o consultor ver.
   if (await vezDoConsultor({ phone, conversation, content })) return;
 
-  // Imagem, documento, vídeo: registra e não responde. Só o áudio tem
-  // caminho de volta, porque só ele carrega o que a pessoa quis dizer.
-  if (contentType !== 'text' && contentType !== 'unknown') return;
+  // Imagem, documento, vídeo, reação, figurinha: registra e não responde. Só
+  // o áudio tem caminho de volta (já virou texto lá em cima), porque só ele
+  // carrega o que a pessoa quis dizer.
+  if (!TIPOS_QUE_ABREM_TURNO.includes(contentType)) return;
 
   // Não responde agora: enfileira e espera os próximos balões. Ver
   // `agendarResposta`.
   agendarResposta({ phone, contact, conversation, savedMessage, content, atrasada, enviadaEm });
+}
+
+/**
+ * Descreve a imagem (ou figurinha) e grava o texto na própria mensagem.
+ *
+ * Sem `await` de quem chama, e sem derrubar nada: se a descrição não vier,
+ * a mensagem fica `[imagem]`, que é o que sempre foi. O `content_type` não
+ * muda — é o que diz ao painel e à ponte que aquilo é uma imagem.
+ */
+function descreverEGravar({ savedMessage, contentType, legenda, conversationId, phone }) {
+  descreverImagem(savedMessage.evolution_msg_id, { tipo: contentType, conversationId })
+    .then(async (descricao) => {
+      if (!descricao) return;
+
+      const { error } = await supabase
+        .from('wa_messages')
+        .update({
+          content: textoDescrito({ contentType, descricao, legenda }),
+          metadata: { ...(savedMessage.metadata || {}), descrita: true },
+        })
+        .eq('id', savedMessage.id);
+
+      if (error) logger.warn('[webhook] Descrição da imagem não foi gravada:', error.message);
+      else logger.info(`[webhook] 🖼 ${phone}: ${descricao.slice(0, 100)}`);
+    })
+    .catch(err => logger.warn('[webhook] Descrição da imagem falhou:', err.message));
 }
 
 const VEZ_DO_CONSULTOR_HORAS = config.agente.vezDoConsultorHoras;

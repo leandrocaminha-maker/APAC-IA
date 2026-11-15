@@ -451,6 +451,20 @@ export const config = {
     timeoutMs: parseInt(env('TRANSCRICAO_TIMEOUT_MS', '25000'), 10),
   },
 
+  // Imagem recebida — descrição em texto, gravada na mensagem (15/11/2026).
+  //
+  // É o caminho do áudio: a mídia vira texto uma vez, na chegada, e o
+  // histórico da Leia e o painel passam a saber o que era a foto (o painel
+  // não mostra a imagem). Vale para imagem e figurinha parada. NÃO muda quem
+  // responde: imagem continua sem abrir turno da Leia. Ver
+  // `descricao-imagem.js`.
+  imagem: {
+    habilitada: env('IMAGEM_DESCRICAO', 'true') !== 'false',
+    // O teto da API é 5 MB por imagem. Foto de WhatsApp fica bem abaixo.
+    maxBytes: parseFloat(env('IMAGEM_MAX_MB', '4')) * 1024 * 1024,
+    timeoutMs: parseInt(env('IMAGEM_TIMEOUT_MS', '45000'), 10),
+  },
+
   // Agente — agrupamento de mensagens antes de responder.
   //
   // No WhatsApp ninguém escreve um parágrafo: escreve "oi", "quero saber de
