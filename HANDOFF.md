@@ -6,6 +6,50 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
+## Reação, figurinha e GIF com nome; imagem descrita em texto (15/11/2026)
+
+**O problema.** O webhook conhecia texto, imagem, documento, áudio e vídeo.
+O resto virava `[mensagem não suportada]` e **abria turno da Leia**. Em 30
+dias: 135 mensagens assim — 83 reações, 21 edições ilegíveis, 16 figurinhas,
+10 mensagens automáticas de outras empresas, contato, álbum — e em 39 delas
+a Leia respondeu "sua mensagem chegou num formato que eu não consigo abrir"
+(27 vezes a um ❤️ ou 👍).
+
+**O áudio está bem:** 92 de 92 recebidos transcritos nos mesmos 30 dias, e
+nenhum "não consegui ouvir esse áudio".
+
+**O que mudou** (`mensagem-regras.js`, 13 testes; deploy de `e2edd9d`):
+
+| Chega | Fica gravado como | `content_type` | Leia responde? |
+| --- | --- | --- | --- |
+| Reação | `[reagiu com ❤️]` | `reaction` | não, e não passa pela vez do consultor |
+| Figurinha | `[figurinha]` + descrição se for parada | `sticker` | não |
+| GIF (vídeo com `gifPlayback`) | `[gif]` ou a legenda | `gif` | não |
+| Contato, localização, enquete | `[contato] Nome`, `[localização]`, `[enquete]` | `contact`, `location`, `poll` | não |
+| Modelo, lista, botões (robô de empresa) | `[mensagem automática de empresa] texto` | `automated` | não |
+| Edição ilegível, fixar, voto, cabeçalho de álbum, reação retirada | nada | — | não |
+| O que ainda não se conhece | `[mensagem não suportada]` | `unknown` | sim, como antes |
+
+A foto de um álbum vem embrulhada (`associatedChildMessage`) e agora é lida
+como imagem. A resposta a botão ou lista (o toque da pessoa) continua texto.
+
+**Imagem descrita** (`descricao-imagem.js`). Como o áudio: na chegada, a
+imagem é baixada pela Evolution, descrita pelo modelo do agente e o texto é
+gravado na própria mensagem — `[imagem] Comprovante de transferência Pix do
+Nubank, de 13 NOV 2026, no valor de R$ 289,00…`, com a legenda da pessoa na
+frente quando há. O painel (que não mostra a foto) e o histórico da Leia
+passam a saber o que era. Roda por fora do webhook, uma de cada vez.
+**Não muda quem responde:** imagem continua sem abrir turno da Leia (decisão
+do responsável: o comprovante é para o consultor ver). Medido em 4 mídias
+reais: 1,6–2,9 s e US$ 0,004–0,010 cada (`origem = 'imagem'` em
+`wa_ai_usage`). `IMAGEM_DESCRICAO=false` desliga.
+
+**Limites.** Figurinha animada e GIF ficam só com o nome (o GIF é um MP4, e
+o container não tem `ffmpeg` para tirar um quadro). PDF não é lido. Se a
+pessoa manda a foto e escreve em seguida, a descrição costuma chegar antes
+do turno (2–3 s contra 12 s de agrupamento), mas não há garantia. As
+mensagens antigas não foram redescritas.
+
 ## A rajada de respostas na reconexão, e a pista do número (15/11/2026)
 
 **O que aconteceu em 14/11.** A Meta restringiu o número principal. Na
