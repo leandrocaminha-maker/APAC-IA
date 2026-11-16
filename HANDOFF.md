@@ -1,7 +1,7 @@
 # Estado do projeto — handoff
 
 > **🚨 16/11/2026, 17h57: a Meta restringiu o número principal de novo (a segunda vez em três dias). A sessão está `close`, à espera de a restrição cair no celular para parear. O recomeço automático está no ar desde 19h16 (deploy de `2e54b75`): a queda está gravada e a máquina não inicia conversa até o número voltar e passar os três primeiros dias da rampa (primeira seção).**
-> **16/11/2026, à noite: a régua de follow-up mudou por decisão do responsável — uma retomada em menos de 24 h da última mensagem do cliente, e sem resposta no dia a conversa vai para o consultor (primeira seção). Não há mais segunda cutucada nem sondagem atrás da conversa de depois da aula.**
+> **16/11/2026, à noite: a régua de follow-up mudou por decisão do responsável — uma retomada em menos de 24 h da última mensagem do cliente, e sem resposta no dia a conversa vai para o consultor (primeira seção). Não há mais segunda cutucada nem sondagem atrás da conversa de depois da aula. Está no branch (`48dd2a8`) e AINDA SEM DEPLOY: a VPS roda `3020425`, com a régua antiga parada pelo recomeço.**
 > 16/11/2026: o retorno da coordenação sobre a aula experimental está no ar desde 16h36 (deploy de `b800141`).
 > **Snapshot de 15/11/2026: número principal restringido pela Meta em 14/11; todo envio passa pela pista do número e resposta a mensagem atrasada sai espaçada.** Em 14/11: a Evolution roda numa imagem própria, com a stanza `<status>` confirmada (deploy de `d72e2bf` às 11h54). Antes disso, em 10/11: o repasse da experimental marcada pela Leia e a aula conferida no EVO (deploy de `7e2ef12`).
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
@@ -9,7 +9,13 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
-## Uma retomada em 24 h, e depois o consultor (16/11/2026)
+## Uma retomada em 24 h, e depois o consultor (16/11/2026) — commit `48dd2a8`, sem deploy
+
+**Para ir ao ar:** `cd /var/www/apac-ia-sales && git pull && docker compose up
+-d --build --no-deps backend`. Sem migration e sem `.env`. Com o número fora
+do ar, o único efeito imediato é cancelar as 6 retomadas pendentes da régua
+antiga; a varredura só volta a rodar com a sessão conectada, e os repasses
+120 min depois disso.
 
 **Decisão do responsável**, na noite da segunda restrição: "Apenas 1 sondagem
 ou cutucada com menos de 24 hrs. Sem resposta no dia, transfere para
