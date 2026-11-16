@@ -31,6 +31,7 @@
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { getConnectionStatus } from './evolution.js';
+import { recomeco } from './recomeco.js';
 
 /**
  * `estado` guarda o que a última sondagem viu.
@@ -99,6 +100,15 @@ async function sondar() {
       'Nada entra e nada sai: mensagem de cliente não chega, e o que sair falha. ' +
       'Parear em crm.apacademia.com.br → Ajustes → WhatsApp → Gerar QR code.'
     );
+  }
+
+  // A queda foi a Meta derrubando o número? E a volta, quando foi? O
+  // `connection.update` avisa na hora (`webhook.js`); esta conferência cobre
+  // o que ele não entregou — inclusive a primeira sondagem depois de um
+  // restart, que é a mudança de 'desconhecido' para o estado real.
+  if (novo !== 'desconhecido') {
+    recomeco.conferirComAEvolution(novo).catch(err =>
+      logger.warn(`[whatsapp] Conferência do recomeço falhou: ${err.message}`));
   }
 }
 

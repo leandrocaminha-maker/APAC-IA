@@ -38,11 +38,22 @@
  * segurança que falha aberto não é dispositivo de segurança — e o custo do
  * erro é assimétrico: uma hora de follow-up atrasado contra uma segunda
  * restrição no número principal da academia.
+ *
+ * ## O recomeço depois de uma restrição
+ *
+ * O teto de regime não vale no dia em que o número volta de uma restrição.
+ * Em 16/11/2026 valeu: o número tinha voltado na véspera, a segunda-feira
+ * gastou os 38 do teto até as 13h35, e a Meta restringiu de novo às 17h57.
+ * Desde então a cota de hoje é o menor entre o regime e o degrau do
+ * recomeço (`recomeco.js`): zero enquanto o número está fora e nos primeiros
+ * dias da volta, e depois a rampa de `ENVIO_RECOMECO_RAMPA`.
  */
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
 import { diasDeUso, tetoDoDia } from './pesquisa-regras.js';
+import { recomeco } from './recomeco.js';
+import { tetoDeHoje } from './recomeco-regras.js';
 
 // O Brasil aboliu o horário de verão em 2019 — São Paulo é UTC-3 o ano
 // todo. Mesma constante isolada de `followup.js`, pelo mesmo motivo: se um
@@ -106,13 +117,23 @@ export async function usadosHoje(agora = new Date()) {
  * comportamento que causou a restrição, então que seja uma decisão escrita
  * no `.env` e não um efeito colateral.
  *
- * @returns {Promise<{ok: boolean, teto: number, usados: number|null, restante: number, motivo?: string}>}
+ * Em recomeço (`recomeco.js`) o teto do dia é o degrau da rampa, e vale
+ * mesmo com o teto de regime desligado. `recomeco` volta preenchido só
+ * nesse caso, para quem precisa saber por que a cota está menor.
+ *
+ * @returns {Promise<{ok: boolean, teto: number, usados: number|null, restante: number, motivo?: string, recomeco?: object}>}
  */
 export async function cota(agora = new Date()) {
-  const teto = config.envio.tetoDiario;
+  const situacao = await recomeco.situacao(agora);
+  const teto = tetoDeHoje(config.envio.tetoDiario, situacao);
 
-  if (teto <= 0) {
+  if (teto === Infinity) {
     return { ok: true, teto: 0, usados: null, restante: Infinity, motivo: 'teto desligado' };
+  }
+
+  // Recomeço com degrau zero (ou marcador ilegível): nada a contar.
+  if (teto <= 0) {
+    return { ok: false, teto: 0, usados: null, restante: 0, motivo: situacao.motivo, recomeco: situacao };
   }
 
   const usados = await usadosHoje(agora);
@@ -125,12 +146,18 @@ export async function cota(agora = new Date()) {
   }
 
   const restante = teto - usados;
+  const emRecomeco = situacao.ativo && teto === situacao.teto;
   return {
     ok: restante > 0,
     teto,
     usados,
     restante: Math.max(restante, 0),
-    motivo: restante > 0 ? undefined : `teto diário do número atingido (${usados}/${teto})`,
+    motivo: restante > 0
+      ? undefined
+      : emRecomeco
+        ? `${situacao.motivo} — atingido (${usados}/${teto})`
+        : `teto diário do número atingido (${usados}/${teto})`,
+    ...(situacao.ativo ? { recomeco: situacao } : {}),
   };
 }
 

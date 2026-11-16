@@ -1,13 +1,127 @@
 # Estado do projeto — handoff
 
-> **16/11/2026, no branch e sem deploy: o retorno da coordenação sobre a aula experimental (primeira seção).**
+> **🚨 16/11/2026, 17h57: a Meta restringiu o número principal de novo (a segunda vez em três dias). A sessão está `close`. O recomeço automático está no branch, SEM commit e SEM deploy, e a VPS segue com `ENVIO_TETO_DIARIO=38`: se o número for pareado antes do deploy, a régua dispara às 9h do dia seguinte (primeira seção).**
+> 16/11/2026: o retorno da coordenação sobre a aula experimental está no ar desde 16h36 (deploy de `b800141`).
 > **Snapshot de 15/11/2026: número principal restringido pela Meta em 14/11; todo envio passa pela pista do número e resposta a mensagem atrasada sai espaçada.** Em 14/11: a Evolution roda numa imagem própria, com a stanza `<status>` confirmada (deploy de `d72e2bf` às 11h54). Antes disso, em 10/11: o repasse da experimental marcada pela Leia e a aula conferida no EVO (deploy de `7e2ef12`).
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
-## O retorno da coordenação sobre a aula experimental (16/11/2026) — sem commit nem deploy
+## 🚨 A segunda restrição em três dias, e o recomeço (16/11/2026) — sem commit nem deploy
+
+**O que aconteceu.** O número voltou da restrição de 14/11 no domingo, 15/11,
+às 17h01 (pareamento novo). Na segunda, 16/11, às 17h57:31, a Evolution
+recebeu de novo `stream:error 401 conflict/device_removed`, e o celular mostra
+a conta restrita. Foram 25 horas no ar.
+
+**Desta vez não foi rajada.** A pista segurou: o máximo foi de 4 envios num
+minuto, e a fila espaçada não chegou a ser usada. O que houve foi um dia de
+regime inteiro no primeiro dia útil depois de uma restrição:
+
+| Medida de 16/11 | Valor |
+| --- | --- |
+| Mensagens de iniciativa da máquina (`wa_messages`) | 47: follow-up 31 (27 da régua de silêncio), acompanhamento 7, avaliação 3, agenda de testes 3, gerência 2, briefing 1 |
+| O que o teto do número enxergou | 38 de 38, batido às 13h35 (follow-up + acompanhamento) |
+| Conversas "frias": envio a quem não escrevia havia mais de 24 h (tabela `Message` da Evolution) | 50 no dia, 25 delas entre 9h e 10h |
+| Último envio antes da queda | 17h56:59, aviso da compra da avaliação (725 caracteres e o link do questionário) a um contato criado naquele minuto. A queda veio 32 s depois |
+| Pedido de SAIR no dia | 1, às 11h |
+
+Em 35 dias, 50 conversas frias é o segundo maior dia do número. O maior foi
+13/11, com 52: a véspera da primeira restrição. Antes disso o teto prático
+era 46 (03/11 e 11/11), e outubro rodava perto de 25. O volume subiu em
+novembro porque cada frente nova (acompanhamento em 29/10, gerência em 30/10,
+avaliação em 03/11, agenda de testes em 05/11, encontros em 07/11) entrou
+fora do teto ou por cima dele, e o teto foi de 30 para 38 em 29/10. É a
+lição de 31/08 outra vez: a soma. A leitura da rajada de 14/11 continua
+válida, mas não explica sozinha: sem rajada nenhuma, o número caiu de novo.
+
+O número da pesquisa caiu do mesmo jeito em outubro, segundos depois de uma
+abertura (14/10 na 26ª, 15/10 na 51ª, 19/10 por volta da 51ª). São poucos
+casos, e a Meta não diz o critério: o que os dados sustentam é que número
+recém-saído de restrição não aguenta um dia de regime.
+
+**Por que nada segurou.** O valor de recomeço (30, "uma semana em 30 e só
+então 40") estava escrito no `config.js` desde 31/08 como instrução para
+alguém lembrar. Ninguém baixou o teto ao parear no domingo, e na segunda a
+régua de silêncio agendou a semana como sempre.
+
+**O que mudou (no branch, sem commit).** A restrição virou um fato gravado, e
+o teto do dia passou a sair dela:
+
+- **`recomeco.js` / `recomeco-regras.js`.** A queda sem volta (401, 402, 403,
+  406: os códigos em que a Evolution não reconecta) é gravada em
+  `crm_controle`, chave `whatsapp_restricao` (`em, codigo, voltou_em,
+  encerrado_em`). Chega pelo `connection.update` (`statusReason`) e é
+  conferida pelo vigia a cada mudança de estado, inclusive na subida do
+  backend, contra o registro da própria Evolution (`disconnectionReasonCode`
+  e `disconnectionAt` da instância). A volta é a primeira vez que a sessão
+  fica `open` depois da queda. **Sem migration.**
+- **A rampa** (`ENVIO_RECOMECO_RAMPA`, padrão `0,0,0,5,10,15,20,25`): o teto
+  de cada dia corrido contado do dia da volta. Zero enquanto o número está
+  fora; depois do último degrau vale `ENVIO_TETO_DIARIO`; o degrau nunca
+  passa dele; outra queda no meio recomeça do zero. Vazio desliga.
+- **`limite-envio.cota()`** devolve o menor entre o regime e o degrau. Tudo
+  que já consultava o teto obedece sem mudança: follow-up, fila, campanha,
+  acompanhamento, relatórios, encontros, o lembrete dos testes ao aluno.
+- **Avisos da avaliação:** continuam fora do TETO (decisão de 03/11), mas nos
+  dias de degrau zero esperam como `pendente`; o que passar do prazo é
+  cancelado como sempre.
+- **Régua de silêncio:** em recomeço só agenda o que a cota do dia ainda
+  deixa sair (zero nos dias de zero), para não formar o monte do dia em que
+  o teto abre.
+- **Não entram:** resposta a quem escreveu, consultor pelo painel, e mensagem
+  à equipe (gerência, agenda de testes do professor, briefing).
+- **Linha de comando:** `docker compose exec backend npm run recomeco --
+  status | marcar [ISO] | voltou [ISO] | encerrar`. O backend relê o marcador
+  a cada minuto. `encerrar` é para quando alguém tirou o aparelho pelo
+  celular: o 401 é o mesmo, e a máquina trata como restrição.
+- **Falha fechada:** sem conseguir ler o marcador, nada inicia conversa.
+
+Testes: `recomeco-regras.test.js` (8; 438 no total). A ligação com o banco e
+a Evolution foi simulada de ponta a ponta fora do projeto (`mock.module`): a
+queda vista no registro da Evolution, os três dias de zero, o teto de 5 no
+quarto dia, a volta ao regime, a queda no meio da rampa e o `encerrar`.
+
+**Estado da VPS em 16/11 às 19h: nada mudou.** `b800141` no ar,
+`ENVIO_TETO_DIARIO=38`, régua de silêncio ligada, sessão `close` (alguém
+gerou QR às 18h30 e não pareou). Pendentes: 2 `silencio_1` de 16/11 e os
+lembretes de aula de 17 e 18/11.
+
+**Para ir ao ar, nesta ordem:**
+
+1. Commit e deploy (`git pull && docker compose up -d --build backend`), de
+   preferência ANTES de parear. Na subida o vigia lê o 401 das 17h57 na
+   Evolution e grava a restrição sozinho; conferir com `npm run recomeco --
+   status`.
+2. Parear só depois de o celular mostrar que a restrição caiu.
+3. Se o número for pareado antes do deploy, o freio manual é no `.env` da
+   VPS: `ENVIO_TETO_DIARIO=1`, `FOLLOWUP_SILENCIO_HABILITADO=false` e
+   `AVALIACAO_AVISOS_MINUTOS=0`, com `docker compose up -d --no-deps
+   backend`. Desfazer os três depois do deploy.
+
+**Decisões do responsável, em aberto.**
+
+- Os degraus da rampa. O padrão são três dias só respondendo e depois 5, 10,
+  15, 20, 25.
+- O teto de regime. Com 38 no teto o número abriu 50 conversas frias; 30 era
+  o valor escrito desde agosto.
+- Se os avisos da avaliação esperam mesmo nos dias de zero (o padrão posto
+  aqui) ou seguem saindo.
+- A API oficial para a abordagem ativa, pendente desde 31/08.
+
+**Limites.**
+
+- Nos dias de zero o lembrete da aula experimental e o lembrete dos testes
+  também não saem: a confirmação fica com o consultor.
+- O teto conta por autor (`sent_by`), e a Meta conta conversa aberta. O que
+  sai fora dele (equipe, consultor iniciando conversa pelo painel ou pelo
+  celular) não é contado em lugar nenhum.
+- O painel não mostra o recomeço: aparece no log (`[recomeco]`, e o motivo
+  em cada ciclo interrompido) e no `status`.
+- Registro de queda da Evolution com mais de 14 dias é ignorado na subida.
+
+## O retorno da coordenação sobre a aula experimental (16/11/2026) — no ar desde 16h36 (`b800141`)
 
 Pedido do responsável: depois da aula, a coordenação responde direto à Leia
 dizendo quem veio e como saiu. A Leia trata como informação confiável,

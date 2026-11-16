@@ -62,6 +62,26 @@ export const config = {
     // derruba número é a soma de volume com gente marcando spam.
     tetoDiario: parseInt(env('ENVIO_TETO_DIARIO', '30'), 10),
 
+    // O RECOMEÇO depois de uma restrição (`recomeco.js`): o teto de cada dia
+    // contado do dia em que o número volta, um valor por dia. Enquanto ele
+    // está fora, o teto é zero; depois do último degrau vale o teto de
+    // regime acima, e o degrau nunca passa dele. Vazio desliga a rampa.
+    //
+    // Existe desde 16/11/2026, a segunda restrição em três dias: o número
+    // voltou num domingo, a segunda-feira correu no teto de regime (38) e
+    // ele caiu de novo às 17h57. Baixar o teto depois de uma restrição
+    // dependia de alguém lembrar de editar o `.env`. Agora a queda fica
+    // gravada e a rampa entra sozinha.
+    //
+    // Os três zeros são três dias só respondendo: o dia da volta e os dois
+    // seguintes. Vale para tudo que consulta o teto (follow-up, fila,
+    // acompanhamento, encontros) e, nos dias de zero, também para os avisos
+    // da avaliação. Mensagem à equipe (gerência, agenda, briefing) e
+    // resposta a quem escreveu não entram.
+    recomecoRampa: env('ENVIO_RECOMECO_RAMPA', '0,0,0,5,10,15,20,25')
+      .split(',').map(v => v.trim()).filter(v => v !== '').map(Number)
+      .filter(v => Number.isFinite(v) && v >= 0).map(Math.floor),
+
     // Intervalo MÉDIO entre dois envios automáticos, em segundos. O valor
     // real de cada intervalo sai com ±40% de folga aleatória — cadência de
     // relógio é o que denuncia robô, e 1 mensagem por segundo cravada era

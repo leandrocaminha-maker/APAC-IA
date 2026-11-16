@@ -14,6 +14,7 @@
     "consultor": "node scripts/criar-consultor.js",
     "classificar": "node scripts/classificar-retroativo.js",
     "campanha": "node scripts/campanha.js",
+    "recomeco": "node scripts/recomeco.js",
     "regularizar": "node scripts/regularizar-parados.js",
     "reconstruir-vendas": "node scripts/reconstruir-vendas.js"
   },

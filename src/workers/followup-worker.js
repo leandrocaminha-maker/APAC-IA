@@ -649,6 +649,17 @@ const MARCADOR_VARREDURA = 'followup:ultima_varredura_silencio';
 async function talvezVarrer() {
   const cfg = config.followup.silencio;
   if (!cfg.habilitado || cfg.minutos <= 0) return;
+
+  // Em recomeço (`recomeco.js`) a varredura só agenda o que o teto de hoje
+  // ainda deixa sair. Sem isto ela seguiria agendando 15 por hora atrás de
+  // um teto de zero ou de cinco, e no dia em que o teto abrisse o acumulado
+  // sairia na frente do lembrete de aula — o monte da manhã, outra vez.
+  // Sem carimbar o marcador: no dia em que houver cota, ela roda no
+  // primeiro ciclo.
+  const cota = await limiteEnvio.cota();
+  const emRecomeco = Boolean(cota.recomeco?.ativo);
+  if (emRecomeco && !(cota.restante > 0)) return;
+
   if (!(await controle.passouDe(MARCADOR_VARREDURA, cfg.minutos))) return;
 
   await controle.carimbarMarcador(MARCADOR_VARREDURA, { iniciada_em: new Date().toISOString() });
@@ -668,7 +679,8 @@ async function talvezVarrer() {
       logger.error('[followup] Devolução de handoff falhou:', err.message));
   }
 
-  await followup.varrerSilenciosos().catch(err =>
+  const opcoes = emRecomeco ? { lote: Math.min(cfg.lote, cota.restante) } : {};
+  await followup.varrerSilenciosos(opcoes).catch(err =>
     logger.error('[followup] Varredura de silêncio falhou:', err.message));
 }
 

@@ -46,6 +46,7 @@ import { supabase } from '../lib/supabase.js';
 import { sendText, normalizePhone } from './evolution.js';
 import { getOrCreateContact, getOrCreateConversation, saveMessage } from './contacts.js';
 import { estaNaJanela } from './followup.js';
+import { recomeco } from './recomeco.js';
 import { estaSuprimido } from './campanhas.js';
 import { buscarMembroPorId, sessoesDaPessoa } from './evo-client.js';
 import { telefonesDoMembro } from './vendas-regras.js';
@@ -252,6 +253,10 @@ async function consultarQuestionario(aviso) {
 
 let rodando = false;
 
+// Quando o log disse pela última vez que os avisos esperam o recomeço. O
+// worker roda de 5 em 5 minutos, e a frase é a mesma o dia inteiro.
+let avisouRecomecoEm = 0;
+
 /**
  * Manda o que chegou à hora. Chamado pelo worker a cada poucos minutos,
  * e só faz algo dentro da janela de contato ativo.
@@ -262,6 +267,24 @@ export async function enviarAvisos({ agora = new Date() } = {}) {
   if (!c.habilitado || rodando || !estaNaJanela(agora)) return 0;
   rodando = true;
   try {
+    // O aviso fica fora do TETO do número (decisão de 03/11/2026), mas não
+    // do recomeço: nos dias em que a máquina não inicia conversa nenhuma, ele
+    // também espera. Em 16/11/2026 a sessão caiu 32 s depois de um aviso da
+    // compra — 725 caracteres e um link, para quem nunca tinha falado com o
+    // número. O aviso segue `pendente` e sai quando o degrau deixar de ser
+    // zero; o que passar do prazo é cancelado como sempre. No ensaio
+    // (`envio` desligado) nada vai ao WhatsApp, e nada muda.
+    if (c.envio) {
+      const situacao = await recomeco.situacao(agora);
+      if (situacao.ativo && situacao.teto === 0) {
+        if (Date.now() - avisouRecomecoEm > 60 * 60_000) {
+          avisouRecomecoEm = Date.now();
+          logger.warn(`[avaliacao] Avisos em espera: ${situacao.motivo}`);
+        }
+        return 0;
+      }
+    }
+
     const { data: pendentes, error } = await supabase.from('aval_avisos').select('*')
       .eq('status', 'pendente').lte('previsto_para', agora.toISOString())
       .order('previsto_para', { ascending: true }).limit(20);

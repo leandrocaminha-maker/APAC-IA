@@ -33,6 +33,7 @@ import { lerMensagem, textoDescrito, TIPOS_QUE_ABREM_TURNO } from '../services/m
 import { descreverImagem } from '../services/descricao-imagem.js';
 import { criarFilaEspacada } from '../lib/fila-espacada.js';
 import { conexaoWhatsapp } from '../services/whatsapp-monitor.js';
+import { recomeco } from '../services/recomeco.js';
 
 const router = Router();
 
@@ -1400,6 +1401,11 @@ function handleConnectionUpdate(event) {
   const state = data.state || data.status;
   logger.info(`[webhook] 📡 Status da conexão: ${state}`);
   if (state) conexaoAvisada = state;
+
+  // Queda sem volta (401 `device_removed`: a Meta restringindo) abre o
+  // recomeço; a reconexão dá a partida na rampa. Ver `recomeco.js`.
+  recomeco.aoMudarConexao({ estado: state, codigo: data.statusReason }).catch(err =>
+    logger.warn(`[webhook] Registro do recomeço falhou: ${err.message}`));
 }
 
 export default router;
