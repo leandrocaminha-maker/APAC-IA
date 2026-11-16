@@ -1,6 +1,6 @@
 # Estado do projeto — handoff
 
-> **🚨 16/11/2026, 17h57: a Meta restringiu o número principal de novo (a segunda vez em três dias). A sessão está `close`. O recomeço automático está no branch, SEM commit e SEM deploy, e a VPS segue com `ENVIO_TETO_DIARIO=38`: se o número for pareado antes do deploy, a régua dispara às 9h do dia seguinte (primeira seção).**
+> **🚨 16/11/2026, 17h57: a Meta restringiu o número principal de novo (a segunda vez em três dias). A sessão está `close`, à espera de a restrição cair no celular para parear. O recomeço automático está no ar desde 19h16 (deploy de `2e54b75`): a queda está gravada e a máquina não inicia conversa até o número voltar e passar os três primeiros dias da rampa (primeira seção).**
 > 16/11/2026: o retorno da coordenação sobre a aula experimental está no ar desde 16h36 (deploy de `b800141`).
 > **Snapshot de 15/11/2026: número principal restringido pela Meta em 14/11; todo envio passa pela pista do número e resposta a mensagem atrasada sai espaçada.** Em 14/11: a Evolution roda numa imagem própria, com a stanza `<status>` confirmada (deploy de `d72e2bf` às 11h54). Antes disso, em 10/11: o repasse da experimental marcada pela Leia e a aula conferida no EVO (deploy de `7e2ef12`).
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
@@ -8,7 +8,7 @@
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
 
-## 🚨 A segunda restrição em três dias, e o recomeço (16/11/2026) — sem commit nem deploy
+## 🚨 A segunda restrição em três dias, e o recomeço (16/11/2026) — no ar desde 19h16 (`2e54b75`)
 
 **O que aconteceu.** O número voltou da restrição de 14/11 no domingo, 15/11,
 às 17h01 (pareamento novo). Na segunda, 16/11, às 17h57:31, a Evolution
@@ -46,8 +46,8 @@ então 40") estava escrito no `config.js` desde 31/08 como instrução para
 alguém lembrar. Ninguém baixou o teto ao parear no domingo, e na segunda a
 régua de silêncio agendou a semana como sempre.
 
-**O que mudou (no branch, sem commit).** A restrição virou um fato gravado, e
-o teto do dia passou a sair dela:
+**O que mudou (deploy de `2e54b75`, 16/11 às 19h16).** A restrição virou um
+fato gravado, e o teto do dia passou a sair dela:
 
 - **`recomeco.js` / `recomeco-regras.js`.** A queda sem volta (401, 402, 403,
   406: os códigos em que a Evolution não reconecta) é gravada em
@@ -83,22 +83,24 @@ a Evolution foi simulada de ponta a ponta fora do projeto (`mock.module`): a
 queda vista no registro da Evolution, os três dias de zero, o teto de 5 no
 quarto dia, a volta ao regime, a queda no meio da rampa e o `encerrar`.
 
-**Estado da VPS em 16/11 às 19h: nada mudou.** `b800141` no ar,
-`ENVIO_TETO_DIARIO=38`, régua de silêncio ligada, sessão `close` (alguém
-gerou QR às 18h30 e não pareou). Pendentes: 2 `silencio_1` de 16/11 e os
-lembretes de aula de 17 e 18/11.
+**Como foi ao ar (16/11, 19h16).** Deploy com o número ainda fora
+(`docker compose up -d --build --no-deps backend`: só o backend foi recriado,
+a Evolution não). Vinte segundos depois da subida o vigia leu o 401 das
+17h57 no registro da Evolution e gravou a restrição sozinho. O `status`
+conferido em seguida: restrição de 16/11 17h57, volta em branco, cota de hoje
+0 de 0. O `.env` da VPS não foi tocado (`ENVIO_TETO_DIARIO=38`, sem
+`ENVIO_RECOMECO_RAMPA`: vale o padrão). Pendentes na régua: 2 `silencio_1`
+de 16/11 e os lembretes de aula de 17 e 18/11.
 
-**Para ir ao ar, nesta ordem:**
+**O que falta, nesta ordem:**
 
-1. Commit e deploy (`git pull && docker compose up -d --build backend`), de
-   preferência ANTES de parear. Na subida o vigia lê o 401 das 17h57 na
-   Evolution e grava a restrição sozinho; conferir com `npm run recomeco --
-   status`.
-2. Parear só depois de o celular mostrar que a restrição caiu.
-3. Se o número for pareado antes do deploy, o freio manual é no `.env` da
-   VPS: `ENVIO_TETO_DIARIO=1`, `FOLLOWUP_SILENCIO_HABILITADO=false` e
-   `AVALIACAO_AVISOS_MINUTOS=0`, com `docker compose up -d --no-deps
-   backend`. Desfazer os três depois do deploy.
+1. Parear só depois de o celular mostrar que a restrição caiu. A sessão
+   `open` grava a volta, e a rampa conta desse dia: o dia da volta e os dois
+   seguintes só respondendo, e 5 conversas iniciadas no quarto dia.
+2. Depois de parear, conferir: `docker compose exec backend npm run recomeco
+   -- status` tem de mostrar a volta e "dia 1 de 8".
+3. Se a volta ficar em branco com a sessão `open`: `npm run recomeco --
+   voltou`.
 
 **Decisões do responsável, em aberto.**
 
