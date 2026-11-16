@@ -1,12 +1,126 @@
 # Estado do projeto — handoff
 
 > **🚨 16/11/2026, 17h57: a Meta restringiu o número principal de novo (a segunda vez em três dias). A sessão está `close`, à espera de a restrição cair no celular para parear. O recomeço automático está no ar desde 19h16 (deploy de `2e54b75`): a queda está gravada e a máquina não inicia conversa até o número voltar e passar os três primeiros dias da rampa (primeira seção).**
+> **16/11/2026, à noite: a régua de follow-up mudou por decisão do responsável — uma retomada em menos de 24 h da última mensagem do cliente, e sem resposta no dia a conversa vai para o consultor (primeira seção). Não há mais segunda cutucada nem sondagem atrás da conversa de depois da aula.**
 > 16/11/2026: o retorno da coordenação sobre a aula experimental está no ar desde 16h36 (deploy de `b800141`).
 > **Snapshot de 15/11/2026: número principal restringido pela Meta em 14/11; todo envio passa pela pista do número e resposta a mensagem atrasada sai espaçada.** Em 14/11: a Evolution roda numa imagem própria, com a stanza `<status>` confirmada (deploy de `d72e2bf` às 11h54). Antes disso, em 10/11: o repasse da experimental marcada pela Leia e a aula conferida no EVO (deploy de `7e2ef12`).
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## Uma retomada em 24 h, e depois o consultor (16/11/2026)
+
+**Decisão do responsável**, na noite da segunda restrição: "Apenas 1 sondagem
+ou cutucada com menos de 24 hrs. Sem resposta no dia, transfere para
+consultor." Substitui as duas rodadas da régua de silêncio (2 e 4 dias) e as
+duas sondagens de depois da aula.
+
+**De onde veio.** 646 follow-ups enviados em 45 dias, resposta em 72 h:
+
+| Follow-up | Enviados | Responderam |
+| --- | --- | --- |
+| Lembrete da aula | 31 | 77% |
+| Depois da aula | 32 | 53% |
+| Sondagem, 1ª | 17 | 41% |
+| Silêncio, 1ª | 303 | 39% |
+| Silêncio, 2ª | 252 | 15% |
+| Sondagem, 2ª | 11 | 9% |
+
+As segundas tentativas eram 41% do volume e traziam 19% das respostas. E toda
+cutucada saía com mais de 24 h de silêncio: conversa reaberta por nós. Das 49
+conversas reabertas em 16/11, 48 eram com gente que já tinha escrito ao
+número; o que as separa não é ser desconhecido, é responder ou não.
+
+**A regra** (`followup.js`: `decisaoDoSilencio`, `horarioDaRetomada`).
+
+- O silêncio é a NOSSA última fala sem resposta, com a conversa na mão da
+  Leia. As 24 h contam da última mensagem DELA.
+- **Uma retomada por silêncio.** Sai de preferência 21 h depois da mensagem
+  dela; se cair fora da janela de contato, na abertura seguinte (quando cabe
+  em 22,5 h) ou no fim da janela anterior (com pelo menos 8 h de silêncio).
+  Quem escreveu às 15h recebe às 12h do dia seguinte; às 11h, às 9h; às 10h,
+  por volta das 20h do mesmo dia; sexta às 16h30, sábado perto das 12h30.
+  **Sábado ao meio-dia e véspera de feriado não têm horário: não há retomada.**
+- O roteiro é o de sempre (`silencio_1`), e o da sondagem (`sondagem_1`) para
+  quem já fez a aula. Os roteiros de despedida saíram, e o `followup.md` diz
+  à Leia para não se despedir.
+- **Na hora do envio** a retomada é conferida de novo: passou de 23,5 h da
+  mensagem dela (o teto do número segurou, o número caiu), é cancelada.
+- **Sem resposta no dia** (a janela do dia seguinte abriu), a conversa vai
+  para o consultor. Vale para a retomada, para a conversa de depois da aula
+  (`ae_pos_aula`: não há mais sondagem atrás dela) e para quem não pôde ser
+  retomado em 24 h.
+- Quem responde e some de novo abre outro silêncio, com retomada própria, até
+  o teto de 4 retomadas na vida do lead.
+
+**O repasse** (`repassarAoConsultor`). É um handoff como o da Leia, **sem
+mensagem ao cliente**: conversa em modo humano, lead em "Aguardando
+consultor" (quem já passou dessa etapa fica onde está e aparece na fila pelo
+handoff aberto), próxima ação para agora e o briefing no fio da conversa
+(`[follow-up] Não respondeu à retomada da Leia (enviada em 25/11 às 12h00).
+Última mensagem do cliente: … A Leia não escreve de novo nesta conversa:
+decidir se liga, escreve ou encerra.`). Evento `repasse_followup`. Tetos: 5
+por varredura e 15 por dia (`FOLLOWUP_REPASSE_LOTE`, `_TETO_DIA`), do
+silêncio mais antigo para o mais novo.
+
+**O fim de linha** (`encerrarRepassadosSemResposta`). O lead ganha a marca
+`metadata.followup_consultor_em` no repasse e na devolução do handoff que
+emudeceu. Com a marca, a conversa de volta com a Leia e a nossa última fala
+há `FOLLOWUP_DIAS_ATE_PERDIDO` (5) dias sem resposta, vira **perdido**. Quem
+está em "Aguardando consultor" não é encerrado: ali ninguém pegou. A
+devolução do handoff mudo não manda mais o lead de volta ao consultor. Quem
+recebeu as duas rodadas da régua antiga segue fechando por
+`encerrarSemResposta`.
+
+**O que para a varredura.**
+
+- **WhatsApp fora do ar:** não roda. Sem a sessão o banco não sabe quem
+  respondeu, e todo lead parece calado. O repasse ainda espera 120 min de
+  sessão conectada (o relógio zera a cada restart do backend).
+- **Teto do número batido, ou recomeço:** nenhuma retomada é agendada (o
+  lote é o que resta da cota). O que não coube não vira o monte do dia
+  seguinte: passadas as 24 h, vai para o consultor.
+- **Retomada pendente fora do prazo** (e as agendadas pela régua antiga, e as
+  segundas tentativas): `expirarRetomadas` as cancela a cada ciclo.
+
+**Sem migration.** Configuração nova, toda com padrão:
+`FOLLOWUP_RETOMADA_{AGENDAR_APOS,ALVO,MINIMO,LIMITE,ENVIO_LIMITE}_H` e
+`FOLLOWUP_REPASSE_{HABILITADO,LOTE,TETO_DIA,ESPERA_CONEXAO_MIN}`. Saíram
+`FOLLOWUP_SILENCIO_DIAS` e `FOLLOWUP_SILENCIO_INTERVALO_MIN`. O endpoint
+`POST /crm/api/followups/varredura` perdeu o `dias` e devolve `acao` por
+lead (`cutucar` ou `repassar`) e `repasses`.
+
+Testes: 22 novos em `followup.test.js` (453 no total). A varredura, o repasse
+e o encerramento foram simulados de ponta a ponta com banco falso, fora do
+projeto: 11 leads, um em cada situação.
+
+**O acumulado, medido em 16/11 à noite** (80 conversas de venda com a Leia):
+11 com a 1ª cutucada sem resposta, 6 calados há mais de 24 h sem cutucada, 4
+de depois da aula, e 13 ainda dentro das 24 h que vão passar delas com o
+número fora. Perto de 35 repasses nos primeiros dias, a 15 por dia. Outros 24
+já tinham recebido as duas rodadas e fecham pela regra antiga.
+
+**Leituras minhas da decisão, para o responsável conferir.**
+
+1. **Depois da aula não há sondagem para quem não respondeu.** A conversa de
+   depois da aula já é a mensagem da Leia; sem resposta no dia, consultor. A
+   sondagem só sai para quem respondeu e parou depois, em menos de 24 h.
+2. **O repasse cala a Leia** (modo humano), como todo handoff: se a pessoa
+   responder à noite, quem atende é o consultor, de manhã.
+3. **Quem não pôde ser retomado em 24 h vai direto ao consultor:** sábado
+   depois das 9h, véspera de feriado, teto batido, recomeço.
+4. **O acumulado vai para a fila dos consultores**, e não para "perdido".
+
+**Limites.**
+
+- A retomada perto das 20h (quem escreveu de manhã cedo) sai com 10 a 11 h
+  de silêncio. Subir `FOLLOWUP_RETOMADA_MINIMO_H` a troca por repasse.
+- "Aguardando consultor" que ninguém pega não fecha sozinho; quem cobra é o
+  aviso de handoff parado da gerência.
+- O painel não tem cartão próprio para o repasse da régua: ele entra na fila
+  de consultor, com o briefing `[follow-up]`.
+- A API oficial (retomada depois de 24 h como modelo pago) segue em aberto.
 
 ## 🚨 A segunda restrição em três dias, e o recomeço (16/11/2026) — no ar desde 19h16 (`2e54b75`)
 
@@ -2328,6 +2442,12 @@ atendimento **novo**, na mesma trilha (o tipo mora no contato): cada assunto é
 um atendimento, que é o que se quer contar.
 
 ## Follow-up de venda — a régua que recupera quem some
+
+> ⚠️ **Desde 16/11/2026 a régua de silêncio e as sondagens são outras:** uma
+> retomada em menos de 24 h, e depois o consultor (ver a primeira seção deste
+> documento). O que se lê abaixo sobre duas rodadas, 2 e 4 dias e sondagens
+> de depois da aula é a régua antiga; a janela de contato, o lembrete e a
+> conversa de depois da aula continuam valendo.
 
 O agente só roda quando chega mensagem: um `messages.create` por mensagem
 recebida, sem agendador. Consequência que valeu meses de silêncio: **quem some,

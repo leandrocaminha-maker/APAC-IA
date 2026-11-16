@@ -558,26 +558,58 @@ export const config = {
       // Intervalo próprio da varredura, em minutos. 0 desliga.
       minutos: parseInt(env('FOLLOWUP_SILENCIO_MINUTOS', '60'), 10),
 
-      // Dias de silêncio para a 1ª cutucada. A 2ª sai 2 dias depois dela —
-      // ou seja, no 4º dia de silêncio.
-      dias: parseInt(env('FOLLOWUP_SILENCIO_DIAS', '2'), 10),
-
-      // Piso da varredura: quão para trás ela enxerga.
+      // A RETOMADA ÚNICA, dentro de 24 h da última mensagem do cliente
+      // (decisão do responsável em 16/11/2026; `followup.js`, seção da
+      // régua do silêncio). Eram duas cutucadas, com 2 e 4 dias de
+      // silêncio. Em horas, todas contadas da última mensagem DELA:
       //
-      // Sem piso, a primeira execução acordaria todo lead parado desde
-      // sempre — inclusive gente de meses atrás, para quem uma retomada não
-      // é retomada, é abordagem fria. 7 dias = "os leads desta semana".
+      //   agendarAposHoras  só se agenda depois deste tempo de silêncio.
+      //                     Quem parou há meia hora pode estar no ônibus.
+      //   alvoHoras         quando a retomada sai, de preferência: quem
+      //                     escreveu às 15h recebe às 12h do dia seguinte.
+      //   minimoHoras       o mais cedo que ela pode sair, quando o alvo
+      //                     cai fora da janela e o dia seguinte estoura o
+      //                     prazo (escreveu às 9h30: sai no fim da tarde).
+      //   limiteHoras       o mais tarde que se AGENDA.
+      //   envioLimiteHoras  o mais tarde que se ENVIA. Passou disto, a
+      //                     retomada é cancelada e o silêncio vai para o
+      //                     consultor. A folga até 24 é do "digitando".
+      agendarAposHoras: parseFloat(env('FOLLOWUP_RETOMADA_AGENDAR_APOS_H', '6')),
+      alvoHoras: parseFloat(env('FOLLOWUP_RETOMADA_ALVO_H', '21')),
+      minimoHoras: parseFloat(env('FOLLOWUP_RETOMADA_MINIMO_H', '8')),
+      limiteHoras: parseFloat(env('FOLLOWUP_RETOMADA_LIMITE_H', '22.5')),
+      envioLimiteHoras: parseFloat(env('FOLLOWUP_RETOMADA_ENVIO_LIMITE_H', '23.5')),
+
+      // O REPASSE ao consultor de quem não respondeu no dia: à retomada, à
+      // conversa de depois da aula, ou a ninguém, quando não houve como
+      // retomar em 24 h. É um handoff sem mensagem ao cliente.
+      repasse: {
+        habilitado: env('FOLLOWUP_REPASSE_HABILITADO', 'true') !== 'false',
+
+        // Teto por varredura e por dia. A fila do consultor não recebe o
+        // acumulado de uma vez: no dia em que isto foi ao ar havia perto de
+        // 35 leads calados à espera. O regime é de 4 a 8 por dia.
+        lote: parseInt(env('FOLLOWUP_REPASSE_LOTE', '5'), 10),
+        tetoDia: parseInt(env('FOLLOWUP_REPASSE_TETO_DIA', '15'), 10),
+
+        // Minutos de sessão conectada antes de repassar alguém. Com o
+        // WhatsApp fora do ar o banco não sabe quem respondeu, e logo
+        // depois da reconexão ainda chegam mensagens represadas.
+        esperaConexaoMin: parseInt(env('FOLLOWUP_REPASSE_ESPERA_CONEXAO_MIN', '120'), 10),
+      },
+
+      // Piso da varredura: quão para trás ela enxerga. A retomada só sai
+      // em 24 h; o que a janela delimita é quem ainda é repassado ao
+      // consultor. 7 dias = "os leads desta semana".
       janelaDias: parseInt(env('FOLLOWUP_SILENCIO_JANELA_DIAS', '7'), 10),
 
-      // Teto de agendamentos por varredura. Segura o susto do primeiro
-      // ciclo depois do deploy, quando o acúmulo da semana inteira está
-      // elegível de uma vez.
+      // Teto de retomadas agendadas por varredura. O worker ainda o corta
+      // pelo que resta no teto do número: retomada que não vai caber no
+      // dia não é agendada, e o silêncio segue para o consultor.
+      //
+      // O espaçamento entre elas deixou de ser regulagem: cada retomada
+      // tem a hora dela, contada da última mensagem de cada pessoa.
       lote: parseInt(env('FOLLOWUP_SILENCIO_LOTE', '15'), 10),
-
-      // Espaçamento entre os agendamentos de uma mesma varredura, em
-      // minutos. 15 mensagens saindo no mesmo minuto é o que denuncia
-      // robô — e satura a instância da Evolution.
-      intervaloMin: parseInt(env('FOLLOWUP_SILENCIO_INTERVALO_MIN', '7'), 10),
     },
 
     // Devolução do handoff que emudeceu.
@@ -632,12 +664,16 @@ export const config = {
       lote: parseInt(env('FOLLOWUP_HANDOFF_LOTE', '10'), 10),
     },
 
-    // Dias depois da SEGUNDA rodada até o lead ser dado como perdido.
+    // Dias sem resposta até o lead ser dado como perdido.
     //
-    // As duas rodadas saem com 2 dias de intervalo; esta é a espera pela
-    // resposta à última delas. Curto demais dá o lead por perdido antes de
-    // ele ter tido chance de ler; longo demais deixa o funil cheio de gente
-    // que já decidiu não responder, e é isso que faz a conversão mentir.
+    // Desde 16/11/2026 contam da NOSSA última fala, e só valem para quem o
+    // consultor já teve (repassado pela régua ou devolvido do handoff que
+    // emudeceu) e está de volta com a Leia. Quem espera na fila
+    // "aguardando consultor" não é encerrado: ali quem deve é a academia.
+    // Para quem recebeu as duas rodadas da régua antiga, contam do envio da
+    // segunda, como antes. Curto demais dá o lead por perdido antes de ele
+    // ter tido chance de ler; longo demais deixa o funil cheio de gente que
+    // já decidiu não responder, e é isso que faz a conversão mentir.
     //
     // 0 desliga o encerramento automático, e aí quem move é o consultor.
     diasAtePerdido: parseInt(env('FOLLOWUP_DIAS_ATE_PERDIDO', '5'), 10),

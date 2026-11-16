@@ -485,25 +485,25 @@ router.post('/api/leads/:id/followup', rota(async (req, res) => {
  *
  * A varredura automática enxerga `FOLLOWUP_SILENCIO_JANELA_DIAS` para trás
  * (padrão: 7). Quem parou de responder há mais tempo que isso está fora do
- * alcance dela — de propósito, para o primeiro ciclo depois do deploy não
- * acordar lead de meses atrás. Este endpoint é como o consultor alcança
- * esse acumulado, decidindo ele até onde voltar.
+ * alcance dela. Este endpoint é como o consultor alcança esse acumulado,
+ * decidindo ele até onde voltar.
  *
- * O critério de dias continua sendo um PISO (`>= dias`), não uma igualdade:
- * um lead parado há 5 dias que nunca foi cutucado entra normalmente. Por
- * isso não existe rotina separada de recuperação — é a mesma função, com a
- * janela aberta.
+ * Desde 16/11/2026 a régua é outra (`followup.js`): a Leia retoma UMA vez,
+ * em menos de 24 h da última mensagem do cliente, e quem não responde no
+ * dia vai para o consultor. Para o acumulado isso quer dizer repasse, e não
+ * mensagem: a retomada de quem parou há dias não sai mais.
  *
  * ## Simula por padrão
  *
  * Sem `simular: false` explícito, NADA é gravado: a resposta lista quem
- * entraria, com quantos dias de silêncio cada um e por qual rodada. É uma
- * ação em lote sobre clientes reais, e a ordem certa é ler a lista antes.
+ * entraria e o que aconteceria com cada um (`acao`: `cutucar`, com a hora,
+ * ou `repassar`, com a causa). É uma ação em lote sobre clientes reais, e a
+ * ordem certa é ler a lista antes. Valendo, os repasses respeitam os tetos
+ * da varredura e do dia (`FOLLOWUP_REPASSE_LOTE`, `FOLLOWUP_REPASSE_TETO_DIA`).
  *
  * Body (tudo opcional):
- *   dias        piso de dias em silêncio      (padrão: config)
  *   janelaDias  quão para trás olhar          (padrão: config; teto de 90)
- *   lote        máximo de agendamentos        (padrão: config; teto de 50)
+ *   lote        máximo de retomadas agendadas (padrão: config; teto de 50)
  *   simular     false para gravar de verdade  (padrão: true)
  */
 router.post('/api/followups/varredura', rota(async (req, res) => {
@@ -511,7 +511,6 @@ router.post('/api/followups/varredura', rota(async (req, res) => {
 
   const opcoes = {
     simular: corpo.simular !== false,
-    ...(corpo.dias != null && { dias: Math.max(1, parseInt(corpo.dias, 10) || 2) }),
     ...(corpo.janelaDias != null && {
       janelaDias: Math.min(90, Math.max(1, parseInt(corpo.janelaDias, 10) || 7)),
     }),
@@ -526,13 +525,15 @@ router.post('/api/followups/varredura', rota(async (req, res) => {
   logger.info(
     `[crm] ${req.usuario.email} rodou a varredura de silêncio ` +
     `(${opcoes.simular ? 'simulação' : 'valendo'}): ` +
-    `${resultado.leads.length} elegível(is), ${resultado.agendados} agendado(s)`
+    `${resultado.leads.length} elegível(is), ${resultado.agendados} retomada(s) agendada(s), ` +
+    `${resultado.repasses} repassado(s) ao consultor`
   );
 
   res.json({
     simulado: opcoes.simular,
     elegiveis: resultado.leads.length,
     agendados: resultado.agendados,
+    repasses: resultado.repasses,
     examinados: resultado.examinados,
     leads: resultado.leads,
   });

@@ -86,9 +86,10 @@ horário ruim, imprevisto ou insegurança. Ofereça remarcar e pergunte que hor�
 seria melhor. Fazer a pessoa se justificar é o caminho mais curto para ela não
 responder nunca mais.
 
-**Duas rodadas, e só.** Se depois da segunda ela não responder, está encerrado —
-você não escreve de novo. Deixe a última mensagem com a porta aberta, não com
-uma cobrança.
+**Uma retomada, e só.** Se ela não responder, você não escreve de novo: um
+consultor da academia assume a conversa. Por isso a sua mensagem não se
+despede, não diz que é a última e não cobra — ela faz uma pergunta fácil de
+responder, como quem continua a conversa de ontem.
 
 ## A regra que não se quebra
 
