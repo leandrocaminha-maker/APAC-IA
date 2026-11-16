@@ -194,7 +194,7 @@ export async function lembrarVesperaDosTestes(agora = new Date()) {
         if (!cota.ok) { logger.info(`[agenda-testes] Teto do número: ${cota.motivo}. O lembrete fica para o próximo ciclo.`); break; }
         // Número Baileys não manda rajada.
         if (saiu > 0) await esperar(20_000 + Math.random() * 20_000);
-        const resposta = await sendText(inscricao.phone, texto);
+        const resposta = await sendText(inscricao.phone, texto, { abertura: true });
         const contato = await getOrCreateContact(inscricao.phone, null);
         const conversa = await getOrCreateConversation(contato.id);
         await saveMessage({

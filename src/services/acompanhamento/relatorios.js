@@ -159,7 +159,7 @@ export async function enviarRelatorios({ agora = new Date(), clienteId = null, e
         const r = await sendMediaBase64(inscricao.phone, {
           base64: arquivo.base64, mimetype: arquivo.mimetype ?? 'application/pdf',
           fileName: nomeArquivo, caption: legenda, mediatype: 'document',
-        });
+        }, { abertura: !emResposta });
         const contato = await getOrCreateContact(inscricao.phone, null);
         const conversa = await getOrCreateConversation(contato.id);
         await saveMessage({

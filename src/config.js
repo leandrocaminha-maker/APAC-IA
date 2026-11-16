@@ -101,6 +101,16 @@ export const config = {
     pistaIntervaloSeg: parseFloat(env('ENVIO_PISTA_INTERVALO_SEG', '4')),
     pistaMaxPorMinuto: parseInt(env('ENVIO_PISTA_MAX_POR_MINUTO', '6'), 10),
 
+    // O PORTÃO DAS ABERTURAS (`evolution.js`): intervalo médio, em segundos,
+    // entre duas conversas que a MÁQUINA inicia, de qualquer origem —
+    // follow-up, avisos da avaliação, acompanhamento, fila. Sai com ±40%
+    // (75 → de 45 a 105 s), contado do fim do envio anterior. Resposta a
+    // quem escreveu e consultor não passam por ele. 0 desliga.
+    //
+    // Desde 16/11/2026: cada caminho espaçava só os seus (20 a 40 s nos
+    // avisos e no acompanhamento), e juntos saíam a até 6 por minuto.
+    aberturaIntervaloSeg: parseFloat(env('ENVIO_ABERTURA_INTERVALO_SEG', '75')),
+
     // Confere no WhatsApp se o número existe antes de gerar e enviar.
     //
     // Duas coisas de uma vez: número morto é sinal pesado no detector de

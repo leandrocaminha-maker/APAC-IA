@@ -338,7 +338,7 @@ export async function enviarAvisos({ agora = new Date() } = {}) {
             .eq('id', contato.id).is('tipo_contato', null);
         }
         const conversa = await getOrCreateConversation(contato.id);
-        const r = await sendText(aviso.phone, texto);
+        const r = await sendText(aviso.phone, texto, { abertura: true });
         await saveMessage({
           conversationId: conversa.id, contactId: contato.id, direction: 'outbound', content: texto,
           contentType: 'text', sentBy: SENT_BY_AVALIACAO, evolutionMsgId: r?.key?.id || null, status: 'sent',

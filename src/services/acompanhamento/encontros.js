@@ -194,7 +194,7 @@ export async function convidarParaEncontros(agora = new Date()) {
         const cota = await limiteEnvio.podeIniciarAcompanhamento();
         if (!cota.ok) { logger.info(`[encontros] Teto do número: ${cota.motivo}. O convite fica para o próximo ciclo.`); consultadoEm = 0; break; }
         if (saiu > 0) await esperar(20_000 + Math.random() * 20_000);
-        const resposta = await sendText(inscricao.phone, convite.texto);
+        const resposta = await sendText(inscricao.phone, convite.texto, { abertura: true });
         const contato = await getOrCreateContact(inscricao.phone, null);
         const conversa = await getOrCreateConversation(contato.id);
         await saveMessage({
@@ -376,7 +376,7 @@ export async function lembrarVesperaDosEncontros(agora = new Date()) {
         const cota = await limiteEnvio.podeIniciarAcompanhamento();
         if (!cota.ok) { logger.info(`[encontros] Teto do número: ${cota.motivo}. O lembrete fica para o próximo ciclo.`); break; }
         if (saiu > 0) await esperar(20_000 + Math.random() * 20_000);
-        const resposta = await sendText(inscricao.phone, texto);
+        const resposta = await sendText(inscricao.phone, texto, { abertura: true });
         const contato = await getOrCreateContact(inscricao.phone, null);
         const conversa = await getOrCreateConversation(contato.id);
         await saveMessage({

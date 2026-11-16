@@ -402,7 +402,7 @@ async function enviarUm(item) {
     return;
   }
 
-  await sendText(lead.phone, texto);
+  await sendText(lead.phone, texto, { abertura: true });
 
   await saveMessage({
     conversationId: conversa.id,

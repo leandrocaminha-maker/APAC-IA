@@ -12,11 +12,14 @@
  *   fica para outro dia  um consultor está na conversa; o aluno escreveu
  *   (cancelado)          nas últimas 24 h — a rodada de amanhã decide de novo
  *   espera               fora da janela de contato
- *   não sai hoje         sub-teto do acompanhamento (D5) ou teto do número
+ *   não sai hoje         sub-teto do acompanhamento (D5)
+ *   espera               teto do número, ou número fora do ar: sai quando
+ *                        couber, no mesmo dia
  *
  * A mensagem sai como `bot:acompanhamento` — conta no teto do número
- * (limite-envio.js) e abre a rodada de trocas da Leia (conversa.js). Entre
- * uma e outra, uma pausa de 20 a 40 s: número Baileys não manda rajada.
+ * (limite-envio.js) e abre a rodada de trocas da Leia (conversa.js). É
+ * abertura: passa pelo portão das aberturas (`evolution.js`), que espaça
+ * todas as conversas iniciadas pela máquina entre si.
  *
  * ## Desligado na fase de teste
  *
@@ -117,14 +120,21 @@ export async function enviarDisparos({ agora = new Date() } = {}) {
         await marcar(disparo, 'cancelado', `Sub-teto do acompanhamento atingido (${teto} por dia).`);
         continue;
       }
+      // Sem cota (número fora do ar, teto batido), ESPERA: o disparo segue
+      // pendente e sai no ciclo em que couber, no mesmo dia. Até 16/11/2026
+      // era cancelado, e a mensagem do dia se perdia quando o número caía.
+      // O que o dia não comportar, a limpeza do dia seguinte cancela (acima).
       const cota = await limiteEnvio.podeIniciarAcompanhamento();
-      if (!cota.ok) { await marcar(disparo, 'cancelado', `Teto do número: ${cota.motivo}.`); continue; }
+      if (!cota.ok) {
+        logger.info(`[acompanhamento] Teto do número: ${cota.motivo}. Os disparos esperam o próximo ciclo.`);
+        break;
+      }
 
       if (enviados > 0) await esperar(20_000 + Math.random() * 20_000);
       const { inscricao } = mundo;
       const contato = await getOrCreateContact(inscricao.phone, null);
       const conversa = await getOrCreateConversation(contato.id);
-      const r = await sendText(inscricao.phone, disparo.texto);
+      const r = await sendText(inscricao.phone, disparo.texto, { abertura: true });
       await saveMessage({
         conversationId: conversa.id, contactId: contato.id, direction: 'outbound', content: disparo.texto,
         contentType: 'text', sentBy: SENT_BY_REGUA, evolutionMsgId: r?.key?.id || null, status: 'sent',

@@ -176,9 +176,9 @@ async function processBatch() {
         // Envia via Evolution API
         let result;
         if (msg.content_type === 'text' || !msg.media_url) {
-          result = await sendText(msg.phone, msg.content);
+          result = await sendText(msg.phone, msg.content, { abertura: true });
         } else {
-          result = await sendMedia(msg.phone, msg.media_url, msg.content, msg.content_type);
+          result = await sendMedia(msg.phone, msg.media_url, msg.content, msg.content_type, { abertura: true });
         }
         saiuMensagem = true;
 

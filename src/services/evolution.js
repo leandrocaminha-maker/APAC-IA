@@ -126,6 +126,27 @@ function pistaDe(instancia) {
   return pistas.get(instancia);
 }
 
+// O PORTÃO DAS ABERTURAS: um segundo espaçamento, só para o que a máquina
+// inicia — follow-up, avisos da avaliação, acompanhamento, fila.
+//
+// Existe desde 16/11/2026. Cada um desses caminhos tinha a sua pausa (75 s
+// no follow-up, 20 a 40 s nos outros), dentro do próprio laço, e eles rodam
+// em paralelo: somados, a pista os deixava sair a até 6 por minuto. É a
+// lição de sempre — o espaçamento por chamador não vê a soma. O portão fica
+// na frente da pista e espaça as aberturas entre si, de qualquer origem; a
+// resposta a quem escreveu e o consultor não passam por ele e não esperam.
+const portoes = new Map();
+
+function portaoDe(instancia) {
+  if (!portoes.has(instancia)) {
+    portoes.set(instancia, criarPista({
+      intervaloSeg: () => config.envio.aberturaIntervaloSeg,
+      maxPorMinuto: () => 0,
+    }));
+  }
+  return portoes.get(instancia);
+}
+
 // Quanto a chamada à Evolution pode levar além do "digitando". Sem prazo,
 // uma Evolution travada seguraria a pista — e com ela todo envio do número.
 const FOLGA_DO_ENVIO_MS = 60_000;
@@ -144,7 +165,14 @@ const FOLGA_DO_ENVIO_MS = 60_000;
  * @param {string} p.descricao - Para o log.
  * @param {'alta'|'normal'} [p.prioridade]
  */
-function enviarPelaPista({ instancia, caminho, corpo, descricao, prioridade = 'normal' }) {
+function enviarPelaPista({ instancia, caminho, corpo, descricao, prioridade = 'normal', abertura = false }) {
+  if (abertura && config.envio.aberturaIntervaloSeg > 0) {
+    return portaoDe(instancia).passar(({ esperouMs, naFila }) => {
+      const nota = esperouMs >= 3000 ? ` — abertura: esperou ${Math.round(esperouMs / 1000)}s no portão, ${naFila} atrás` : '';
+      return enviarPelaPista({ instancia, caminho, corpo, descricao: descricao + nota, prioridade });
+    });
+  }
+
   return pistaDe(instancia).passar(({ esperouMs, naFila }) => {
     const espera = esperouMs >= 3000
       ? ` — esperou ${Math.round(esperouMs / 1000)}s na pista, ${naFila} atrás`
@@ -244,9 +272,11 @@ export function tempoDeDigitacao(texto) {
  * @param {string} [opts.instancia] - Por qual número sai. Padrão: o principal.
  * @param {'alta'|'normal'} [opts.prioridade] - `alta` passa na frente de
  *   quem espera na pista. É o consultor escrevendo pelo painel.
+ * @param {boolean} [opts.abertura] - A máquina está iniciando a conversa:
+ *   passa antes pelo portão das aberturas (`ENVIO_ABERTURA_INTERVALO_SEG`).
  * @returns {Promise<object>} Resposta da Evolution API
  */
-export async function sendText(phone, text, { delayMs, instancia = instance, prioridade } = {}) {
+export async function sendText(phone, text, { delayMs, instancia = instance, prioridade, abertura = false } = {}) {
   const number = normalizePhone(phone);
   const delay = delayMs ?? tempoDeDigitacao(text);
 
@@ -256,6 +286,7 @@ export async function sendText(phone, text, { delayMs, instancia = instance, pri
     corpo: { number, text, delay },
     descricao: `sendText → ${number} (${text.length} chars, ${delay}ms digitando)`,
     prioridade,
+    abertura,
   });
 }
 
@@ -303,7 +334,7 @@ export async function numeroExiste(phone) {
  * @param {string} [caption] - Legenda (apenas para imagem/vídeo)
  * @param {string} [mediatype] - Tipo: 'image', 'document', 'audio', 'video'
  */
-export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'image') {
+export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'image', { abertura = false } = {}) {
   const number = normalizePhone(phone);
   const delay = tempoDeDigitacao(caption);
 
@@ -312,6 +343,7 @@ export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'imag
     caminho: '/message/sendMedia',
     corpo: { number, mediatype, media: mediaUrl, caption, delay },
     descricao: `sendMedia → ${number} (${mediatype}, ${delay}ms digitando)`,
+    abertura,
   });
 }
 
@@ -322,13 +354,14 @@ export async function sendMedia(phone, mediaUrl, caption = '', mediatype = 'imag
  * @param {string} phone
  * @param {{ base64: string, mimetype: string, fileName?: string, caption?: string, mediatype: 'image'|'video'|'document' }} m
  */
-export async function sendMediaBase64(phone, { base64, mimetype, fileName, caption = '', mediatype }) {
+export async function sendMediaBase64(phone, { base64, mimetype, fileName, caption = '', mediatype }, { abertura = false } = {}) {
   const number = normalizePhone(phone);
   return enviarPelaPista({
     instancia: instance,
     caminho: '/message/sendMedia',
     corpo: { number, mediatype, mimetype, media: base64, fileName, caption, delay: 1200 },
     descricao: `sendMedia (base64) → ${number} (${mediatype})`,
+    abertura,
   });
 }
 

@@ -20,6 +20,18 @@ e a rampa passa a contar só follow-up e fila (`AUTOMATICOS_DA_RAMPA`), para o
 acompanhamento não comer o degrau. A rampa de zero vale agora só para o
 follow-up e a campanha.
 
+**O portão das aberturas** (`evolution.js`, `ENVIO_ABERTURA_INTERVALO_SEG`,
+padrão 75 s ±40%: de 45 a 105 s). Toda conversa que a máquina inicia —
+follow-up, avisos da avaliação, acompanhamento (régua, encontros, lembrete
+dos testes, relatório), fila — espera o portão, que as espaça entre si,
+seja qual for a origem. Antes cada caminho espaçava só os seus (20 a 40 s
+nos avisos e no acompanhamento) e, rodando em paralelo, saíam até 6 por
+minuto. Resposta a quem escreveu e consultor não passam por ele. Fica em
+memória, como a pista: um restart perde o que esperava (o envio falha e o
+caminho tenta de novo no ciclo seguinte). E a régua do acompanhamento passou
+a ESPERAR quando não há cota (número fora do ar, teto batido): o disparo
+segue pendente e sai no mesmo dia; antes era cancelado.
+
 Com o número fora do ar, o efeito imediato do deploy é cancelar as 6
 retomadas pendentes da régua antiga; a varredura só volta a rodar com a
 sessão conectada, e os repasses 120 min depois disso.
