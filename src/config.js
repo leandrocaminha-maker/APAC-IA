@@ -73,11 +73,12 @@ export const config = {
     // dependia de alguém lembrar de editar o `.env`. Agora a queda fica
     // gravada e a rampa entra sozinha.
     //
-    // Os três zeros são três dias só respondendo: o dia da volta e os dois
-    // seguintes. Vale para tudo que consulta o teto (follow-up, fila,
-    // acompanhamento, encontros) e, nos dias de zero, também para os avisos
-    // da avaliação. Mensagem à equipe (gerência, agenda, briefing) e
-    // resposta a quem escreveu não entram.
+    // Os três zeros são três dias sem follow-up: o dia da volta e os dois
+    // seguintes. Vale para o follow-up e a fila (campanha). O acompanhamento
+    // e os avisos da avaliação saem desde a reconexão (decisão de
+    // 16/11/2026): só esperam enquanto o número está fora do ar, e o
+    // acompanhamento segue no teto de regime sem gastar o degrau. Mensagem
+    // à equipe e resposta a quem escreveu não entram.
     recomecoRampa: env('ENVIO_RECOMECO_RAMPA', '0,0,0,5,10,15,20,25')
       .split(',').map(v => v.trim()).filter(v => v !== '').map(Number)
       .filter(v => Number.isFinite(v) && v >= 0).map(Math.floor),

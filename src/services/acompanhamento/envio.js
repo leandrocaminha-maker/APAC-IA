@@ -117,7 +117,7 @@ export async function enviarDisparos({ agora = new Date() } = {}) {
         await marcar(disparo, 'cancelado', `Sub-teto do acompanhamento atingido (${teto} por dia).`);
         continue;
       }
-      const cota = await limiteEnvio.podeIniciarConversa();
+      const cota = await limiteEnvio.podeIniciarAcompanhamento();
       if (!cota.ok) { await marcar(disparo, 'cancelado', `Teto do número: ${cota.motivo}.`); continue; }
 
       if (enviados > 0) await esperar(20_000 + Math.random() * 20_000);

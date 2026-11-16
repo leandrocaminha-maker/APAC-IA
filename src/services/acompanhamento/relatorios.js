@@ -147,7 +147,7 @@ export async function enviarRelatorios({ agora = new Date(), clienteId = null, e
       try {
         if (await estaSuprimido(inscricao.phone)) continue;
         if (!emResposta) {
-          const cota = await limiteEnvio.podeIniciarConversa();
+          const cota = await limiteEnvio.podeIniciarAcompanhamento();
           if (!cota.ok) { logger.info(`[relatorios] Teto do número: ${cota.motivo}. Fica para o próximo ciclo.`); break; }
         }
         // Número Baileys não manda rajada.

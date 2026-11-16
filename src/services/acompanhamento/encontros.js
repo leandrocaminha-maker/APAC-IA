@@ -191,7 +191,7 @@ export async function convidarParaEncontros(agora = new Date()) {
       const chave = `${convite.cliente_id}|${convite.semana}`;
       try {
         if (await estaSuprimido(inscricao.phone)) { r.marca.enviados[chave] = { em: new Date().toISOString(), estado: 'suprimido' }; continue; }
-        const cota = await limiteEnvio.podeIniciarConversa();
+        const cota = await limiteEnvio.podeIniciarAcompanhamento();
         if (!cota.ok) { logger.info(`[encontros] Teto do número: ${cota.motivo}. O convite fica para o próximo ciclo.`); consultadoEm = 0; break; }
         if (saiu > 0) await esperar(20_000 + Math.random() * 20_000);
         const resposta = await sendText(inscricao.phone, convite.texto);
@@ -373,7 +373,7 @@ export async function lembrarVesperaDosEncontros(agora = new Date()) {
     for (const { marcacao, inscricao, texto } of r.sair) {
       try {
         if (await estaSuprimido(inscricao.phone)) { r.marca.enviados[marcacao.id] = 'suprimido'; continue; }
-        const cota = await limiteEnvio.podeIniciarConversa();
+        const cota = await limiteEnvio.podeIniciarAcompanhamento();
         if (!cota.ok) { logger.info(`[encontros] Teto do número: ${cota.motivo}. O lembrete fica para o próximo ciclo.`); break; }
         if (saiu > 0) await esperar(20_000 + Math.random() * 20_000);
         const resposta = await sendText(inscricao.phone, texto);

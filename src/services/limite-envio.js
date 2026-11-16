@@ -90,18 +90,31 @@ export function inicioDoDiaSP(agora = new Date()) {
 const AUTOMATICOS = 'sent_by.eq.bot:followup,sent_by.like.app:*,sent_by.eq.bot:acompanhamento';
 
 /**
+ * O que a RAMPA do recomeço conta: o mesmo, menos o acompanhamento.
+ *
+ * Decisão do responsável em 16/11/2026: as mensagens do acompanhamento (e os
+ * avisos da avaliação, que já ficam fora do teto) saem desde a reconexão,
+ * sem esperar a rampa. Elas continuam no teto de regime, mas não gastam o
+ * degrau do dia — senão os 7 do acompanhamento comeriam os 5 do quarto dia
+ * e o follow-up não sairia.
+ */
+const AUTOMATICOS_DA_RAMPA = 'sent_by.eq.bot:followup,sent_by.like.app:*';
+
+/**
  * Quantas conversas a máquina já iniciou hoje.
  *
+ * @param {Date} [agora]
+ * @param {{ daRampa?: boolean }} [opcoes] - `daRampa` conta só o que a rampa conta.
  * @returns {Promise<number|null>} `null` quando a consulta falhou — quem
  *   chama trata isso como "não pode enviar", nunca como zero.
  */
-export async function usadosHoje(agora = new Date()) {
+export async function usadosHoje(agora = new Date(), { daRampa = false } = {}) {
   const { count, error } = await supabase
     .from('wa_messages')
     .select('id', { count: 'exact', head: true })
     .eq('direction', 'outbound')
     .gte('created_at', inicioDoDiaSP(agora).toISOString())
-    .or(AUTOMATICOS);
+    .or(daRampa ? AUTOMATICOS_DA_RAMPA : AUTOMATICOS);
 
   if (error) {
     logger.error('[limite] Não foi possível contar os envios de hoje:', error.message);
@@ -121,50 +134,78 @@ export async function usadosHoje(agora = new Date()) {
  * mesmo com o teto de regime desligado. `recomeco` volta preenchido só
  * nesse caso, para quem precisa saber por que a cota está menor.
  *
+ * `liberadoNoRecomeco` é o acompanhamento (decisão de 16/11/2026): depois
+ * que o número volta, ele não espera a rampa — só o teto de regime. Enquanto
+ * o número está fora do ar, nem ele sai.
+ *
+ * Em recomeço o degrau conta só o que a rampa conta (`AUTOMATICOS_DA_RAMPA`),
+ * e o teto de regime continua contando tudo: vale o menor dos dois.
+ *
+ * @param {Date} [agora]
+ * @param {{ liberadoNoRecomeco?: boolean }} [opcoes]
  * @returns {Promise<{ok: boolean, teto: number, usados: number|null, restante: number, motivo?: string, recomeco?: object}>}
  */
-export async function cota(agora = new Date()) {
-  const situacao = await recomeco.situacao(agora);
-  const teto = tetoDeHoje(config.envio.tetoDiario, situacao);
+export async function cota(agora = new Date(), { liberadoNoRecomeco = false } = {}) {
+  let situacao = await recomeco.situacao(agora);
+  const numeroVoltou = situacao.dia != null;
+  if (liberadoNoRecomeco && situacao.ativo && numeroVoltou && !situacao.indisponivel) {
+    situacao = { ativo: false, dia: situacao.dia, teto: null };
+  }
 
-  if (teto === Infinity) {
+  const regime = config.envio.tetoDiario > 0 ? config.envio.tetoDiario : Infinity;
+  const degrau = situacao.ativo ? tetoDeHoje(regime === Infinity ? 0 : regime, situacao) : Infinity;
+
+  if (regime === Infinity && degrau === Infinity) {
     return { ok: true, teto: 0, usados: null, restante: Infinity, motivo: 'teto desligado' };
   }
 
   // Recomeço com degrau zero (ou marcador ilegível): nada a contar.
-  if (teto <= 0) {
+  if (degrau <= 0) {
     return { ok: false, teto: 0, usados: null, restante: 0, motivo: situacao.motivo, recomeco: situacao };
   }
 
-  const usados = await usadosHoje(agora);
+  const [usados, daRampa] = await Promise.all([
+    regime === Infinity ? 0 : usadosHoje(agora),
+    degrau === Infinity ? 0 : usadosHoje(agora, { daRampa: true }),
+  ]);
 
-  if (usados === null) {
+  if (usados === null || daRampa === null) {
     return {
-      ok: false, teto, usados: null, restante: 0,
+      ok: false, teto: Math.min(regime, degrau), usados: null, restante: 0,
       motivo: 'a contagem do dia falhou — nada sai enquanto o teto não puder ser conferido',
     };
   }
 
-  const restante = teto - usados;
-  const emRecomeco = situacao.ativo && teto === situacao.teto;
+  const restanteRegime = regime - usados;
+  const restanteDegrau = degrau - daRampa;
+  const peloDegrau = restanteDegrau < restanteRegime;
+  const restante = Math.min(restanteRegime, restanteDegrau);
+  const teto = peloDegrau ? degrau : regime;
+  const usadosQueValem = peloDegrau ? daRampa : usados;
+
   return {
     ok: restante > 0,
     teto,
-    usados,
+    usados: usadosQueValem,
     restante: Math.max(restante, 0),
     motivo: restante > 0
       ? undefined
-      : emRecomeco
-        ? `${situacao.motivo} — atingido (${usados}/${teto})`
-        : `teto diário do número atingido (${usados}/${teto})`,
+      : peloDegrau
+        ? `${situacao.motivo} — atingido (${daRampa}/${degrau})`
+        : `teto diário do número atingido (${usados}/${regime})`,
     ...(situacao.ativo ? { recomeco: situacao } : {}),
   };
 }
 
 /** Atalho de leitura: só o booleano e o motivo. */
-export async function podeIniciarConversa(agora = new Date()) {
-  const { ok, motivo } = await cota(agora);
+export async function podeIniciarConversa(agora = new Date(), opcoes = {}) {
+  const { ok, motivo } = await cota(agora, opcoes);
   return { ok, motivo };
+}
+
+/** A cota do acompanhamento: depois da reconexão, só o teto de regime. */
+export function podeIniciarAcompanhamento(agora = new Date()) {
+  return podeIniciarConversa(agora, { liberadoNoRecomeco: true });
 }
 
 /**
@@ -230,4 +271,4 @@ export async function cotaAlternativo(agora = new Date()) {
   };
 }
 
-export const limiteEnvio = { cota, cotaAlternativo, podeIniciarConversa, usadosHoje, inicioDoDiaSP };
+export const limiteEnvio = { cota, cotaAlternativo, podeIniciarConversa, podeIniciarAcompanhamento, usadosHoje, inicioDoDiaSP };
