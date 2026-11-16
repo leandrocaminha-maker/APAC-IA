@@ -364,6 +364,7 @@
   .ger-aula .hora { font-variant-numeric: tabular-nums; font-weight: 600; }
   .ger-aula small { color: var(--suave); font-size: 12px; }
   .ger-aula .regras { grid-column: 2 / -1; display: flex; gap: 4px; flex-wrap: wrap; }
+  .ger-aula .citacao { grid-column: 2 / -1; color: var(--suave); font-size: 13px; }
   .ger-vazio { color: var(--suave); font-size: 13px; padding: 6px 0; }
   .ger-cfg { display: grid; gap: 16px; }
   .ger-cfg h4 { margin: 0 0 6px; font-size: 13px; }
@@ -657,7 +658,9 @@
         <p class="ger-nota">
           A Leia manda, pelo número da academia, uma mensagem por pessoa a cada 10 minutos com o que for novo.
           Situação com mais de 7 dias aparece aqui, mas não vira mensagem. Os números cadastrados ficam fora do funil:
-          resposta deles não abre atendimento nem é respondida pela Leia.
+          resposta deles não abre atendimento. A exceção é a coordenação (ou o gerente) contando como foi uma aula
+          experimental — quem veio, se gostou —, por texto ou áudio: a Leia registra no atendimento, usa na conversa
+          de depois da aula e avisa o consultor.
         </p>
         <div id="ger-config"></div>
         <div class="ger-linha" style="margin-top:16px">
@@ -2087,6 +2090,7 @@ const GER_MODELOS = {
   bebe: { nome: 'Bebês (até 3 anos)', eventos: ['agendada', 'vespera'], idadeMin: 0, idadeMax: 3, atividades: ['Natação Bebê'] },
   infantil: { nome: 'Natação infantil (4 a 12 anos)', eventos: ['agendada'], idadeMin: 4, idadeMax: 12, atividades: ['Natação Infantil', 'Peixinhos'] },
   presenca: { nome: 'Aula sem presença registrada', eventos: ['sem_presenca'] },
+  retorno: { nome: 'Como foi a aula? (retorno da coordenação)', eventos: ['retorno'] },
   branco: { nome: 'Nova regra', eventos: ['agendada'] },
 };
 
@@ -2277,11 +2281,20 @@ function renderGerAulas() {
   }).join('') : '<div class="ger-vazio">Nenhuma aula experimental marcada.</div>';
 
   $('#ger-recentes').innerHTML = recentes.length ? recentes.map(a => {
-    const presenca = a.experimental_status === 'realizada'
+    // O retorno da coordenação (retorno-aula.js): presença dita por quem
+    // estava na aula, e a temperatura da venda.
+    const r = a.retorno;
+    const presenca = r?.presenca === 'veio' ? '<span class="selo ok">veio (coordenação)</span>'
+      : r?.presenca === 'faltou' ? '<span class="selo">faltou (coordenação)</span>'
+      : a.experimental_status === 'realizada'
       ? '<span class="selo ok">presença registrada</span>'
       : a.experimental_status === 'cancelada' ? '<span class="selo">cancelada no EVO</span>'
       : a.experimental_status === 'faltou' ? '<span class="selo">faltou</span>'
       : '<span class="selo">presença não confirmada</span>';
+    const TEMP = { quente: ['🔥 quente', 'alta'], morna: ['🌤️ morna', 'media'], fria: ['❄️ fria', ''] };
+    const contou = r ? [r.satisfacao, r.observacao].filter(Boolean).join(' — ') : '';
+    const temperatura = TEMP[r?.temperatura]
+      ? `<span class="selo ${TEMP[r.temperatura][1]}" title="${esc(contou)}">${TEMP[r.temperatura][0]}</span>` : '';
     const desfecho = a.stage === 'ganho' ? '<span class="selo ok">virou venda</span>'
       : a.stage === 'perdido' ? `<span class="selo alta" title="${esc(a.lost_reason || '')}">perdido</span>`
       : a.stage === 'finalizado' ? '<span class="selo">finalizado</span>'
@@ -2289,7 +2302,8 @@ function renderGerAulas() {
     return `<div class="ger-aula" data-lead="${a.leadId}">
       <span class="hora">${new Date(a.experimental_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
       <div><b>${esc(a.nome)}</b>${idade(a)}<br><small>${esc(a.atividade || 'atividade não informada')} · ${esc(a.consultor || 'sem dono')}</small></div>
-      <div class="lado">${presenca}${desfecho}</div>
+      <div class="lado">${presenca}${temperatura}${desfecho}</div>
+      ${contou ? `<div class="citacao">“${esc(contou)}”</div>` : ''}
     </div>`;
   }).join('') : '<div class="ger-vazio">Nenhuma aula nos últimos 14 dias.</div>';
 }
@@ -2385,6 +2399,17 @@ function renderGerConfig() {
       <label>Às <input class="campo" type="time" data-av="horaFim" value="${c.avisos.horaFim}"></label>
     </div>
     <div>
+      <h4>WhatsApp dos consultores</h4>
+      <p class="ger-nota" style="margin:0 0 10px">Quando a coordenação responde à Leia dizendo quem veio à aula experimental e como saiu dela,
+        o consultor responsável pelo atendimento recebe aqui a temperatura da venda e o recado para fechar a matrícula.
+        Sem número (ou atendimento sem dono), o aviso vai ao gerente e fica na próxima ação do lead.</p>
+      <div class="ger-linha">
+        ${(cat.consultores || []).map(u => `<label>${esc(u.nome)}
+          <input class="campo" data-consultor="${u.id}" value="${esc(c.avisos.consultores?.[u.id] ? telefoneBonito(c.avisos.consultores[u.id]) : '')}" placeholder="(11) 9…"></label>`).join('')
+          || '<span class="ger-nota">Nenhum usuário cadastrado no painel.</span>'}
+      </div>
+    </div>
+    <div>
       <h4>Situações que avisam o gerente</h4>
       ${alertasCfg}
     </div>
@@ -2397,6 +2422,7 @@ function renderGerConfig() {
         <button class="btn pequeno" data-modelo="bebe">Bebês (até 3 anos)</button>
         <button class="btn pequeno" data-modelo="infantil">Natação infantil</button>
         <button class="btn pequeno" data-modelo="presenca">Sem presença</button>
+        <button class="btn pequeno" data-modelo="retorno">Como foi a aula?</button>
         <button class="btn pequeno" data-modelo="branco">Em branco</button>
       </div>
     </div>
@@ -2424,6 +2450,13 @@ $('#ger-config').addEventListener('change', e => {
     if (campo === 'ligado') c.avisos.ligado = el.checked;
     else if (campo === 'gerente' || campo === 'coordenacao') c.avisos[campo] = el.value.split(/[,;]/).map(s => s.trim()).filter(Boolean);
     else c.avisos[campo] = el.value;
+    return gerAlterou();
+  }
+  if (el.dataset.consultor) {
+    c.avisos.consultores = c.avisos.consultores || {};
+    const numero = el.value.trim();
+    if (numero) c.avisos.consultores[el.dataset.consultor] = numero;
+    else delete c.avisos.consultores[el.dataset.consultor];
     return gerAlterou();
   }
   if (el.dataset.alerta) {

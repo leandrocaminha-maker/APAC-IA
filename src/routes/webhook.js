@@ -24,6 +24,7 @@ import { numeroAlternativo } from '../services/numero-alternativo.js';
 import { pesquisa } from '../services/pesquisa.js';
 import { dormir } from '../lib/ritmo.js';
 import { gerencia } from '../services/gerencia.js';
+import { retornoAula } from '../services/retorno-aula.js';
 import { quemResponde, emailDoConsultor } from '../services/consultor-regras.js';
 import {
   instanteDaMensagem, atrasoEmMinutos, ehAtrasada, motivoParaSegurar, haQuantoTempo,
@@ -474,6 +475,23 @@ async function handleIncomingMessage(event) {
       { opt_out: true },
     );
     return;
+  }
+
+  // O retorno da coordenação sobre a aula experimental (16/11/2026): quem
+  // veio e como saiu da aula. A Leia registra no atendimento, avisa o
+  // consultor e confirma a quem escreveu. Vem ANTES da porta da equipe
+  // porque a coordenação costuma ser também da equipe do acompanhamento, e lá
+  // toda mensagem de quem é da equipe para. O que não é retorno (o comando
+  // EQUIPE, o 1/2/3, a citação da ponte, um assunto qualquer) devolve false
+  // e segue o caminho de sempre.
+  try {
+    if (await retornoAula.tratarMensagemDaEquipe({
+      phone, contact, conversation, content, citada, mensagemId: savedMessage?.id ?? null,
+      responder: (texto) => sendAndSave(
+        phone, texto, conversation.id, contact.id, { gerencia: true, retorno_aula: true }, gerencia.SENT_BY_GERENCIA),
+    })) return;
+  } catch (err) {
+    logger.error('[webhook] Retorno da aula falhou — a mensagem segue o caminho normal:', err.message);
   }
 
   // Equipe do acompanhamento (PLANO_ACOMPANHAMENTO.md do Prescrev, §7.2): o

@@ -32,7 +32,9 @@ import {
   CONFIG_PADRAO, TIPOS_ALERTA, EVENTOS_AULA, DESTINOS, DIAS_SEMANA, AVISO_ATE_DIAS,
   normalizarConfig, alertasDe, avisosDeAula, regrasQueCasam, mensagemDoCiclo,
   dentroDoHorario, diaUtil, idadeNaData, telefoneDaEquipe, aplicarBaixas, chaveDeAlertaValida,
+  papelDoNumero as papelNaConfig,
 } from './gerencia-regras.js';
+import { retornoDaAula } from './retorno-aula-regras.js';
 
 const CHAVE_CONFIG = 'gerencia:config';
 const CHAVE_AVISADOS = 'gerencia:avisados';
@@ -69,10 +71,18 @@ export async function salvarConfig(entrada, usuario = null) {
 
 /** Este telefone recebe avisos do painel? É a pergunta que tira a equipe do funil. */
 export async function ehDestinatario(telefone) {
-  const n = telefoneDaEquipe(telefone);
-  if (!n) return false;
+  return !!(await papelDoNumero(telefone));
+}
+
+/**
+ * 'gerente', 'coordenacao', 'consultor' ou `null`. O consultor entrou em
+ * 16/11/2026: ele recebe o retorno da coordenação sobre a aula, e o eco
+ * desse aviso abriria um lead para ele como abriria para o gerente.
+ */
+export async function papelDoNumero(telefone) {
+  if (!telefoneDaEquipe(telefone)) return null;
   const c = await carregarConfig().catch(() => null);
-  return !!c && (c.avisos.gerente.includes(n) || c.avisos.coordenacao.includes(n));
+  return c ? papelNaConfig(c, telefone) : null;
 }
 
 // ──────────────────────────────────────────────
@@ -190,6 +200,7 @@ async function lerDados({ dias = 30, agora = new Date() } = {}) {
   const leadsAbertos = abertos.data.map(l => ({
     ...l,
     consultor: consultor(l),
+    retorno: retornoDaAula(l),
     conversa_status: conversas.get(l.contact_id) || null,
     ultima: mensagens.get(l.contact_id)?.ultima || null,
     ultimaNossaAntes: mensagens.get(l.contact_id)?.ultimaNossaAntes || null,
@@ -222,6 +233,8 @@ async function lerDados({ dias = 30, agora = new Date() } = {}) {
       lembrete: lembretes.get(l.id) || null,
       evo_id_prospect: l.evo_id_prospect,
       birth_date: l.birth_date,
+      // O que a coordenação contou desta aula (retorno-aula.js), ou null.
+      retorno: retornoDaAula(l),
     }));
 
   return { leadsAbertos, aulas, ganhos: ganhos.data, perdidos: perdidos.data, desdePeriodo };
@@ -278,9 +291,9 @@ async function atividadesConhecidas() {
 /** Os dados da tela: alertas, aulas, desfechos, a configuração e os catálogos dela. */
 export async function painel({ dias = 30, agora = new Date() } = {}) {
   const periodo = [7, 30, 90].includes(Number(dias)) ? Number(dias) : 30;
-  const [config, dados, atividades, avisados, baixas] = await Promise.all([
+  const [config, dados, atividades, avisados, baixas, usuarios] = await Promise.all([
     carregarConfig({ fresca: true }), lerDados({ dias: periodo, agora }), atividadesConhecidas(), lerAvisados(),
-    lerBaixas(),
+    lerBaixas(), supabase.from('crm_users').select('id, name, active').order('name'),
   ]);
 
   // As com baixa vêm junto, marcadas: a tela as esconde, e mostra se pedirem.
@@ -311,6 +324,11 @@ export async function painel({ dias = 30, agora = new Date() } = {}) {
     catalogos: {
       tipos: TIPOS_ALERTA, eventos: EVENTOS_AULA, destinos: DESTINOS, diasSemana: DIAS_SEMANA,
       atividades, avisoAteDias: AVISO_ATE_DIAS,
+      // Quem pode ter WhatsApp cadastrado para receber o retorno da aula:
+      // os usuários ativos do painel, e quem já tem número (para poder tirar).
+      consultores: (usuarios.data || [])
+        .filter(u => u.active !== false || config.avisos.consultores[u.id])
+        .map(u => ({ id: u.id, nome: u.name })),
     },
   };
 }
@@ -365,7 +383,7 @@ async function gravarAvisados(avisados, agora) {
  * Gravar é o que permite ao webhook reconhecer o eco e ao painel mostrar o
  * que saiu. O aviso NÃO entra no teto diário do número: é para a equipe.
  */
-async function enviarParaEquipe(telefone, texto) {
+export async function enviarParaEquipe(telefone, texto) {
   const r = await sendText(telefone, texto);
   try {
     const contato = await getOrCreateContact(telefone);
@@ -530,5 +548,6 @@ export async function enviarTeste() {
 }
 
 export const gerencia = {
-  carregarConfig, salvarConfig, ehDestinatario, painel, avisar, enviarTeste, darBaixa, SENT_BY_GERENCIA,
+  carregarConfig, salvarConfig, ehDestinatario, papelDoNumero, painel, avisar, enviarTeste, enviarParaEquipe, darBaixa,
+  SENT_BY_GERENCIA,
 };

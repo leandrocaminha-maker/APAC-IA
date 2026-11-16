@@ -30,6 +30,9 @@ import { sendText, telefoneValido, numeroExiste } from '../services/evolution.js
 import { limiteEnvio } from '../services/limite-envio.js';
 import { evoSync } from '../services/evo-sync.js';
 import { temAulaPorVir } from '../services/aula-regras.js';
+import {
+  retornoDaAula, presencaDoRetorno, trechoParaFollowup, notaParaConsultor,
+} from '../services/retorno-aula-regras.js';
 import { esperar } from '../lib/ritmo.js';
 
 let rodando = false;
@@ -55,6 +58,13 @@ const ETAPAS_MORTAS = new Set(['ganho', 'perdido', 'finalizado']);
  * que o horário anotado.
  */
 async function presencaAvisada(lead, aula) {
+  // A coordenação estava na aula: o que ela contou vale mais que a chamada
+  // do EVO, nos dois sentidos (retorno-aula.js).
+  const daCoordenacao = presencaDoRetorno(retornoDaAula(lead));
+  if (daCoordenacao) {
+    return { resultado: daCoordenacao, motivo: `${daCoordenacao === 'presente' ? 'presença' : 'falta'} confirmada pela coordenação` };
+  }
+
   // Sem data da aula, só vale aviso dos últimos dois dias.
   const inicio = Number.isFinite(new Date(aula).getTime())
     ? new Date(aula).getTime() - 6 * 60 * 60 * 1000
@@ -97,7 +107,7 @@ const TRILHA_DE_VENDA = 'lead';
  * Só a resposta gerada é salva. Assim a instrução orienta este turno sem
  * virar uma fala falsa do cliente nas conversas seguintes.
  */
-function instrucao(tipo, { lead, presenca, contexto }) {
+function instrucao(tipo, { lead, presenca, contexto, retorno = null }) {
   const atividade = contexto?.atividade || lead.experimental_activity || 'a aula';
   const quando = contexto?.aula
     ? new Date(contexto.aula).toLocaleString('pt-BR', {
@@ -191,7 +201,12 @@ function instrucao(tipo, { lead, presenca, contexto }) {
       : 'ae_pos_aula_desconhecida')
     : tipo;
 
-  return cabeca + (roteiros[chave] || roteiros.sondagem_1);
+  // O que a coordenação contou da aula entra na conversa de depois dela e
+  // nas duas sondagens — é o que diz se a Leia comemora, sonda a ressalva ou
+  // pisa devagar. O lembrete é de antes da aula, e a régua de silêncio é de
+  // quem pode nem ter vindo.
+  const comRetorno = tipo === 'ae_pos_aula' || tipo.startsWith('sondagem');
+  return cabeca + (roteiros[chave] || roteiros.sondagem_1) + (comRetorno ? trechoParaFollowup(retorno) : '');
 }
 
 /**
@@ -201,8 +216,12 @@ function instrucao(tipo, { lead, presenca, contexto }) {
  * automática, e o consultor entra se quiser. Um handoff aqui encheria a
  * fila de casos que ainda não pedem gente.
  */
-async function sugerirAoConsultor(lead, { presenca, conversa }) {
-  const dica = presenca === 'presente'
+async function sugerirAoConsultor(lead, { presenca, conversa, retorno = null }) {
+  // Com o retorno da coordenação, o consultor já recebeu a temperatura e o
+  // empurrão (retorno-aula.js): a nota só acrescenta que a Leia abriu a conversa.
+  const dica = retorno
+    ? `${notaParaConsultor(retorno)} A Leia já abriu a conversa de depois da aula.`
+    : presenca === 'presente'
     ? 'A pessoa compareceu (presença registrada no EVO) — ' +
       'é o melhor momento para entrar com proposta fechada.'
     : presenca === 'falta'
@@ -216,8 +235,12 @@ async function sugerirAoConsultor(lead, { presenca, conversa }) {
     type: 'sugestao_consultor',
     actor: 'leia',
     summary: `Pós-experimental (${presenca}). ${dica}`,
-    payload: { presenca, conversa },
+    payload: { presenca, conversa, ...(retorno ? { temperatura: retorno.temperatura || null } : {}) },
   });
+
+  // Com retorno, a próxima ação já é a dele, para AGORA — empurrá-la para
+  // amanhã esfriaria justamente o lead que a coordenação deu como quente.
+  if (retorno) return;
 
   await supabase
     .from('crm_leads')
@@ -323,9 +346,19 @@ async function enviarUm(item) {
   let presenca = null;
   let leitura = null;
 
+  // O retorno da coordenação é lido AGORA, não da fila: ela pode ter
+  // respondido depois de a fila ter sido lida, e antes desta mensagem.
+  const leadDeAgora = { ...lead, ...(aula?.lead || {}) };
+  if (!aula?.lead && (item.tipo === 'ae_pos_aula' || item.tipo.startsWith('sondagem'))) {
+    const { data: fresco } = await supabase.from('crm_leads')
+      .select('experimental_at, experimental_status, metadata').eq('id', lead.id).maybeSingle();
+    if (fresco) Object.assign(leadDeAgora, fresco);
+  }
+  const retorno = retornoDaAula(leadDeAgora);
+
   if (item.tipo === 'ae_pos_aula') {
     // A conferência acima já gravou o que a sessão finalizada disse.
-    leitura = await presencaAvisada({ ...lead, ...(aula?.lead || {}) }, item.contexto?.aula || lead.experimental_at);
+    leitura = await presencaAvisada(leadDeAgora, item.contexto?.aula || lead.experimental_at);
     presenca = leitura.resultado;
     logger.info(`[followup] Lead ${lead.id}: presença "${presenca}" — ${leitura.motivo}`);
   }
@@ -357,7 +390,7 @@ async function enviarUm(item) {
   }
 
   const resposta = await aiAgent.gerarFollowup({
-    instrucao: instrucao(item.tipo, { lead, presenca, contexto: item.contexto }),
+    instrucao: instrucao(item.tipo, { lead, presenca, contexto: item.contexto, retorno }),
     conversationId: conversa.id,
     contactInfo: {
       id: lead.contact_id,
@@ -398,7 +431,7 @@ async function enviarUm(item) {
 
   // 4. O que vem depois.
   if (item.tipo === 'ae_pos_aula') {
-    await sugerirAoConsultor(lead, { presenca, conversa: conversa.id });
+    await sugerirAoConsultor(lead, { presenca, conversa: conversa.id, retorno });
 
     const proxima = await followup.proximaSondagem(lead);
     if (proxima) await followup.agendar(lead.id, proxima.tipo, proxima.quando, item.contexto);

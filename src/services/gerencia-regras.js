@@ -69,6 +69,7 @@ export const EVENTOS_AULA = {
   agendada: 'Quando a aula é marcada',
   vespera: 'Na véspera da aula',
   dia: 'No dia da aula (antes do horário)',
+  retorno: 'Depois da aula: perguntar se veio e como foi',
   sem_presenca: 'Sem presença registrada no dia seguinte',
   sem_desfecho: 'Aula passou e sem desfecho depois de N dias',
 };
@@ -92,6 +93,9 @@ export const CONFIG_PADRAO = {
     ligado: false,
     gerente: [],
     coordenacao: [],
+    // WhatsApp de cada consultor, pelo id em `crm_users`: é para onde vai o
+    // retorno da coordenação sobre a aula (retorno-aula.js).
+    consultores: {},
     horaInicio: '08:00',
     horaFim: '20:30',
   },
@@ -134,6 +138,31 @@ export function telefoneDaEquipe(v) {
 
 const telefones = (lista) => [...new Set((Array.isArray(lista) ? lista : String(lista || '').split(/[,;\n]/))
   .map(telefoneDaEquipe).filter(Boolean))].slice(0, 5);
+
+/** `{ idDoUsuario: telefone }`, só com id inteiro e celular válido. */
+function telefonesDosConsultores(entrada) {
+  const saida = {};
+  for (const [id, tel] of Object.entries(entrada && typeof entrada === 'object' ? entrada : {}).slice(0, 40)) {
+    const n = telefoneDaEquipe(tel);
+    if (/^\d+$/.test(id) && n) saida[id] = n;
+  }
+  return saida;
+}
+
+/**
+ * O papel deste número nos avisos: 'gerente', 'coordenacao', 'consultor' ou
+ * `null`. Quem tem dois papéis vale pelo primeiro desta ordem — é a ordem de
+ * quem pode informar o retorno de uma aula.
+ */
+export function papelDoNumero(config, telefone) {
+  const n = telefoneDaEquipe(telefone);
+  const avisos = config?.avisos;
+  if (!n || !avisos) return null;
+  if (avisos.coordenacao?.includes(n)) return 'coordenacao';
+  if (avisos.gerente?.includes(n)) return 'gerente';
+  if (Object.values(avisos.consultores || {}).includes(n)) return 'consultor';
+  return null;
+}
 
 function normalizarRegra(r, i) {
   const eventos = (Array.isArray(r?.eventos) ? r.eventos : []).filter(e => EVENTOS_AULA[e]);
@@ -186,6 +215,7 @@ export function normalizarConfig(entrada = {}) {
       ligado: avisos.ligado === true,
       gerente: telefones(avisos.gerente),
       coordenacao: telefones(avisos.coordenacao),
+      consultores: telefonesDosConsultores(avisos.consultores),
       horaInicio: hora(avisos.horaInicio, CONFIG_PADRAO.avisos.horaInicio),
       horaFim: hora(avisos.horaFim, CONFIG_PADRAO.avisos.horaFim),
     },
@@ -284,6 +314,9 @@ const ABERTAS_COM_AULA = new Set(['experimental_agendada', 'experimental_realiza
  * oportunidade (ver `presencaNaSessao` em aula-regras.js).
  */
 export function presencaDaAula(l) {
+  // A coordenação estava na aula: o que ela disse vale mais que a chamada.
+  if (l.retorno?.presenca === 'veio') return 'presença confirmada pela coordenação';
+  if (l.retorno?.presenca === 'faltou') return 'falta confirmada pela coordenação';
   if (l.experimental_status === 'realizada' || l.stage === 'experimental_realizada') return 'presença registrada';
   if (l.experimental_status === 'faltou') return 'falta registrada';
   return 'presença não confirmada';
@@ -444,8 +477,11 @@ const ENCERRADAS = new Set(['ganho', 'perdido', 'finalizado']);
  *  - agendada: a aula ainda vai acontecer.
  *  - vespera: hoje é o dia anterior ao da aula.
  *  - dia: hoje é o dia da aula e ela ainda não começou.
+ *  - retorno: de uma hora depois do início (a aula acabou) até 2 dias
+ *    depois, enquanto a coordenação não disse se a pessoa veio.
  *  - sem_presenca: a partir das 9h do dia seguinte, por 3 dias, sem a
- *    presença que o EVO avisa ("realizada") e sem venda.
+ *    presença que o EVO avisa ("realizada"), sem retorno da coordenação e
+ *    sem venda.
  *  - sem_desfecho: `diasSemDesfecho` depois da aula, por 3 dias, com o
  *    atendimento ainda aberto.
  */
@@ -466,9 +502,15 @@ export function eventosValendo(aula, agora = new Date(), { diasSemDesfecho = 3 }
     return eventos;
   }
 
+  // `aula.retorno`: o que a coordenação já contou desta aula (retorno-aula.js).
+  const jaContou = !!aula.retorno?.presenca;
+  if (t >= quando + HORA_MS && t < quando + 2 * DIA_MS && !jaContou && !ENCERRADAS.has(aula.stage)) {
+    eventos.push('retorno');
+  }
+
   const diaSeguinte9h = new Date(`${partesSP(quando + DIA_MS).dia}T09:00:00-03:00`).getTime();
   if (t >= diaSeguinte9h && t < diaSeguinte9h + 3 * DIA_MS
-    && aula.experimental_status !== 'realizada' && aula.stage !== 'ganho') {
+    && aula.experimental_status !== 'realizada' && !jaContou && aula.stage !== 'ganho') {
     eventos.push('sem_presenca');
   }
 
@@ -515,6 +557,7 @@ const ROTULO_EVENTO = {
   agendada: '🗓️ Aula experimental marcada',
   vespera: '⏰ Aula experimental amanhã',
   dia: '📍 Aula experimental hoje',
+  retorno: '🙋 Como foi a aula experimental?',
   sem_presenca: '❔ Aula sem presença registrada',
   sem_desfecho: '📌 Aula passou, sem desfecho',
 };
@@ -531,6 +574,14 @@ function linhaDaAula(aviso) {
     `_Regra: ${aviso.regra.nome}_`,
   ].join('\n');
 }
+
+/** Os avisos de aula a que a coordenação pode responder contando como foi. */
+const EVENTOS_QUE_PEDEM_RETORNO = new Set(['retorno', 'sem_presenca', 'sem_desfecho']);
+
+/** O convite a responder, uma vez por mensagem. */
+export const PEDIDO_DE_RETORNO =
+  '↩️ _Responda aqui, por texto ou áudio: quem veio e como saiu da aula (gostou? perguntou de plano? ficou com dúvida?). ' +
+  'Eu registro e aviso o consultor para fechar a matrícula._';
 
 const ROTULO_QUEM = { consultor: 'consultor', leia: 'Leia não respondeu' };
 
@@ -560,11 +611,14 @@ export function mensagemDoCiclo({ alertas = [], aulas = [], link = '' }, agora =
     partes.push(`*${t.rotulo}* (${doTipo.length})\n${cabem.map(a => linhaDoAlerta(a, agora)).join('\n')}`);
   }
 
+  let pedeRetorno = false;
   for (const aviso of aulas) {
     if (usados >= ITENS_POR_MENSAGEM) break;
     usados++;
     partes.push(linhaDaAula(aviso));
+    if (EVENTOS_QUE_PEDEM_RETORNO.has(aviso.evento)) pedeRetorno = true;
   }
+  if (pedeRetorno) partes.push(PEDIDO_DE_RETORNO);
 
   if (itens > usados) partes.push(`…e mais ${itens - usados} no painel.`);
   if (link) partes.push(link);

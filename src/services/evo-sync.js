@@ -28,6 +28,7 @@ import {
   escolherSessao, vinculoDoProspect, proximoPassoDaAulaVendida, instanteDaVenda, diaSP,
   NOTA_SEM_RESERVA, situacaoDaAula, dataHoraSP, temAulaPorVir, presencaNaSessao, instanteDaAula,
 } from './aula-regras.js';
+import { retornoDaAula } from './retorno-aula-regras.js';
 import { aoAvisoDaAutomacao, aoVenderAvaliacao } from './avaliacao-avisos.js';
 
 /** Autor de uma ação, no formato que crm_lead_events espera. */
@@ -1202,6 +1203,10 @@ async function cadastrosDoCelular(lead) {
  */
 async function registrarPresencaVista(lead, presenca, { agora = new Date(), actor = 'sistema', momento = '' } = {}) {
   const vista = curtaSP(agora);
+
+  // A coordenação já disse se a pessoa veio (retorno-aula.js): ela estava na
+  // aula, e a chamada do EVO não desfaz o que ela contou.
+  if (retornoDaAula(lead)?.presenca) return null;
 
   if (presenca === 'presente' && lead.experimental_status !== 'realizada') {
     const atualizado = await mudarEtapa(lead, 'experimental_realizada', {

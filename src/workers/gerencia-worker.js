@@ -11,6 +11,7 @@
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { gerencia } from '../services/gerencia.js';
+import { retornoAula } from '../services/retorno-aula.js';
 
 let rodando = false;
 
@@ -20,6 +21,14 @@ async function ciclo() {
   try {
     const r = await gerencia.avisar();
     if (r.enviados) logger.info(`[gerencia-worker] Ciclo: ${r.enviados} aviso(s)`);
+  } catch (err) {
+    logger.error('[gerencia-worker] Ciclo falhou:', err.message);
+  }
+  try {
+    // O retorno da coordenação que chegou fora da janela de contato: o aviso
+    // ao consultor sai na abertura (retorno-aula.js).
+    const p = await retornoAula.avisarConsultoresPendentes();
+    if (p.enviados) logger.info(`[gerencia-worker] ${p.enviados} retorno(s) de aula avisado(s) ao consultor`);
   } catch (err) {
     logger.error('[gerencia-worker] Ciclo falhou:', err.message);
   } finally {

@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import {
   normalizarConfig, telefoneDaEquipe, dentroDoHorario, idadeNaData, ehCortesia,
   alertasDe, regraCasa, eventosValendo, avisosDeAula, mensagemDoCiclo, CONFIG_PADRAO,
-  aplicarBaixas, chaveDeAlertaValida, TIPOS_ALERTA,
+  aplicarBaixas, chaveDeAlertaValida, TIPOS_ALERTA, papelDoNumero, PEDIDO_DE_RETORNO,
 } from './gerencia-regras.js';
 
 const sp = (s) => new Date(`${s}-03:00`);
@@ -185,11 +185,45 @@ test('eventos: marcada, véspera e dia antes da aula', () => {
 
 test('eventos depois da aula: sem presença no dia seguinte, sem desfecho depois de N dias', () => {
   const a = aula({ experimental_at: '2026-10-24T13:30:00Z' });   // sáb 24/10, 10h30
-  assert.deepEqual(eventosValendo(a, sp('2026-10-25T08:00:00')), []);
-  assert.deepEqual(eventosValendo(a, sp('2026-10-25T09:00:00')), ['sem_presenca']);
+  assert.deepEqual(eventosValendo(a, sp('2026-10-25T08:00:00')), ['retorno']);
+  assert.deepEqual(eventosValendo(a, sp('2026-10-25T09:00:00')), ['retorno', 'sem_presenca']);
   assert.deepEqual(eventosValendo(a, sp('2026-10-27T11:00:00')), ['sem_presenca', 'sem_desfecho']);
-  assert.deepEqual(eventosValendo({ ...a, experimental_status: 'realizada' }, sp('2026-10-25T10:00:00')), []);
+  // Presença no EVO não dispensa a pergunta: falta saber como a pessoa saiu da aula.
+  assert.deepEqual(eventosValendo({ ...a, experimental_status: 'realizada' }, sp('2026-10-25T10:00:00')), ['retorno']);
   assert.deepEqual(eventosValendo({ ...a, stage: 'ganho' }, sp('2026-10-27T11:00:00')), []);
+});
+
+test('retorno da coordenação: pergunta uma hora depois do início, e para quando ela responde', () => {
+  const a = aula({ experimental_at: '2026-10-24T13:30:00Z' });   // sáb 24/10, 10h30
+  assert.deepEqual(eventosValendo(a, sp('2026-10-24T11:00:00')), []);
+  assert.deepEqual(eventosValendo(a, sp('2026-10-24T11:30:00')), ['retorno']);
+  const comRetorno = { ...a, retorno: { presenca: 'faltou' } };
+  assert.deepEqual(eventosValendo(comRetorno, sp('2026-10-25T10:00:00')), []);   // nem "sem presença"
+  assert.deepEqual(eventosValendo({ ...a, stage: 'ganho' }, sp('2026-10-24T12:00:00')), []);
+});
+
+test('aviso que pede retorno leva o convite a responder, uma vez por mensagem', () => {
+  const a = aula({ experimental_at: '2026-10-24T13:30:00Z' });
+  const aviso = (evento, leadId) => ({ evento, aula: { ...a, leadId }, regra: { id: 'todas', nome: 'Todas' }, destino: 'coordenacao' });
+  const comPedido = mensagemDoCiclo({ aulas: [aviso('retorno', 1), aviso('sem_presenca', 2)] }, AGORA);
+  assert.match(comPedido, /Como foi a aula experimental\?/);
+  assert.equal(comPedido.split(PEDIDO_DE_RETORNO).length, 2);
+  assert.ok(!mensagemDoCiclo({ aulas: [aviso('agendada', 1)] }, AGORA).includes(PEDIDO_DE_RETORNO));
+  const confirmada = mensagemDoCiclo({ aulas: [{ ...aviso('sem_desfecho', 3), aula: { ...a, retorno: { presenca: 'veio' } } }] }, AGORA);
+  assert.match(confirmada, /presença confirmada pela coordenação/);
+});
+
+test('WhatsApp dos consultores: por id de usuário, e o papel de cada número', () => {
+  const c = normalizarConfig({ avisos: {
+    gerente: ['11 98259-2538'], coordenacao: ['11 97777-0001', '11 98259-2538'],
+    consultores: { 5: '(11) 96666-0005', 12: 'lixo', abc: '11 96666-0009' },
+  } });
+  assert.deepEqual(c.avisos.consultores, { 5: '5511966660005' });
+  assert.equal(papelDoNumero(c, '5511977770001'), 'coordenacao');
+  assert.equal(papelDoNumero(c, '5511982592538'), 'coordenacao');   // gerente que também coordena
+  assert.equal(papelDoNumero(c, '11 96666-0005'), 'consultor');
+  assert.equal(papelDoNumero(c, '5511955554444'), null);
+  assert.deepEqual(normalizarConfig({}).avisos.consultores, {});
 });
 
 test('aviso de aula: só os eventos da regra, com chave por aula, evento e regra', () => {

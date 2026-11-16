@@ -1,10 +1,77 @@
 # Estado do projeto — handoff
 
+> **16/11/2026, no branch e sem deploy: o retorno da coordenação sobre a aula experimental (primeira seção).**
 > **Snapshot de 15/11/2026: número principal restringido pela Meta em 14/11; todo envio passa pela pista do número e resposta a mensagem atrasada sai espaçada.** Em 14/11: a Evolution roda numa imagem própria, com a stanza `<status>` confirmada (deploy de `d72e2bf` às 11h54). Antes disso, em 10/11: o repasse da experimental marcada pela Leia e a aula conferida no EVO (deploy de `7e2ef12`).
 > Documento de continuidade: descreve onde o projeto parou e o que a próxima sessão deve fazer.
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## O retorno da coordenação sobre a aula experimental (16/11/2026) — sem commit nem deploy
+
+Pedido do responsável: depois da aula, a coordenação responde direto à Leia
+dizendo quem veio e como saiu. A Leia trata como informação confiável,
+registra no atendimento, usa na conversa pós-aula e avisa o consultor
+responsável com a temperatura da venda e o empurrão para fechar a matrícula.
+Até aqui a resposta de quem recebe os avisos era gravada e mais nada, e a
+presença vinha só da chamada do EVO (que na virada do dia dá falta a toda
+oportunidade).
+
+- **Quem informa:** os números de coordenação e de gerente da aba Gerência,
+  por texto ou áudio, respondendo a um aviso ou do nada. A porta fica no
+  webhook ANTES da porta da equipe do acompanhamento (a coordenação costuma
+  ser EQUIPE, e lá toda mensagem para). O que não é retorno — `EQUIPE`, o
+  1/2/3, citação da ponte, cortesia, assunto qualquer — segue como antes.
+- **Quem lê é o modelo** (`retorno-aula.js`, `origem = 'retorno_aula'` em
+  `wa_ai_usage`): recebe as aulas dos últimos 7 dias que já começaram, a
+  mensagem citada e as últimas mensagens, e devolve por aula presença,
+  satisfação, temperatura (quente · morna · fria) e observação. Nome ambíguo
+  ("a Luiza", com duas): a Leia pergunta em vez de chutar, e a resposta
+  ("a da musculação") fecha. Ensaiado em 16/11 com 7 mensagens: 1,3–2,2 s e
+  ~1.300 tokens cada, todas certas. Só roda havendo aula na janela.
+- **O que grava** (sem migration): `crm_leads.metadata.retorno_aula`
+  (`aula, presenca, satisfacao, temperatura, observacao, por, em,
+  aviso_consultor`), o evento `retorno_coordenacao`, e a presença como fato —
+  "veio" move para Experimental realizada (evento `experimental_realizada`),
+  "faltou" grava `faltou` mesmo por cima de presença do EVO.
+  `registrarPresencaVista` não desfaz o que a coordenação disse. A segunda
+  mensagem completa a primeira; retorno de uma aula não vale para a remarcada.
+- **A coordenação recebe a confirmação:** "Anotado ✅ • *Luiza*: veio à aula ·
+  "amou" · venda quente → aviso para Shirlei".
+- **O consultor** (dono do lead, `owner_user_id`) recebe no WhatsApp o título
+  com a temperatura, o que a coordenação contou, o contato e o empurrão
+  ("Shirlei, é agora: vai pra cima com a proposta fechada…"; quem faltou é
+  "chama hoje para remarcar"). O número de cada consultor se cadastra na aba
+  Gerência (`avisos.consultores`, por id de usuário). Sem dono ou sem número,
+  vai ao gerente dizendo isso; com os avisos desligados, fica só no painel. A
+  próxima ação do lead leva o mesmo recado, para AGORA (sem passar por cima
+  de uma que o consultor marcou para o futuro). Só sai na janela de contato;
+  fora dela fica `pendente` no retorno e o worker da gerência manda na
+  abertura. Os números de consultor passam a ficar fora do funil, como os de
+  gerente e coordenação.
+- **A conversa pós-aula e as sondagens** (`followup-worker.js`) leem o
+  retorno na hora do envio: a presença dele vale mais que a do EVO, e a
+  instrução ganha o trecho "O QUE A COORDENAÇÃO INFORMOU" — comemora e leva
+  ao próximo passo (quente), sonda a ressalva (morna), pisa devagar (fria).
+  A Leia não repete as palavras da equipe nem fala em temperatura.
+- **A Leia pergunta:** momento novo nas regras de aula, "Depois da aula:
+  perguntar se veio e como foi" (`retorno`: de 1 h depois do início até 2
+  dias, enquanto ninguém respondeu). Os avisos `retorno`, `sem_presenca` e
+  `sem_desfecho` levam o convite a responder; `sem_presenca` não sai mais
+  para aula com retorno. Vale a regra de sempre: avisos só em dia útil.
+- **Painel:** em "Últimos 14 dias", os selos "veio/faltou (coordenação)", a
+  temperatura e o que foi contado.
+- Regras puras em `retorno-aula-regras.js` (14 testes; 430 no total).
+
+**Para ir ao ar:** deploy, sem migration e sem `.env`. Depois, na aba
+Gerência: cadastrar o WhatsApp dos consultores e ligar o momento "Depois da
+aula" numa regra (botão "Como foi a aula?"). As regras já gravadas não ganham
+o momento novo sozinhas — mas a resposta a `sem_presenca` já funciona.
+
+**Limites.** O retorno só entra pelo WhatsApp (não há botão no painel). O
+aviso ao consultor não repete se ele não agir — quem cobra é o alerta "aula
+passou sem desfecho". A interpretação é do modelo: a confirmação devolvida à
+coordenação é a conferência, e uma segunda mensagem corrige.
 
 ## Reação, figurinha e GIF com nome; imagem descrita em texto (15/11/2026)
 
