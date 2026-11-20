@@ -152,6 +152,8 @@ Sessões (início de cada uma):
 
 ## Pendências desta grade (não invente estes dados)
 
+- **Sábado 21/11/2026 (ponte do feriado de 20/11):** fechado, não há aula
+  de sábado — ver `informacoes-gerais.md`.
 - **Feriados e recesso (21/12/2026 a 03/01/2027):** não há aula — ver
   `informacoes-gerais.md`.
 - **Vagas livres por turma** não existem nesta base — só a lotação máxima.

@@ -79,6 +79,7 @@ function moveis(ano) {
  * Todo dia do intervalo vale como feriado.
  */
 const RECESSOS = [
+  ['2026-11-21', '2026-11-21', 'Ponte do feriado de 20/11'],
   ['2026-12-21', '2027-01-03', 'Recesso de fim de ano'],
 ];
 

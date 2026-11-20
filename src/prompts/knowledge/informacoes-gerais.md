@@ -101,6 +101,17 @@ que descobrir depois da matrícula.
 **Domingo não abre.** Para quem só tem o fim de semana livre, o caminho é o
 Clube Sábado (`planos-e-valores.md`).
 
+### Aviso temporário — ponte do feriado de 20/11/2026
+
+**A academia NÃO abre na sexta, 20/11/2026 (feriado), nem no sábado,
+21/11/2026 (ponte do feriado).** Com o domingo, fica fechada de 20 a
+22/11 e **reabre na segunda, 23/11/2026, às 06:00**, no horário normal.
+No sábado 21/11 não há aula de sábado (nem do Clube Sábado), musculação
+nem consultor. Quem quiser aula experimental, começar ou treinar nesses
+dias: diga que a academia estará fechada e ofereça a partir de segunda,
+23/11. Se a pessoa perguntar se perde a aula de sábado, não invente
+reposição: um consultor confirma.
+
 ### Feriados e recesso — a academia NÃO abre
 
 - **Recesso de fim de ano: de 21/12/2026 (segunda) a 03/01/2027 (domingo),
