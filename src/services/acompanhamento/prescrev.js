@@ -164,6 +164,25 @@ export async function buscarAvisosDaAvaliacao() {
   return { finalizados: r.finalizados ?? [], relatorios: r.relatorios_finais ?? [], migracao: r.migracao !== false };
 }
 
+/** A versão do fechamento dos ciclos que este código sabe ler (CICLOS_FECHAR_VERSION do Prescrev). */
+export const CICLOS_VERSAO_LIDA = 1;
+
+/**
+ * Fecha os ciclos do acompanhamento que terminaram (Prescrev 069): o Prescrev
+ * fotografa o ciclo de quem passou de um encontro ou de uma reavaliação. Uma
+ * vez por dia, com a rodada da régua; chamar de novo é inofensivo. Só banco de
+ * lá, e o histórico daqui (`/acompanhamento/historico`): nada vai a ninguém.
+ * @returns {Promise<{fotografados: object[], pendentes: number, erros: object[], migracao: boolean}>}
+ */
+export async function fecharCiclosNoPrescrev() {
+  // Lê as fichas da unidade e, para cada ciclo que fechou, o histórico daqui.
+  const r = await buscar('/api/acompanhamento/ciclos-fechar', { metodo: 'POST', timeout: 120_000 });
+  if (r.versao > CICLOS_VERSAO_LIDA) {
+    throw new Error(`Ciclos na versão ${r.versao}, e este código lê até a ${CICLOS_VERSAO_LIDA}: atualize o APAC.`);
+  }
+  return { fotografados: r.fotografados ?? [], pendentes: r.pendentes ?? 0, erros: r.erros ?? [], migracao: r.migracao !== false };
+}
+
 /** Os modelos publicados. @returns {Promise<{versao: number, marcadores: object[], modelos: object[]}>} */
 export async function buscarModelos() {
   const r = await buscar('/api/acompanhamento/modelos');

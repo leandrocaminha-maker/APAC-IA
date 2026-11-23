@@ -31,6 +31,7 @@ import { enviarRelatorios } from '../services/acompanhamento/relatorios.js';
 import { processarEncaminhamentos } from '../services/acompanhamento/encaminhamentos.js';
 import { processarPontes } from '../services/acompanhamento/ponte.js';
 import { conferirSessoesDaSemana } from '../services/acompanhamento/aviso-sessoes.js';
+import { fecharCiclosNoPrescrev } from '../services/acompanhamento/prescrev.js';
 import { avisarAgendaDeTestes, avisarDaAvaliacao, lembrarVesperaDosTestes } from '../services/acompanhamento/agenda-testes.js';
 import { avisarAgendaDeEncontros, convidarParaEncontros, lembrarVesperaDosEncontros } from '../services/acompanhamento/encontros.js';
 
@@ -55,6 +56,16 @@ async function ciclo() {
     // O dia já rodou neste modo. Ligar o envio no meio do dia faz rodar de
     // novo, agora como envio.
     if (marca?.valor?.dia === hojeSP() && (marca.valor.modo ?? 'ensaio') === modoAtual()) return;
+    // Os ciclos do acompanhamento (Prescrev 069): antes da régua, uma vez por
+    // dia, o Prescrev fotografa o ciclo de quem passou de um marco. Não manda
+    // nada a ninguém, e a falha não segura a rodada: a próxima fecha.
+    await fecharCiclosNoPrescrev()
+      .then(r => {
+        if (r.fotografados.length || r.pendentes || r.erros.length) {
+          logger.info(`[acompanhamento] Ciclos: ${r.fotografados.length} fechado(s), ${r.pendentes} pendente(s), ${r.erros.length} erro(s)`);
+        }
+      })
+      .catch(err => logger.warn('[acompanhamento] Fechamento dos ciclos:', err.message));
     await rodarEnsaio({ origem: 'worker' });
   } catch (err) {
     logger.error('[acompanhamento] Ensaio falhou:', err.message);

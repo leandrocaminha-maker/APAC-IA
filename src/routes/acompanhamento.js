@@ -39,6 +39,14 @@
  *       quem é o professor e o destinatário — o Prescrev confere se quem está
  *       logado pode ver antes de mostrar.
  *
+ *   GET  /acompanhamento/historico?cliente=<id>&de=AAAA-MM-DD
+ *       o que aconteceu com o aluno no WhatsApp desde aquele dia, para a aba
+ *       de ciclos do Prescrev (069 de lá): as mensagens que a régua ENVIOU
+ *       (dia e situação, sem o texto), os dias em que o aluno escreveu (só o
+ *       dia, sem o conteúdo; null sem inscrição com contato) e os
+ *       encaminhamentos dele. O formato atravessa os dois (`HistoricoDoApac`,
+ *       ciclos-banco.ts): mudou um, mude o outro.
+ *
  * Sem login: aceita só requisição assinada com `ACOMPANHAMENTO_SECRET`, o
  * mesmo esquema das rotas do Prescrev que o worker daqui chama
  * (HMAC-SHA256 hex de `${timestamp}.${caminho com a consulta}`, 5 minutos).
@@ -157,6 +165,45 @@ router.get('/grade', assinado, async (req, res) => {
   } catch (err) {
     logger.error('[acompanhamento] Grade ao Prescrev:', err.message);
     res.status(502).json({ error: `O EVO não respondeu: ${err.message}` });
+  }
+});
+
+router.get('/historico', assinado, async (req, res) => {
+  const cliente = String(req.query.cliente ?? '');
+  const de = String(req.query.de ?? '');
+  if (!/^[0-9a-f-]{36}$/i.test(cliente)) return res.status(400).json({ error: 'cliente precisa ser o id do Prescrev.' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de)) return res.status(400).json({ error: 'de precisa ser AAAA-MM-DD.' });
+  try {
+    const desde = `${de}T00:00:00-03:00`;
+    const diaSP = iso => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(iso));
+    const [disparos, encaminhamentos, inscricoes] = await Promise.all([
+      supabase.from('acomp_disparos').select('dia, situacao')
+        .eq('cliente_id', cliente).eq('modo', 'envio').eq('status', 'enviado').gte('dia', de).order('dia').limit(1000),
+      supabase.from('acomp_encaminhamentos').select('created_at, motivo, status, origem, destinatario_nome')
+        .eq('cliente_id', cliente).gte('created_at', desde).order('created_at').limit(500),
+      supabase.from('acomp_inscricoes').select('contact_id')
+        .eq('cliente_id', cliente).not('contact_id', 'is', null).order('created_at', { ascending: false }).limit(5),
+    ]);
+    for (const [nome, r] of [['acomp_disparos', disparos], ['acomp_encaminhamentos', encaminhamentos], ['acomp_inscricoes', inscricoes]]) {
+      if (r.error) throw new Error(`${nome}: ${r.error.message}`);
+    }
+    // Só o dia em que o aluno escreveu: o conteúdo da conversa não sai daqui.
+    let respostas = null;
+    const contatos = [...new Set((inscricoes.data ?? []).map(i => i.contact_id))];
+    if (contatos.length) {
+      const { data, error } = await supabase.from('wa_messages').select('created_at')
+        .in('contact_id', contatos).eq('direction', 'inbound').gte('created_at', desde).order('created_at').limit(5000);
+      if (error) throw new Error(`wa_messages: ${error.message}`);
+      respostas = [...new Set((data ?? []).map(m => diaSP(m.created_at)))];
+    }
+    res.json({
+      mensagens: (disparos.data ?? []).filter(d => d.situacao).map(d => ({ dia: d.dia, situacao: d.situacao })),
+      respostas,
+      encaminhamentos: encaminhamentos.data ?? [],
+    });
+  } catch (err) {
+    logger.error('[acompanhamento] Histórico ao Prescrev:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
