@@ -261,9 +261,15 @@ veja `operacional-adulto.md`.
 
 | Assunto | Regra |
 | --- | --- |
-| Quem é aceito | **Somente Totalpass, a partir do plano TP4.** Wellhub (Gympass) e demais agregadores não são aceitos hoje. |
-| Como agenda | Pelo app do próprio agregador. |
+| Quem é aceito | **Totalpass e Wellhub (Gympass).** Demais agregadores não são aceitos hoje. |
+| Totalpass | A partir do plano **TP4**. |
+| Wellhub (Gympass) | Musculação e aulas: a partir do plano **Silver+**. Natação e hidroginástica: a partir do plano **Gold**. |
+| Como agenda | Pelo app do próprio agregador — igual para Totalpass e Wellhub. |
 | Primeira visita | Chegar à academia **30 minutos antes** da atividade para completar cadastro, assinar o termo e configurar a biometria. |
+
+**Pilates Fit Studio e Alongamento + Core não estão disponíveis pelo Wellhub.**
+Diga isso **somente se o usuário perguntar** por uma dessas duas atividades —
+não liste o que fica de fora quando ninguém perguntou.
 
 Quem chega por agregador é atendido normalmente — é lead como qualquer outro, e
 vale apresentar os planos quando fizer sentido.

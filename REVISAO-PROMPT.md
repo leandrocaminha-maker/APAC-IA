@@ -253,6 +253,9 @@ FITI (como diz o `contrato-resumo.md`), não só na sexta.
 - ✅ **Wellhub/Gympass — aplicado em 20/08/2026.** Apareciam no prompt (frente 2, "convênio ou agregador") na
   frase que diz que agregador é atendido normalmente — mas a base é clara: só
   Totalpass, a partir do TP4. Basta tirar os nomes e deixar o ponteiro.
+  **Wellhub voltou em 23/11/2026** (Silver+ para musculação e aulas, Gold para
+  natação e hidroginástica; sem Pilates Fit Studio e Alongamento + Core). O
+  ponteiro do prompt continua valendo — a mudança foi só na base.
 - 🔸 **A frente 2 (aluno matriculado) não tinha roteiro — começou em 20/08/2026** (objeto esquecido e app FITI; o resto continua pendente). O prompt era ~95% venda. Como
   o WhatsApp de atendimento é o mesmo número principal da academia
   (11 94071-5006), quando o canal real entrar no ar **a maioria do volume será
