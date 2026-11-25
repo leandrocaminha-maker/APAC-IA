@@ -31,11 +31,14 @@ test('o instrutor do EVO é a pessoa do Prescrev: primeiro nome, e o último qua
   assert.equal(mesmoProfessor('', 'Ana Lima'), false);
 });
 
-test('a sessão do lembrete: a primeira ainda marcada, até 1 h antes e até 10 min depois de começar', () => {
+test('a sessão do lembrete: a primeira ainda marcada, de 1 h antes a 30 min depois de começar', () => {
   const agora = sp('17:10');
   assert.equal(sessaoDoLembrete([sessao('18:00')], agora).instrutor, 'CARLOS MELO');
   assert.equal(sessaoDoLembrete([sessao('18:30')], agora), null, 'mais de 1 h antes: ainda não');
   assert.equal(sessaoDoLembrete([sessao('17:00')], agora).atividade, 'NATAÇÃO ADULTO');
+  assert.equal(sessaoDoLembrete([sessao('18:00')], agora).comecou, false);
+  assert.equal(sessaoDoLembrete([sessao('17:00')], agora).comecou, true);
+  assert.equal(sessaoDoLembrete([sessao('16:45')], agora).comecou, true, 'começou há 25 min: ainda sai');
   assert.equal(sessaoDoLembrete([sessao('16:30')], agora), null, 'já passou');
   assert.equal(sessaoDoLembrete([sessao('18:00', 'X', { statusID: 1 })], agora), null, 'cancelada ou falta não conta');
   assert.equal(sessaoDoLembrete([], agora), null);
@@ -64,6 +67,18 @@ test('sem o nome de quem dá a aula, o pedido é avisar quem dá a aula', () => 
     quem: 'Ana', protocolo: protocolo('c1'), sessao: { em: sp('18:30'), instrutor: null, atividade: null }, direto: false, total: 3, url: URL,
   });
   assert.match(t, /^Ana, Aluno c1 tem sessão às 18h30\. Avisa quem dá a aula para aferir a pressão antes de começar\./);
+});
+
+test('agendou em cima da hora: sai no ciclo em que a sessão aparece, mesmo já começada', () => {
+  const p = { protocolos: [protocolo('c1')], agora: sp('18:04') };
+  // No ciclo anterior o EVO ainda não tinha a sessão: nada saiu, e a marca não andou.
+  const antes = rodar({ ...p, agora: sp('17:59'), sessoesDe: new Map([['c1', []]]) });
+  assert.equal(antes.envios.length, 0);
+  const r = rodar({ ...p, marca: antes.marca, sessoesDe: new Map([['c1', [sessao('18:00')]]]) });
+  assert.equal(r.envios.length, 1);
+  assert.match(r.envios[0].texto, /^Ana, Aluno c1 está na sessão das 18h \(NATAÇÃO ADULTO\) com Carlos\. Avisa Carlos para aferir a pressão ainda nesta sessão\./);
+  const direto = rodar({ ...p, sessoesDe: new Map([['c1', [sessao('18:00', 'ANA LIMA')]]]) });
+  assert.match(direto.envios[0].texto, /com você\. Afere a pressão ainda nesta sessão\./);
 });
 
 test('os repasses se repartem: o segundo vai a quem recebeu menos hoje', () => {

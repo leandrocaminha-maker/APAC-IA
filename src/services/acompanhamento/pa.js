@@ -6,7 +6,7 @@
  * (sistólica >= 160 ou diastólica >= 100) abre, no Prescrev, o protocolo de
  * aferir a PA nas próximas 3 sessões em que a pessoa vier. Todo aluno agenda
  * a sessão no EVO antes de passar na catraca, então a sessão do dia diz a
- * hora e quem dá a aula. Até 1 hora antes dela, sai UM lembrete:
+ * hora e quem dá a aula. De 1 hora antes dela em diante, sai UM lembrete:
  *
  *   quem dá a aula é do time do Prescrev,   a ele, direto
  *   ativou o EQUIPE e está no turno
@@ -16,6 +16,12 @@
  *                                           da sessão, pedindo que avise quem
  *                                           dá a aula (o que recebeu menos
  *                                           lembretes hoje)
+ *
+ * Muita gente agenda em cima da hora (decisão de 25/11/2026): a sessão do
+ * aluno é lida no EVO a CADA ciclo do worker, sem guardar, e o agendamento que
+ * aparece com menos de 1 hora dispara o lembrete na hora — também com a sessão
+ * já começada, até 30 minutos depois do início, e aí o pedido é aferir ainda
+ * nesta sessão.
  *
  * Sem ninguém no turno, não sai — e a tela "PA em acompanhamento" do Prescrev
  * mostra a sessão que passou sem aferição. Um lembrete por aluno e dia: a
@@ -44,8 +50,11 @@ export const SENT_BY_PA = 'bot:pa';
 
 /** O lembrete sai até este tanto antes da sessão. */
 export const ANTECEDENCIA_MS = 60 * 60_000;
-/** E ainda sai com a sessão recém-começada: a aferição cabe no começo dela. */
-export const TOLERANCIA_MS = 10 * 60_000;
+/**
+ * E ainda sai com a sessão já começada: quem agenda em cima da hora só
+ * aparece no EVO quando a sessão está começando, e a aferição cabe nela.
+ */
+export const TOLERANCIA_MS = 30 * 60_000;
 
 /** "17:30" em São Paulo de um Date → "17h30"; em ponto, "17h". */
 export function horaCurtaDe(data) {
@@ -69,7 +78,10 @@ export function mesmoProfessor(instrutor, nomeCompleto) {
   return a.length === 1 || b.length === 1 || a[a.length - 1] === b[b.length - 1];
 }
 
-/** A sessão do dia que pede o lembrete agora: a primeira, ainda marcada, na janela. PURA. */
+/**
+ * A sessão do dia que pede o lembrete agora: a primeira, ainda marcada, de 1 h
+ * antes do início a 30 min depois dele. `comecou` diz se já está em curso. PURA.
+ */
 export function sessaoDoLembrete(sessoes, agora) {
   return (sessoes ?? [])
     .filter(s => s?.statusID === 0 || s?.statusID === undefined || s?.statusID === null)
@@ -79,6 +91,7 @@ export function sessaoDoLembrete(sessoes, agora) {
       atividade: String(s.name ?? s.activityDescription ?? s.activity ?? '').trim() || null,
     }))
     .filter(x => x.em && x.em.getTime() - agora.getTime() <= ANTECEDENCIA_MS && agora.getTime() - x.em.getTime() <= TOLERANCIA_MS)
+    .map(x => ({ ...x, comecou: x.em.getTime() <= agora.getTime() }))
     .sort((a, b) => a.em - b.em)[0] ?? null;
 }
 
@@ -92,12 +105,13 @@ export function textoDoLembreteDePa({ quem, protocolo, sessao, direto, total, ur
   const qual = `É a ${ORDINAL[protocolo.proxima] ?? `${protocolo.proxima}ª`} de ${total} aferições do protocolo de PA: ` +
     'elas mostram se a pressão alta da avaliação se repete.';
   const instrutor = primeiroNome(sessao.instrutor ?? '');
-  const abre = `${primeiroNome(quem)}, ${protocolo.cliente_nome} tem sessão às ${hora}${onde}`;
+  const abre = `${primeiroNome(quem)}, ${protocolo.cliente_nome} ${sessao.comecou ? 'está na sessão das' : 'tem sessão às'} ${hora}${onde}`;
+  const quando = sessao.comecou ? 'ainda nesta sessão' : 'antes de começar';
   const pedido = direto
-    ? `${abre} com você. Afere a pressão antes de começar.`
+    ? `${abre} com você. Afere a pressão ${quando}.`
     : instrutor
-      ? `${abre} com ${instrutor}. Avisa ${instrutor} para aferir a pressão antes de começar.`
-      : `${abre}. Avisa quem dá a aula para aferir a pressão antes de começar.`;
+      ? `${abre} com ${instrutor}. Avisa ${instrutor} para aferir a pressão ${quando}.`
+      : `${abre}. Avisa quem dá a aula para aferir a pressão ${quando}.`;
   return `${pedido} ${qual}\n\nRegistra aqui:\n${link}`;
 }
 
@@ -141,18 +155,12 @@ export function lembretesDePa({ protocolos, sessoesDe, pessoas, marca, dia, agor
   return { envios, marca: atual };
 }
 
-/** As sessões de hoje de cada aluno, do EVO, guardadas 20 minutos: o ciclo roda a cada poucos minutos. */
-const CACHE_MS = 20 * 60_000;
-const cache = new Map();
-async function sessoesDeHoje(evoId, dia) {
-  const chave = `${dia}|${evoId}`;
-  const guardado = cache.get(chave);
-  if (guardado && Date.now() - guardado.em < CACHE_MS) return guardado.sessoes;
-  const sessoes = await sessoesDaPessoa({ idMember: evoId, de: dia, ate: dia });
-  for (const k of cache.keys()) if (!k.startsWith(`${dia}|`)) cache.delete(k);
-  cache.set(chave, { em: Date.now(), sessoes });
-  return sessoes;
-}
+/**
+ * As sessões de hoje do aluno, do EVO, lidas a cada ciclo e SEM guardar: o
+ * agendamento feito em cima da hora precisa aparecer no ciclo seguinte. São
+ * poucos protocolos em curso, e quem já foi avisado hoje não é lido de novo.
+ */
+const sessoesDeHoje = (evoId, dia) => sessoesDaPessoa({ idMember: evoId, de: dia, ate: dia });
 
 /** Quem ativou o EQUIPE e está no horário agora, com o nome completo e o horário da lista do Prescrev. */
 async function pessoasNoTurnoComHorario(agora) {
