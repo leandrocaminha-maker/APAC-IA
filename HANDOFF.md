@@ -1,5 +1,6 @@
 # Estado do projeto — handoff
 
+> **25/11/2026: o lembrete de aferir a PA no dia da sessão (Prescrev 070) está no ar desde 11h30 (deploy de `7bdd51c`), DESLIGADO até `ACOMPANHAMENTO_PA=true` — falta o ensaio com um aluno real (primeira seção). No deploy, a fila estava vazia e o recomeço da restrição de 24/11 no dia 1 de 8.**
 > **🚨 16/11/2026, 17h57: a Meta restringiu o número principal de novo (a segunda vez em três dias). A sessão está `close`, à espera de a restrição cair no celular para parear. O recomeço automático está no ar desde 19h16 (deploy de `2e54b75`): a queda está gravada e a máquina não inicia conversa até o número voltar e passar os três primeiros dias da rampa (primeira seção).**
 > **16/11/2026, à noite: a régua de follow-up mudou por decisão do responsável — uma retomada em menos de 24 h da última mensagem do cliente, e sem resposta no dia a conversa vai para o consultor (primeira seção). Não há mais segunda cutucada nem sondagem atrás da conversa de depois da aula. Acompanhamento e avaliação saem desde a reconexão, fora da rampa. No ar desde 19/11/2026 às 22h26 (deploy de `4ee3d7d`, com o portão das aberturas).**
 > **19/11/2026: a academia NÃO abre no sábado 21/11 (ponte do feriado de 20/11).** Aviso temporário na base da Leia (`informacoes-gerais.md`, `grade-horaria.md`) e 21/11 em `RECESSOS` (`feriados.js`), no ar com o mesmo deploy. **Remover depois de 21/11.** No deploy, a sessão estava conectada e o recomeço no dia 3 de 8.
@@ -9,6 +10,47 @@
 > Para o plano original, ver [implementation_plan.md](implementation_plan.md).
 > Para os achados de prompt e base — aplicados e pendentes — ver
 > [REVISAO-PROMPT.md](REVISAO-PROMPT.md).
+
+## O lembrete de aferir a PA no dia da sessão (25/11/2026) — no ar, desligado (`7bdd51c`)
+
+**O que é.** Pedido da reunião de equipe do Prescrev e decisões do responsável.
+No Prescrev (migration 070 de lá), a avaliação com PA de 160 ou mais na
+sistólica, ou 100 ou mais na diastólica, abre o protocolo de aferir a PA nas
+próximas 3 sessões em que a pessoa vier. O Prescrev guarda as aferições e
+deduz o estado; aqui sai o lembrete, em `src/services/acompanhamento/pa.js`:
+
+- a cada ciclo dos encaminhamentos (5 min), lê os protocolos em curso em
+  `/api/acompanhamento/pa` (assinada; `buscarProtocolosDePa`,
+  `PA_VERSAO_LIDA` = 1) e, para cada aluno ainda não avisado hoje, as sessões
+  do dia no EVO (`sessoesDaPessoa`), SEM guardar a leitura: muita gente agenda
+  em cima da hora, e o agendamento precisa aparecer no ciclo seguinte;
+- a sessão pede o lembrete de 1 hora antes do início até 30 minutos depois
+  dele (`ANTECEDENCIA_MS`, `TOLERANCIA_MS`). Já começada, o pedido é aferir
+  ainda nesta sessão;
+- vai a quem dá a aula, se o instrutor do EVO é do time do Prescrev
+  (`mesmoProfessor`, pelo nome), ativou o EQUIPE e está no turno. Senão, a um
+  professor do Prescrev que esteja no turno agora e na hora da sessão, pedindo
+  que avise quem dá a aula — o que recebeu menos lembretes no dia;
+- um lembrete por aluno e dia (marcador `acomp:pa`). Sem ninguém no turno, não
+  sai e tenta no ciclo seguinte. Aferido no dia, o Prescrev tira o aluno da
+  lista. É mensagem de operação à equipe (`bot:pa`): fora da régua e do teto.
+
+**Desligado.** `config.acompanhamento.pa.habilitado` nasce `false`; liga com
+`ACOMPANHAMENTO_PA=true` no `.env` e a recriação do backend. Testes:
+`pa.test.js` (10), puros.
+
+**Antes de ligar.**
+
+1. Ensaio com um aluno real: o código supõe `statusID` 0 para a reserva de pé
+   e lê o nome da atividade de `name` nas sessões do EVO, e isso não foi
+   conferido contra uma sessão de verdade.
+2. O responsável ler os dois textos (direto e repasse), escritos no tom do
+   guia de voz do Prescrev, sem a revisão dele.
+
+**Como foi ao ar (25/11, 11h30).** `git pull` e
+`docker compose up -d --build --no-deps backend`: só o backend foi recriado.
+Nos 30 minutos anteriores o log não tinha resposta na fila espaçada. O backend
+subiu com o worker do acompanhamento e os encaminhamentos a cada 5 min.
 
 ## Uma retomada em 24 h, e depois o consultor (16/11/2026) — no ar desde 19/11
 
