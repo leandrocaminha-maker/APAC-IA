@@ -33,6 +33,7 @@ import { processarPontes } from '../services/acompanhamento/ponte.js';
 import { conferirSessoesDaSemana } from '../services/acompanhamento/aviso-sessoes.js';
 import { fecharCiclosNoPrescrev } from '../services/acompanhamento/prescrev.js';
 import { avisarAgendaDeTestes, avisarDaAvaliacao, lembrarVesperaDosTestes } from '../services/acompanhamento/agenda-testes.js';
+import { lembrarAfericoesDePa } from '../services/acompanhamento/pa.js';
 import { avisarAgendaDeEncontros, convidarParaEncontros, lembrarVesperaDosEncontros } from '../services/acompanhamento/encontros.js';
 
 let rodando = false;
@@ -102,6 +103,10 @@ async function cicloDosEncaminhamentos() {
     await convidarParaEncontros();
     await avisarAgendaDeEncontros();
     await lembrarVesperaDosEncontros();
+    // O protocolo da PA alta (Prescrev 070): até 1 h antes da sessão do dia,
+    // o lembrete de aferir a quem dá a aula ou a um professor no turno.
+    // Desligado até ACOMPANHAMENTO_PA=true.
+    await lembrarAfericoesDePa();
     await processarEncaminhamentos();
     // A ponte (A5d): o que o aluno mandou fora do turno do professor sai no
     // começo do turno, e a ponte sem mensagem há 72 h fecha.

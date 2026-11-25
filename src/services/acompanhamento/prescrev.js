@@ -94,6 +94,24 @@ export async function buscarAgendaDeTestes(dia = null) {
   return { dia: r.dia, marcacoes: r.marcacoes ?? [], mensagens: r.mensagens ?? {}, migracao: r.migracao !== false };
 }
 
+/* --- o protocolo da PA alta (Prescrev 070) ------------------------------ */
+
+/** A versão dos protocolos de PA que este código sabe ler (PA_VERSION do Prescrev). */
+export const PA_VERSAO_LIDA = 1;
+
+/**
+ * Os protocolos de PA em curso, sem quem já foi aferido hoje: quem lembrar no
+ * dia da sessão (`pa.js`).
+ * @returns {Promise<{dia: string, total: number, protocolos: object[], migracao: boolean}>}
+ */
+export async function buscarProtocolosDePa() {
+  const r = await buscar('/api/acompanhamento/pa');
+  if (r.versao > PA_VERSAO_LIDA) {
+    throw new Error(`Protocolos de PA na versão ${r.versao}, e este código lê até a ${PA_VERSAO_LIDA}: atualize o APAC.`);
+  }
+  return { dia: r.dia, total: r.total ?? 3, protocolos: r.protocolos ?? [], migracao: r.migracao !== false };
+}
+
 /* --- os encontros de meta (Prescrev 063) -------------------------------- */
 
 /** A versão dos encontros que este código sabe ler (ENCONTROS_VERSION do Prescrev). */

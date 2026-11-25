@@ -418,6 +418,14 @@ export const config = {
       habilitado: env('ACOMPANHAMENTO_ENCONTROS', 'false') === 'true',
     },
 
+    // O lembrete de aferir a PA no dia da sessão (25/11/2026, Prescrev 070):
+    // a quem dá a aula, ou a um professor do Prescrev no turno, que repassa.
+    // Nasce DESLIGADO: liga com ACOMPANHAMENTO_PA=true, depois de o
+    // responsável conferir os textos.
+    pa: {
+      habilitado: env('ACOMPANHAMENTO_PA', 'false') === 'true',
+    },
+
     prescrev: {
       url: env('PRESCREV_URL', 'https://prescrev.apacademia.com.br'),
       // O mesmo valor do ACOMPANHAMENTO_SECRET no .env do Prescrev.
