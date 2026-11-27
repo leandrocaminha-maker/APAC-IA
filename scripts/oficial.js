@@ -23,6 +23,14 @@
  *   npm run oficial -- modelos
  *       Os modelos da conta, com estado e categoria (pede WA_OFICIAL_WABA_ID).
  *
+ *   npm run oficial -- registrar <PIN de 6 dígitos>
+ *       Registra na Cloud API um número de verdade, já adicionado e
+ *       verificado na conta. O PIN vira o da verificação em duas etapas.
+ *
+ *   npm run oficial -- assinar
+ *       Liga os avisos da conta ao app (pede WA_OFICIAL_WABA_ID). Só é
+ *       preciso em conta nova; a de teste já vem ligada.
+ *
  * Com o número de teste da Meta, o telefone tem de estar na lista de
  * destinatários da tela "Configuração da API" (até 5).
  */
@@ -60,10 +68,20 @@ async function modelos() {
   for (const m of lista) console.log(`${m.status.padEnd(10)} ${m.category.padEnd(14)} ${m.language.padEnd(6)} ${m.name}`);
 }
 
-const comandos = { status, modelo, texto, modelos };
+async function registrar() {
+  await whatsappOficial.registrarNumero(args[0]);
+  console.log('Número registrado na Cloud API. Guarde o PIN: ele é exigido para desfazer.');
+}
+
+async function assinar() {
+  await whatsappOficial.assinarAvisos();
+  console.log('Avisos da conta ligados ao app: o webhook passa a receber deste número.');
+}
+
+const comandos = { status, modelo, texto, modelos, registrar, assinar };
 
 if (!comandos[comando]) {
-  console.error(`Comando desconhecido: "${comando}". Use status, modelo, texto ou modelos.`);
+  console.error(`Comando desconhecido: "${comando}". Use status, modelo, texto, modelos, registrar ou assinar.`);
   process.exit(1);
 }
 

@@ -36,9 +36,12 @@ export const config = {
     // permanente é de um usuário do sistema, no portfólio empresarial.
     token: env('WA_OFICIAL_TOKEN', '').trim(),
     // "Identificação do número de telefone" — o id, e não o número.
-    numeroId: env('WA_OFICIAL_PHONE_ID', '').trim(),
+    // Só os dígitos, nos dois ids: copiados da tela da Meta eles trazem um
+    // caractere invisível de direção de texto (U+2069) no fim, que o `trim`
+    // não tira, e a Meta responde "Object with ID … does not exist".
+    numeroId: env('WA_OFICIAL_PHONE_ID', '').replace(/\D/g, ''),
     // "Identificação da conta do WhatsApp Business". Só para listar modelos.
-    contaId: env('WA_OFICIAL_WABA_ID', '').trim(),
+    contaId: env('WA_OFICIAL_WABA_ID', '').replace(/\D/g, ''),
     // A versão que aparece no `curl` de exemplo da tela da Meta.
     // Em minúscula: com "V25.0" a Meta não reconhece a versão e lê o resto
     // do endereço como caminho ("Unknown path components", erro 2500).

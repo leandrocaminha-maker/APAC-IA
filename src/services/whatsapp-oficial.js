@@ -82,4 +82,30 @@ export async function listarModelos() {
   return r?.data || [];
 }
 
-export const whatsappOficial = { configurado, enviarModelo, enviarTexto, infoDoNumero, listarModelos };
+/**
+ * Registra o número na Cloud API. É o passo que falta depois de adicionar e
+ * verificar (SMS ou ligação) um número de verdade na conta: sem ele o número
+ * fica "pendente" e não envia. O PIN de 6 dígitos passa a ser o da
+ * verificação em duas etapas do número — é exigido para desfazer.
+ */
+export function registrarNumero(pin) {
+  if (!cfg().numeroId) throw new Error('falta WA_OFICIAL_PHONE_ID');
+  if (!/^\d{6}$/.test(String(pin || ''))) throw new Error('o PIN tem 6 dígitos');
+  return graph(`/${cfg().numeroId}/register`, {
+    method: 'POST',
+    corpo: { messaging_product: 'whatsapp', pin: String(pin) },
+  });
+}
+
+/**
+ * Liga os avisos da CONTA ao app. A conta de teste já vem ligada; uma conta
+ * nova, criada para o número de verdade, não — e aí o webhook fica mudo.
+ */
+export function assinarAvisos() {
+  if (!cfg().contaId) throw new Error('falta WA_OFICIAL_WABA_ID');
+  return graph(`/${cfg().contaId}/subscribed_apps`, { method: 'POST' });
+}
+
+export const whatsappOficial = {
+  configurado, enviarModelo, enviarTexto, infoDoNumero, listarModelos, registrarNumero, assinarAvisos,
+};
