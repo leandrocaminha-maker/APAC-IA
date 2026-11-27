@@ -13,6 +13,7 @@ import cors from 'cors';
 import { config } from './config.js';
 import { logger } from './lib/logger.js';
 import webhookRouter from './routes/webhook.js';
+import webhookMetaRouter from './routes/webhook-meta.js';
 import apiRouter from './routes/api.js';
 import adminRouter from './routes/admin.js';
 import testeRouter from './routes/teste.js';
@@ -34,7 +35,13 @@ const app = express();
 // Middleware
 // ──────────────────────────────────────────────
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  // A Meta assina o corpo CRU do aviso; só `/webhook/meta` precisa dele.
+  verify: (req, _res, buf) => {
+    if (req.originalUrl.startsWith('/webhook/meta')) req.rawBody = buf;
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // CORS — permite chamadas dos apps irmãos
@@ -73,6 +80,10 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Avisos da API oficial do WhatsApp (ensaio; validados pela assinatura da
+// Meta). Antes de `/webhook`, que é o roteador da Evolution.
+app.use('/webhook/meta', webhookMetaRouter);
 
 // Webhook da Evolution API (sem auth — validado internamente)
 app.use('/webhook', webhookRouter);

@@ -26,6 +26,33 @@ export const config = {
     instanciaAlt: env('EVOLUTION_INSTANCE_ALT', '').trim(),
   },
 
+  // API OFICIAL do WhatsApp (Cloud API, direto com a Meta) — ENSAIO de
+  // 27/11/2026, primeiro passo da Fase 4 do PLANO_API_OFICIAL.md. Tudo vazio
+  // é o padrão, e com tudo vazio nada muda: o script `npm run oficial` recusa
+  // o envio e `/webhook/meta` recusa toda requisição. O atendimento não lê
+  // nada daqui.
+  whatsappOficial: {
+    // Token de acesso. O da tela "Configuração da API" vale ~24 h; o
+    // permanente é de um usuário do sistema, no portfólio empresarial.
+    token: env('WA_OFICIAL_TOKEN', '').trim(),
+    // "Identificação do número de telefone" — o id, e não o número.
+    numeroId: env('WA_OFICIAL_PHONE_ID', '').trim(),
+    // "Identificação da conta do WhatsApp Business". Só para listar modelos.
+    contaId: env('WA_OFICIAL_WABA_ID', '').trim(),
+    // A versão que aparece no `curl` de exemplo da tela da Meta.
+    // Em minúscula: com "V25.0" a Meta não reconhece a versão e lê o resto
+    // do endereço como caminho ("Unknown path components", erro 2500).
+    versao: env('WA_OFICIAL_GRAPH_VERSAO', 'v23.0').trim().toLowerCase(),
+    graphUrl: env('WA_OFICIAL_GRAPH_URL', 'https://graph.facebook.com').trim().replace(/\/+$/, ''),
+
+    // RECEBIMENTO (`routes/webhook-meta.js`). O token de verificação é uma
+    // frase nossa, digitada igual na tela de webhook da Meta. O segredo do
+    // app (Configurações do app → Básico) assina cada aviso; sem ele a rota
+    // recusa tudo.
+    verifyToken: env('WA_OFICIAL_VERIFY_TOKEN', '').trim(),
+    appSecret: env('WA_OFICIAL_APP_SECRET', '').trim(),
+  },
+
   whatsapp: {
     // O número de atendimento, como se escreve para uma pessoa. O número
     // alternativo não atende ninguém: quem escreve para ele é apontado para
